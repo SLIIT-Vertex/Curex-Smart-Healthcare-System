@@ -265,8 +265,8 @@ export function DoctorDashboard() {
         <p className="mt-1 text-sm text-text-secondary">
           Appointments per day this week
         </p>
-        <div className="mt-4 h-64 lg:h-72">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="mt-4 h-64 min-h-[200px] w-full lg:h-72">
+          <ResponsiveContainer width="100%" height="100%" minHeight={200}>
             <BarChart
               data={MOCK_STATS.weeklyAppointments}
               margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
