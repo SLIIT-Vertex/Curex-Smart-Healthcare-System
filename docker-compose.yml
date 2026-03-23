@@ -130,6 +130,35 @@ services:
       retries: 3
       start_period: 60s
 
+  telemedicine-service:
+    build:
+      context: ./curex-be/services/telemedicine-service
+      dockerfile: Dockerfile
+    container_name: curex-telemedicine-service
+    restart: unless-stopped
+    expose:
+      - "8089"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/curex_telemed
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-curex_user}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-curex_password}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-guest}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      SERVICES_APPOINTMENT_URL: ${SERVICES_APPOINTMENT_URL:-http://appointment-service:8088}
+      TELEMEDICINE_STUB_MODE: ${TELEMEDICINE_STUB_MODE:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8089/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   api-gateway:
     build:
       context: ./curex-be/api-gateway
@@ -147,6 +176,8 @@ services:
       user-service:
         condition: service_started
       notification-service:
+        condition: service_started
+      telemedicine-service:
         condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]

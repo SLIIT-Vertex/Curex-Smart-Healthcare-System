@@ -49,6 +49,17 @@ spring:
                 name: notificationServiceCB
                 fallbackUri: forward:/fallback/service-unavailable
 
+        # ── Telemedicine Service ───────────────────────────────────────────────
+        - id: telemedicine-service
+          uri: http://telemedicine-service:8089
+          predicates:
+            - Path=/api/telemed/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: telemedicineServiceCB
+                fallbackUri: forward:/fallback/service-unavailable
+
         # ── Circuit breaker fallback ──────────────────────────────────────────
         - id: fallback
           uri: http://localhost:8080
@@ -78,6 +89,11 @@ resilience4j:
         waitDurationInOpenState: 10s
         permittedNumberOfCallsInHalfOpenState: 3
       notificationServiceCB:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+      telemedicineServiceCB:
         slidingWindowSize: 10
         failureRateThreshold: 50
         waitDurationInOpenState: 10s
