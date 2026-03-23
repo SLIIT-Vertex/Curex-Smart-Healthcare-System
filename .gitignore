@@ -1,8 +1,8 @@
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # Curex Smart Healthcare System — .gitignore
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 
-# ── Secrets & environment ─────────────────────────────────────────────────────
+#  Secrets & environment 
 .env
 .env.local
 .env.*.local
@@ -16,7 +16,7 @@ client_secret*.json
 *service-account*.json
 token.json
 
-# ── Maven (Java services) ─────────────────────────────────────────────────────
+#  Maven (Java services) 
 target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
@@ -32,14 +32,14 @@ mvnw.cmd
 hs_err_pid*
 replay_pid*
 
-# ── Gradle (if ever added) ────────────────────────────────────────────────────
+#  Gradle (if ever added) 
 .gradle/
 build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
 
-# ── Node / React / Vite (curex-fe) ───────────────────────────────────────────
+#  Node / React / Vite (curex-fe) 
 node_modules/
 dist/
 dist-ssr/
@@ -48,7 +48,7 @@ dist-ssr/
 .parcel-cache/
 .vite/
 
-# ── Logs ──────────────────────────────────────────────────────────────────────
+#  Logs 
 logs/
 *.log
 npm-debug.log*
@@ -56,12 +56,12 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# ── Docker runtime artefacts ──────────────────────────────────────────────────
+#  Docker runtime artefacts 
 docker/data/
 docker/volumes/
 .docker/
 
-# ── IDEs ──────────────────────────────────────────────────────────────────────
+#  IDEs 
 # IntelliJ IDEA
 .idea/
 *.iws
@@ -84,7 +84,7 @@ bin/
 nbactions.xml
 nb-configuration.xml
 
-# ── OS artefacts ──────────────────────────────────────────────────────────────
+#  OS artefacts 
 .DS_Store
 .DS_Store?
 ._*
@@ -94,20 +94,22 @@ Thumbs.db
 ehthumbs.db
 desktop.ini
 
-# ── Test & coverage ───────────────────────────────────────────────────────────
+#  Test & coverage 
 coverage/
 *.lcov
 .nyc_output/
 surefire-reports/
 failsafe-reports/
 
-# ── Kubernetes secrets ────────────────────────────────────────────────────────
+#  Kubernetes secrets 
 k8s/*-secret.yaml
 k8s/*-secrets.yaml
 
-# ── Misc ──────────────────────────────────────────────────────────────────────
+#  Misc 
 *.tmp
 *.swp
 *.swo
 *~
 # .env.example is intentionally tracked — do NOT add it here
+
+.cursor/
