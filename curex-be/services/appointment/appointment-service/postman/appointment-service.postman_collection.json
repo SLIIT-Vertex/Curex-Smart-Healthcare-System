@@ -1,0 +1,358 @@
+{
+  "info": {
+    "name": "Curex Appointment Service APIs",
+    "_postman_id": "cb6bc2a8-7fb1-4e30-9d88-9fdb4737a4c1",
+    "description": "Postman collection for appointment-service endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8088"
+    },
+    {
+      "key": "appointmentId",
+      "value": ""
+    },
+    {
+      "key": "patientId",
+      "value": "pat-001"
+    },
+    {
+      "key": "doctorId",
+      "value": "doc-001"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Book Appointment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"patientId\": \"{{patientId}}\",\n  \"patientName\": \"Test Patient\",\n  \"patientEmail\": \"patient@test.com\",\n  \"doctorId\": \"{{doctorId}}\",\n  \"doctorName\": \"Dr. House\",\n  \"doctorSpecialty\": \"Cardiology\",\n  \"slotId\": \"slot-001\",\n  \"appointmentTime\": \"2030-12-30T10:00:00\",\n  \"type\": \"IN_PERSON\",\n  \"notes\": \"Initial consultation\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/appointments",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "appointments"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test('Response has appointment id', function () {",
+              "    pm.expect(jsonData.id).to.exist;",
+              "});",
+              "if (jsonData.id) {",
+              "    pm.collectionVariables.set('appointmentId', jsonData.id);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Get All Appointments",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/appointments",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "appointments"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "var jsonData = pm.response.json();",
+              "pm.test('Response is array', function () {",
+              "    pm.expect(Array.isArray(jsonData)).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Get Appointment By ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/appointments/{{appointmentId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "appointments",
+            "{{appointmentId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "var jsonData = pm.response.json();",
+              "pm.test('Response id matches', function () {",
+              "    pm.expect(jsonData.id).to.eql(pm.collectionVariables.get('appointmentId'));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Get Appointments By Patient",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/appointments/patient/{{patientId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "appointments",
+            "patient",
+            "{{patientId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.test('Patient response is array', function () {",
+              "    pm.expect(Array.isArray(pm.response.json())).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Get Appointments By Doctor",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/appointments/doctor/{{doctorId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "appointments",
+            "doctor",
+            "{{doctorId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.test('Doctor response is array', function () {",
+              "    pm.expect(Array.isArray(pm.response.json())).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Search By Specialty",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/appointments/search?specialty=Cardiology",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "appointments",
+            "search"
+          ],
+          "query": [
+            {
+              "key": "specialty",
+              "value": "Cardiology"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.test('Search response is array', function () {",
+              "    pm.expect(Array.isArray(pm.response.json())).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Update Appointment",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"newAppointmentTime\": \"2030-12-31T11:30:00\",\n  \"status\": \"PENDING\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/appointments/{{appointmentId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "appointments",
+            "{{appointmentId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "var jsonData = pm.response.json();",
+              "pm.test('Updated appointment id exists', function () {",
+              "    pm.expect(jsonData.id).to.exist;",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 - Confirm Appointment",
+      "request": {
+        "method": "PATCH",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/appointments/{{appointmentId}}/confirm",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "appointments",
+            "{{appointmentId}}",
+            "confirm"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "var jsonData = pm.response.json();",
+              "pm.test('Status changed to CONFIRMED', function () {",
+              "    pm.expect(jsonData.status).to.eql('CONFIRMED');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 - Cancel Appointment",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/appointments/{{appointmentId}}?reason=Cancelled%20for%20testing",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "appointments",
+            "{{appointmentId}}"
+          ],
+          "query": [
+            {
+              "key": "reason",
+              "value": "Cancelled for testing"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "var jsonData = pm.response.json();",
+              "pm.test('Status changed to CANCELLED', function () {",
+              "    pm.expect(jsonData.status).to.eql('CANCELLED');",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

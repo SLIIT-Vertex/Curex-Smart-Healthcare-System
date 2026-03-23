@@ -1,0 +1,73 @@
+# ─── Standalone docker-compose for appointment-service ────────────────────────
+# Run with:  docker-compose -f docker-compose.appointment.yml up --build
+#
+# Starts ONLY:
+#   • postgres (appointment_db on port 5434)
+#   • rabbitmq  (AMQP 5672 + UI 15672)
+#   • appointment-service (port 8088)
+#
+# stub-mode=true → no calls to doctor-service needed
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres-appointment:
+    image: postgres:15-alpine
+    container_name: postgres-appointment
+    environment:
+      POSTGRES_DB: appointment_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5434:5432"
+    volumes:
+      - appointment_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d appointment_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── RabbitMQ ────────────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq-appointment
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # Management UI: http://localhost:15672  (admin/password)
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: password
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Appointment Service ─────────────────────────────────────────────────────
+  appointment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: appointment-service
+    ports:
+      - "8088:8088"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-appointment:5432/appointment_db
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: secret
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: admin
+      SPRING_RABBITMQ_PASSWORD: password
+      # stub-mode: skip Feign calls to doctor-service
+      APPOINTMENT_STUB_MODE: "true"
+    depends_on:
+      postgres-appointment:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  appointment_pg_data:
