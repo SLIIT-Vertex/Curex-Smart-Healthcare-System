@@ -2,8 +2,8 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
   User,
-  CalendarClock,
   ClipboardList,
+  Brain,
   Settings,
   LogOut,
 } from 'lucide-react'
@@ -11,18 +11,22 @@ import {
 const LOGO_SRC = '/logo.svg'
 
 const navLinks = [
-  { to: '/doctor/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/doctor/profile', icon: User, label: 'Profile' },
-  { to: '/doctor/availability', icon: CalendarClock, label: 'Availability' },
-  { to: '/doctor/prescriptions', icon: ClipboardList, label: 'Prescriptions' },
+  { to: '/patient/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/patient/profile', icon: User, label: 'Profile' },
+  { to: '/patient/prescriptions', icon: ClipboardList, label: 'Prescriptions' },
+  {
+    to: '/patient/symptom-checker',
+    icon: Brain,
+    label: 'Symptom Checker',
+  },
 ] as const
 
-interface DoctorSidebarProps {
+interface PatientSidebarProps {
   isOpen?: boolean
   onClose?: () => void
 }
 
-export function DoctorSidebar({ isOpen = true, onClose }: DoctorSidebarProps) {
+export function PatientSidebar({ isOpen = true, onClose }: PatientSidebarProps) {
   return (
     <>
       {/* Mobile overlay */}
@@ -38,12 +42,12 @@ export function DoctorSidebar({ isOpen = true, onClose }: DoctorSidebarProps) {
         className={`
           fixed inset-y-0 left-0 z-50 w-60 transform border-r border-text-secondary/10
           bg-surface shadow-card transition-transform duration-200 ease-out
-          lg:static lg:z-auto lg:translate-x-0 lg:shadow-none
+          lg:static lg:z-auto lg:h-dvh lg:translate-x-0 lg:shadow-none
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
-        aria-label="Doctor navigation"
+        aria-label="Patient navigation"
       >
-        <div className="flex h-full flex-col">
+        <div className="flex h-full min-h-0 flex-col">
           {/* Logo */}
           <div className="flex h-16 shrink-0 items-center gap-2.5 border-b border-text-secondary/10 px-5">
             <img
@@ -60,7 +64,7 @@ export function DoctorSidebar({ isOpen = true, onClose }: DoctorSidebarProps) {
           </div>
 
           {/* Nav links */}
-          <nav className="flex flex-1 flex-col gap-1 px-3 py-4" aria-label="Doctor">
+          <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 py-4" aria-label="Patient">
             {navLinks.map(({ to, icon: Icon, label }) => (
               <NavLink
                 key={to}
@@ -100,13 +104,11 @@ export function DoctorSidebar({ isOpen = true, onClose }: DoctorSidebarProps) {
             </button>
           </nav>
 
-          {/* Bottom profile card */}
+          {/* Bottom profile card — TODO: name from auth or patient profile */}
           <div className="shrink-0 border-t border-text-secondary/10 p-4">
             <div className="rounded-xl bg-background px-4 py-3">
-              <p className="text-sm font-semibold text-primary">
-                Dr. Silva
-              </p>
-              <p className="text-xs text-text-secondary">Cardiologist</p>
+              <p className="text-sm font-semibold text-primary">Emma Tin</p>
+              <p className="text-xs text-text-secondary">Patient</p>
             </div>
           </div>
         </div>
