@@ -9,7 +9,7 @@ import type {
 
 const INPUT_CLASS = 'patient-page-input'
 
-/* ── Mock patient ID (replace with auth when M1 ready) ── */
+/*  Mock patient ID (replace with auth when M1 ready)  */
 const MOCK_PATIENT_ID = 'p1'
 
 const EMPTY_MEDICAL_HISTORY: MedicalHistory = {
@@ -508,7 +508,7 @@ export function PatientProfile() {
   )
 }
 
-/* ── Editable list (add/remove items) ── */
+/*  Editable list (add/remove items)  */
 
 function EditableList({
   label,

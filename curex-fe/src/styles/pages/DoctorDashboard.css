@@ -1,7 +1,7 @@
 @reference "../../index.css";
 
 @layer components {
-  /* ── Shared typography (reuse section patterns) ── */
+  /*  Shared typography (reuse section patterns)  */
   .section-heading {
     @apply text-balance text-2xl font-semibold tracking-tight text-primary sm:text-3xl;
   }
@@ -10,7 +10,7 @@
     @apply mt-3 text-pretty text-text-secondary;
   }
 
-  /* ── Sidebar ── */
+  /*  Sidebar  */
   .sidebar-link {
     @apply transition-colors;
   }
@@ -19,12 +19,12 @@
     @apply font-semibold;
   }
 
-  /* ── Dashboard grid ── */
+  /*  Dashboard grid  */
   .dashboard-grid {
     @apply grid grid-cols-2 gap-5 lg:grid-cols-4;
   }
 
-  /* ── Stat card ── */
+  /*  Stat card  */
   .stat-card {
     /* base styles in component; accent strip + icon via Tailwind */
   }
@@ -37,7 +37,7 @@
     /* icon circle */
   }
 
-  /* ── Schedule (Appointments Today) ── */
+  /*  Schedule (Appointments Today)  */
   .schedule-row {
     @apply transition-colors hover:border-primary-light/20;
   }
@@ -46,12 +46,12 @@
     /* type badge: Video (sky) / In-person (mint) */
   }
 
-  /* ── Availability grid ── */
+  /*  Availability grid  */
   .availability-cell {
     @apply border transition-colors;
   }
 
-  /* ── Prescriptions table ── */
+  /*  Prescriptions table  */
   .rx-table {
     @apply text-left;
   }

@@ -1,7 +1,6 @@
 package com.curex.user.security;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -16,12 +15,16 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.List;
-
+/**
+ * Security configuration for the User Service.
+ *
+ * CORS is intentionally NOT configured here — this service is internal and
+ * only reachable through the API Gateway.  The gateway owns all CORS handling
+ * (see api-gateway/application.yml globalcors).  Configuring CORS in both
+ * places produces duplicate Access-Control-Allow-Origin headers which browsers
+ * treat as a hard CORS error.
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -31,28 +34,28 @@ public class SecurityConfig {
     private final CustomUserDetailsService userDetailsService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    @Value("${cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
-    private String allowedOrigins;
-
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            // CORS disabled: the API Gateway handles it. Requests reach this service
+            // only via the gateway (internal Docker network), so no browser-level
+            // CORS negotiation happens at the service level.
+            .cors(AbstractHttpConfigurer::disable)
             .sessionManagement(session ->
                     session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // Public auth endpoints
                 .requestMatchers(
                     "/api/auth/register",
                     "/api/auth/login",
                     "/api/auth/refresh",
+                    "/api/auth/validate",
+                    "/api/auth/health",
+                    "/api/admin/health",
                     "/actuator/health",
                     "/error"
                 ).permitAll()
-                // Admin-only management endpoints
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                // All other requests must be authenticated
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())
@@ -77,19 +80,5 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(allowedOrigins.split(",")));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
-        config.setAllowCredentials(true);
-        config.setMaxAge(3600L);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
     }
 }

@@ -57,7 +57,7 @@ public class AppointmentService {
     @Value("${appointment.stub-mode:true}")
     private boolean stubMode;
 
-    // ── Book Appointment ──────────────────────────────────────────────────────
+    //  Book Appointment 
 
     @Transactional
     public AppointmentResponse bookAppointment(BookAppointmentRequest req) {
@@ -110,13 +110,13 @@ public class AppointmentService {
         return toResponse(saved);
     }
 
-    // ── Get By ID ─────────────────────────────────────────────────────────────
+    //  Get By ID 
 
     public AppointmentResponse getById(String id) {
         return toResponse(findOrThrow(id));
     }
 
-    // ── Get By Patient ────────────────────────────────────────────────────────
+    //  Get By Patient 
 
     public List<AppointmentResponse> getByPatient(String patientId) {
         String normalizedPatientId = patientId == null ? "" : patientId.trim();
@@ -132,7 +132,7 @@ public class AppointmentService {
             .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
-    // ── Get By Doctor ─────────────────────────────────────────────────────────
+    //  Get By Doctor 
 
     public List<AppointmentResponse> getByDoctor(String doctorId) {
         String normalizedDoctorId = doctorId == null ? "" : doctorId.trim();
@@ -148,14 +148,14 @@ public class AppointmentService {
             .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
-    // ── Get All ───────────────────────────────────────────────────────────────
+    //  Get All 
 
     public List<AppointmentResponse> getAll() {
         return appointmentRepository.findAll()
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
-    // ── Update / Reschedule ───────────────────────────────────────────────────
+    //  Update / Reschedule 
 
     @Transactional
     public AppointmentResponse updateAppointment(String id,
@@ -181,7 +181,7 @@ public class AppointmentService {
         return toResponse(appointmentRepository.save(appt));
     }
 
-    // ── Cancel ────────────────────────────────────────────────────────────────
+    //  Cancel 
 
     @Transactional
     public AppointmentResponse cancelAppointment(String id, String reason) {
@@ -203,7 +203,7 @@ public class AppointmentService {
         return toResponse(saved);
     }
 
-    // ── Confirm Appointment (called by Doctor) ────────────────────────────────
+    //  Confirm Appointment (called by Doctor) 
 
     @Transactional
     public AppointmentResponse confirmAppointment(String id) {
@@ -216,7 +216,7 @@ public class AppointmentService {
         return toResponse(appointmentRepository.save(appt));
     }
 
-    // ── Search by Specialty ───────────────────────────────────────────────────
+    //  Search by Specialty 
 
     public List<AppointmentResponse> searchBySpecialty(String specialty) {
         return appointmentRepository
@@ -225,7 +225,7 @@ public class AppointmentService {
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
-    // ── RabbitMQ Consumer: Payment Confirmed ──────────────────────────────────
+    //  RabbitMQ Consumer: Payment Confirmed 
 
     @RabbitListener(queues = RabbitMQConfig.PAYMENT_CONFIRMED_QUEUE)
     @Transactional
@@ -240,7 +240,7 @@ public class AppointmentService {
         });
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    //  Helpers 
 
     private Appointment findOrThrow(String id) {
         return appointmentRepository.findById(id)

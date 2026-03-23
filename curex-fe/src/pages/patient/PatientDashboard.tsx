@@ -8,7 +8,7 @@ import type {
   MedicalDetailsSnapshot,
 } from '../../types/patient'
 
-/* ── Mock data — replace with usePatientDashboard() when API ready ── */
+/*  Mock data — replace with usePatientDashboard() when API ready  */
 
 const MOCK_PATIENT_NAME = 'Emma'
 

@@ -1,4 +1,4 @@
-# ── Build stage ───────────────────────────────────────────────────────────────
+# Build stage
 FROM maven:3.9.6-eclipse-temurin-17 AS build
 WORKDIR /app
 
@@ -10,7 +10,7 @@ RUN mvn dependency:go-offline -B
 COPY src ./src
 RUN mvn clean package -DskipTests -B
 
-# ── Runtime stage ─────────────────────────────────────────────────────────────
+# Runtime stage
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
