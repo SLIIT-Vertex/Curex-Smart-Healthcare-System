@@ -1,34 +1,113 @@
-# Build outputs
-**/target/
+# ─────────────────────────────────────────────────────────────────────────────
+# Curex Smart Healthcare System — .gitignore
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Node
-**/node_modules/
-**/dist/
-
-# OS / editor
-.DS_Store
-
-# Environment files (DO NOT COMMIT)
+# ── Secrets & environment ─────────────────────────────────────────────────────
 .env
-**/.env
-.env.*
-!.env.example
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+*.jks
+secrets/
+client_secret*.json
+*credentials*.json
+*service-account*.json
+token.json
 
-# IDE
-.idea/
-.vscode/
-# ---- Java / Maven ----
-**/target/
-**/*.class
+# ── Maven (Java services) ─────────────────────────────────────────────────────
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+.mvn/
+mvnw
+mvnw.cmd
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+replay_pid*
 
-# ---- IDEs ----
+# ── Gradle (if ever added) ────────────────────────────────────────────────────
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# ── Node / React / Vite (curex-fe) ───────────────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+*.local
+.cache/
+.parcel-cache/
+.vite/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Docker runtime artefacts ──────────────────────────────────────────────────
+docker/data/
+docker/volumes/
+.docker/
+
+# ── IDEs ──────────────────────────────────────────────────────────────────────
+# IntelliJ IDEA
 .idea/
+*.iws
 *.iml
+*.ipr
+out/
+
+# VS Code / Cursor
 .vscode/
+*.code-workspace
+
+# Eclipse
 .classpath
 .project
 .settings/
+.factorypath
+bin/
 
-# ---- OS ----
+# NetBeans
+nbactions.xml
+nb-configuration.xml
+
+# ── OS artefacts ──────────────────────────────────────────────────────────────
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
 Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ── Test & coverage ───────────────────────────────────────────────────────────
+coverage/
+*.lcov
+.nyc_output/
+surefire-reports/
+failsafe-reports/
+
+# ── Kubernetes secrets ────────────────────────────────────────────────────────
+k8s/*-secret.yaml
+k8s/*-secrets.yaml
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+*.tmp
+*.swp
+*.swo
+*~
+# .env.example is intentionally tracked — do NOT add it here

@@ -1,0 +1,857 @@
+import { useEffect, useMemo, useState } from 'react'
+import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
+import {
+  bookAppointment,
+  getAppointmentsByDoctor,
+  getAppointmentsByPatient,
+  getDoctorDirectory,
+} from '../../services/appointmentService'
+import {
+  dateSlotKey,
+  getDoctorAvailability,
+  getUpcomingDateKeys,
+  parseDateSlotKey,
+  toDateKey,
+} from '../../services/availabilityService'
+import {
+  type AppointmentRecord,
+  type DoctorDirectoryItem,
+} from '../../types/appointment'
+import '../../styles/pages/AppointmentFlow.css'
+
+const DEFAULT_PATIENT_ID = 'pat-001'
+const DEFAULT_PATIENT_NAME = 'Test Patient'
+const DEFAULT_PATIENT_EMAIL = 'patient@test.com'
+
+function generateTimeSlots(): string[] {
+  const slots: string[] = []
+  for (let h = 8; h <= 17; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      slots.push(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`)
+    }
+  }
+  return slots
+}
+
+const TIME_SLOTS = generateTimeSlots()
+
+function slotKeyFromAppointment(appt: AppointmentRecord): string {
+  if (appt.slotId) {
+    const parsed = parseDateSlotKey(appt.slotId)
+    if (parsed) {
+      return appt.slotId
+    }
+  }
+
+  const date = new Date(appt.appointmentTime)
+  const dateKey = toDateKey(date)
+  const time = date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+  return dateSlotKey(dateKey, time)
+}
+
+function dateLabel(dateKey: string): string {
+  const date = new Date(`${dateKey}T00:00:00`)
+  return date.toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+  })
+}
+
+function toAppointmentDateTime(dateKey: string, time: string): string {
+  return `${dateKey}T${time}:00`
+}
+
+function monthStart(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+function addMonths(date: Date, offset: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + offset, 1)
+}
+
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+]
+
+function buildMonthCells(currentMonth: Date): Array<{ dateKey: string; inMonth: boolean; dayNumber: number }> {
+  const first = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1)
+  const start = new Date(first)
+  start.setDate(first.getDate() - first.getDay())
+
+  const cells: Array<{ dateKey: string; inMonth: boolean; dayNumber: number }> = []
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start)
+    d.setDate(start.getDate() + i)
+    cells.push({
+      dateKey: toDateKey(d),
+      inMonth: d.getMonth() === currentMonth.getMonth(),
+      dayNumber: d.getDate(),
+    })
+  }
+  return cells
+}
+
+function statusPastelClass(status: string): string {
+  const normalized = status.toUpperCase()
+  if (normalized === 'CONFIRMED') {
+    return 'bg-accent-mint/25 text-primary'
+  }
+  if (normalized === 'PENDING') {
+    return 'bg-accent-peach/30 text-primary'
+  }
+  if (normalized === 'CANCELLED') {
+    return 'bg-error/20 text-primary'
+  }
+  return 'bg-primary-light/15 text-primary'
+}
+
+export function PatientAppointments() {
+  const [activeTab, setActiveTab] = useState<'make' | 'bookings'>('make')
+  const [search, setSearch] = useState('')
+  const [doctors] = useState<DoctorDirectoryItem[]>(() => getDoctorDirectory())
+  const [selectedDoctorId, setSelectedDoctorId] = useState('doc-001')
+  const dateKeys = useMemo(() => getUpcomingDateKeys(30), [])
+  const [selectedDateKey, setSelectedDateKey] = useState(dateKeys[0])
+  const [makeDateStartIndex, setMakeDateStartIndex] = useState(0)
+  const [selectedBookingDate, setSelectedBookingDate] = useState(dateKeys[0])
+  const [bookingMonth, setBookingMonth] = useState(() => monthStart(new Date()))
+  const [showBookingMonthPicker, setShowBookingMonthPicker] = useState(false)
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
+  const [popupBooking, setPopupBooking] = useState<AppointmentRecord | null>(null)
+
+  const [patientId, setPatientId] = useState(DEFAULT_PATIENT_ID)
+  const [patientName, setPatientName] = useState(DEFAULT_PATIENT_NAME)
+  const [patientEmail, setPatientEmail] = useState(DEFAULT_PATIENT_EMAIL)
+  const [notes, setNotes] = useState('')
+
+  const [doctorAppointments, setDoctorAppointments] = useState<AppointmentRecord[]>(
+    []
+  )
+  const [myAppointments, setMyAppointments] = useState<AppointmentRecord[]>([])
+  const [loading, setLoading] = useState(false)
+  const [booking, setBooking] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const selectedDoctor = useMemo(
+    () => doctors.find((d) => d.id === selectedDoctorId) ?? doctors[0],
+    [doctors, selectedDoctorId]
+  )
+
+  const filteredDoctors = useMemo(() => {
+    const key = search.trim().toLowerCase()
+    if (!key) {
+      return doctors
+    }
+
+    return doctors.filter((doctor) =>
+      `${doctor.name} ${doctor.specialty}`.toLowerCase().includes(key)
+    )
+  }, [doctors, search])
+
+  const availableSlotsForSelectedDoctor = useMemo(() => {
+    if (!selectedDoctor) {
+      return [] as Array<{ key: string; time: string; isBooked: boolean; isAvailable: boolean }>
+    }
+
+    const rawSlots = getDoctorAvailability(selectedDoctor.id)
+    const availableForDate = new Set(
+      rawSlots
+        .map((slot) => parseDateSlotKey(slot))
+        .filter(
+          (
+            parsed
+          ): parsed is {
+            dateKey: string
+            time: string
+          } => Boolean(parsed)
+        )
+        .filter((parsed) => parsed.dateKey === selectedDateKey)
+        .map((parsed) => dateSlotKey(parsed.dateKey, parsed.time))
+    )
+
+    const bookedForDate = new Set(
+      doctorAppointments
+        .filter(
+          (appt) =>
+            appt.status !== 'CANCELLED' &&
+            appt.status !== 'COMPLETED'
+        )
+        .map(slotKeyFromAppointment)
+        .filter((slotKey) => slotKey.startsWith(`${selectedDateKey}_`))
+    )
+
+    const merged = new Set<string>([...availableForDate, ...bookedForDate])
+
+    return [...merged]
+      .map((key) => {
+        const parsed = parseDateSlotKey(key)
+        if (!parsed) {
+          return null
+        }
+        return {
+          key,
+          time: parsed.time,
+          isBooked: bookedForDate.has(key),
+          isAvailable: availableForDate.has(key),
+        }
+      })
+      .filter(
+        (
+          slot
+        ): slot is {
+          key: string
+          time: string
+          isBooked: boolean
+          isAvailable: boolean
+        } => Boolean(slot)
+      )
+      .sort((a, b) => TIME_SLOTS.indexOf(a.time) - TIME_SLOTS.indexOf(b.time))
+  }, [selectedDoctor, doctorAppointments, selectedDateKey])
+
+  const sortedMyAppointments = useMemo(() => {
+    return [...myAppointments].sort(
+      (a, b) =>
+        new Date(b.appointmentTime).getTime() - new Date(a.appointmentTime).getTime()
+    )
+  }, [myAppointments])
+
+  const bookingsByDate = useMemo(() => {
+    const grouped: Record<string, AppointmentRecord[]> = {}
+    for (const appt of sortedMyAppointments) {
+      const key = toDateKey(new Date(appt.appointmentTime))
+      if (!grouped[key]) {
+        grouped[key] = []
+      }
+      grouped[key].push(appt)
+    }
+
+    for (const key of Object.keys(grouped)) {
+      grouped[key].sort(
+        (a, b) =>
+          new Date(a.appointmentTime).getTime() -
+          new Date(b.appointmentTime).getTime()
+      )
+    }
+
+    return grouped
+  }, [sortedMyAppointments])
+
+  const bookingCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const appt of sortedMyAppointments) {
+      const key = toDateKey(new Date(appt.appointmentTime))
+      counts[key] = (counts[key] ?? 0) + 1
+    }
+    return counts
+  }, [sortedMyAppointments])
+
+  const bookingsForSelectedDate = useMemo(() => {
+    return bookingsByDate[selectedBookingDate] ?? []
+  }, [bookingsByDate, selectedBookingDate])
+
+  const bookingCalendarCells = useMemo(() => buildMonthCells(bookingMonth), [bookingMonth])
+
+  const visibleMakeDates = useMemo(() => {
+    return dateKeys.slice(makeDateStartIndex, makeDateStartIndex + 7)
+  }, [dateKeys, makeDateStartIndex])
+
+  const canGoPrevMakeDates = makeDateStartIndex > 0
+  const canGoNextMakeDates = makeDateStartIndex + 7 < dateKeys.length
+
+  const bookingYearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear()
+    const years: number[] = []
+    for (let y = currentYear - 5; y <= currentYear + 5; y++) {
+      years.push(y)
+    }
+    return years
+  }, [])
+
+  useEffect(() => {
+    async function loadAppointments() {
+      if (!selectedDoctor) {
+        return
+      }
+
+      try {
+        setLoading(true)
+        setError(null)
+        const [doctorData, patientData] = await Promise.all([
+          getAppointmentsByDoctor(selectedDoctor.id),
+          getAppointmentsByPatient(patientId),
+        ])
+        setDoctorAppointments(doctorData)
+        setMyAppointments(patientData)
+
+        if (patientData.length > 0) {
+          const firstDate = toDateKey(new Date(patientData[0].appointmentTime))
+          setSelectedBookingDate(firstDate)
+        }
+      } catch {
+        setError('Could not fetch appointment data. Please ensure backend is running.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadAppointments()
+  }, [selectedDoctor, patientId])
+
+  const handleBook = async () => {
+    if (!selectedDoctor || !selectedSlot) {
+      return
+    }
+
+    const parsed = parseDateSlotKey(selectedSlot)
+    if (!parsed) {
+      setError('Selected slot is invalid. Please re-select a slot.')
+      return
+    }
+
+    try {
+      setBooking(true)
+      setError(null)
+      setMessage(null)
+
+      const appointmentTime = toAppointmentDateTime(parsed.dateKey, parsed.time)
+
+      await bookAppointment({
+        patientId,
+        patientName,
+        patientEmail,
+        doctorId: selectedDoctor.id,
+        doctorName: selectedDoctor.name,
+        doctorSpecialty: selectedDoctor.specialty,
+        slotId: selectedSlot,
+        appointmentTime,
+        type: 'IN_PERSON',
+        notes,
+      })
+
+      setMessage('Appointment booked. It will be confirmed after payment is completed.')
+      setSelectedSlot(null)
+      setNotes('')
+
+      const [doctorData, patientData] = await Promise.all([
+        getAppointmentsByDoctor(selectedDoctor.id),
+        getAppointmentsByPatient(patientId),
+      ])
+
+      setDoctorAppointments(doctorData)
+      setMyAppointments(patientData)
+    } catch (err: any) {
+      const serverMessage = err?.response?.data?.message
+      setError(serverMessage ?? 'Booking failed. Please try again.')
+    } finally {
+      setBooking(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="section-heading">Make an Appointment</h1>
+        <p className="section-subtext mt-1">
+          Search doctors, view available slots, and book your appointment.
+        </p>
+      </div>
+
+      <div className="inline-flex rounded-xl border border-text-secondary/20 bg-surface p-1">
+        <button
+          type="button"
+          onClick={() => setActiveTab('make')}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+            activeTab === 'make'
+              ? 'bg-primary-light/10 text-primary'
+              : 'text-text-secondary hover:text-primary'
+          }`}
+        >
+          Make Appointment
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('bookings')}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+            activeTab === 'bookings'
+              ? 'bg-primary-light/10 text-primary'
+              : 'text-text-secondary hover:text-primary'
+          }`}
+        >
+          My Bookings
+        </button>
+      </div>
+
+      {activeTab === 'make' && (
+        <>
+          <div className="appointment-panel p-4 lg:p-5">
+            <h2 className="text-base font-semibold text-primary">Booking Identity (Demo)</h2>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <input
+                value={patientId}
+                onChange={(e) => setPatientId(e.target.value)}
+                className="patient-page-input"
+                placeholder="Patient ID"
+              />
+              <input
+                value={patientName}
+                onChange={(e) => setPatientName(e.target.value)}
+                className="patient-page-input"
+                placeholder="Patient name"
+              />
+              <input
+                value={patientEmail}
+                onChange={(e) => setPatientEmail(e.target.value)}
+                className="patient-page-input"
+                placeholder="Patient email"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[340px_1fr]">
+            <div className="appointment-panel p-4 lg:p-5">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="patient-page-input pl-10"
+                  placeholder="Search doctor or specialty"
+                />
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {filteredDoctors.map((doctor) => (
+                  <button
+                    key={doctor.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDoctorId(doctor.id)
+                      setSelectedSlot(null)
+                    }}
+                    className={`doctor-list-item w-full text-left ${
+                      doctor.id === selectedDoctorId ? 'doctor-list-item--active' : ''
+                    }`}
+                  >
+                    <p className="font-medium text-primary">{doctor.name}</p>
+                    <p className="text-xs text-text-secondary">{doctor.specialty}</p>
+                    {doctor.hospital && (
+                      <p className="mt-0.5 text-xs text-text-secondary">{doctor.hospital}</p>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="appointment-panel p-4 lg:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-primary">
+                    {selectedDoctor?.name}
+                  </h2>
+                  <p className="text-sm text-text-secondary">{selectedDoctor?.specialty}</p>
+                </div>
+                {loading && <span className="text-sm text-text-secondary">Loading appointments...</span>}
+              </div>
+
+              <div className="mt-4">
+                <p className="text-sm font-medium text-primary">Choose date</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMakeDateStartIndex((v) => Math.max(0, v - 7))}
+                    disabled={!canGoPrevMakeDates}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary disabled:opacity-40"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+
+                  <div className="flex flex-1 gap-2 overflow-x-auto pb-1">
+                    {visibleMakeDates.map((dateKey) => (
+                      <button
+                        key={dateKey}
+                        type="button"
+                        onClick={() => {
+                          setSelectedDateKey(dateKey)
+                          setSelectedSlot(null)
+                        }}
+                        className={`day-pill shrink-0 ${selectedDateKey === dateKey ? 'day-pill--active' : ''}`}
+                      >
+                        {dateLabel(dateKey)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setMakeDateStartIndex((v) => Math.min(v + 7, dateKeys.length - 7))}
+                    disabled={!canGoNextMakeDates}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary disabled:opacity-40"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                {availableSlotsForSelectedDoctor.length === 0 ? (
+                  <div className="col-span-full rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-4 py-6 text-center text-sm text-text-secondary">
+                    No slots on {dateLabel(selectedDateKey)}.
+                  </div>
+                ) : (
+                  availableSlotsForSelectedDoctor.map((slot) => (
+                    <button
+                      key={slot.key}
+                      type="button"
+                      onClick={() => {
+                        if (!slot.isBooked && slot.isAvailable) {
+                          setSelectedSlot(slot.key)
+                        }
+                      }}
+                      disabled={slot.isBooked || !slot.isAvailable}
+                      className={`slot-pill ${
+                        selectedSlot === slot.key ? 'slot-pill--active' : ''
+                      } ${
+                        slot.isBooked
+                          ? 'cursor-not-allowed border-accent-sky/40 bg-accent-sky/20 text-text-secondary'
+                          : ''
+                      } ${
+                        !slot.isAvailable
+                          ? 'cursor-not-allowed border-text-secondary/15 bg-background/40 text-text-secondary'
+                          : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span>{slot.time}</span>
+                        <span className="text-xs">
+                          {slot.isBooked ? 'Booked' : slot.isAvailable ? 'Available' : 'Off'}
+                        </span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+
+              <div className="mt-5 space-y-3 rounded-xl border border-text-secondary/10 bg-background/50 p-4">
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Optional note for doctor"
+                  className="symptom-input min-h-[90px]"
+                />
+
+                <button
+                  type="button"
+                  onClick={handleBook}
+                  disabled={!selectedSlot || booking}
+                  className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {booking ? 'Booking...' : 'Book Selected Slot'}
+                </button>
+
+                <p className="text-xs text-text-secondary">
+                  Booking status will remain PENDING until payment integration confirms it.
+                </p>
+              </div>
+
+              {message && (
+                <div className="mt-4 rounded-xl border border-accent-mint/40 bg-accent-mint/20 px-4 py-3 text-sm text-primary">
+                  {message}
+                </div>
+              )}
+
+              {error && (
+                <div className="mt-4 rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-primary">
+                  {error}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {activeTab === 'bookings' && (
+        <div className="appointment-panel p-4 lg:p-5">
+          <h2 className="text-lg font-semibold text-primary">My Bookings</h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            Calendar view for patient ID: {patientId}. Dates with bookings are marked.
+          </p>
+
+          {sortedMyAppointments.length === 0 ? (
+            <div className="mt-4 rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-4 py-6 text-center text-sm text-text-secondary">
+              No bookings yet.
+            </div>
+          ) : (
+            <div className="mt-4 space-y-5">
+              <div className="rounded-2xl border border-text-secondary/15 bg-background/40 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowBookingMonthPicker((v) => !v)}
+                    className="text-base font-semibold text-primary underline-offset-2 hover:underline"
+                  >
+                    {bookingMonth.toLocaleDateString('en-GB', {
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBookingMonth((m) => addMonths(m, -1))}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBookingMonth((m) => addMonths(m, 1))}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {showBookingMonthPicker && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-text-secondary/15 bg-surface p-3">
+                    <select
+                      className="patient-page-input max-w-40"
+                      value={bookingMonth.getMonth()}
+                      onChange={(e) =>
+                        setBookingMonth(
+                          new Date(
+                            bookingMonth.getFullYear(),
+                            Number(e.target.value),
+                            1
+                          )
+                        )
+                      }
+                    >
+                      {MONTH_NAMES.map((name, idx) => (
+                        <option key={name} value={idx}>{name}</option>
+                      ))}
+                    </select>
+                    <select
+                      className="patient-page-input max-w-36"
+                      value={bookingMonth.getFullYear()}
+                      onChange={(e) =>
+                        setBookingMonth(
+                          new Date(
+                            Number(e.target.value),
+                            bookingMonth.getMonth(),
+                            1
+                          )
+                        )
+                      }
+                    >
+                      {bookingYearOptions.map((year) => (
+                        <option key={year} value={year}>{year}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowBookingMonthPicker(false)}
+                      className="day-pill"
+                    >
+                      Done
+                    </button>
+                  </div>
+                )}
+
+                <div className="mt-4 grid grid-cols-7 gap-1 text-center text-xs font-semibold text-text-secondary">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
+                    <div key={d} className="py-1">{d}</div>
+                  ))}
+                </div>
+
+                <div className="mt-1 grid grid-cols-7 gap-1">
+                  {bookingCalendarCells.map((cell) => {
+                    const dayBookings = bookingsByDate[cell.dateKey] ?? []
+                    const marked = dayBookings.length > 0
+                    const selected = selectedBookingDate === cell.dateKey
+                    return (
+                      <div
+                        key={cell.dateKey}
+                        onClick={() => setSelectedBookingDate(cell.dateKey)}
+                        className={`min-h-24 rounded-lg border px-1 py-1 text-left text-xs transition ${
+                          selected
+                            ? 'border-primary-light/40 bg-primary-light/10 text-primary'
+                            : cell.inMonth
+                              ? 'border-text-secondary/15 bg-surface text-primary'
+                              : 'border-text-secondary/10 bg-background/40 text-text-secondary/70'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">{cell.dayNumber}</span>
+                          {marked && (
+                            <span className="rounded-full bg-accent-mint/20 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                              {bookingCounts[cell.dateKey]}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-1 space-y-1">
+                          {dayBookings.slice(0, 2).map((appt) => {
+                            const apptTime = new Date(appt.appointmentTime).toLocaleTimeString('en-GB', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                            return (
+                              <button
+                                key={appt.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setPopupBooking(appt)
+                                }}
+                                className={`w-full truncate rounded-md px-1.5 py-1 text-left text-[10px] font-medium ${statusPastelClass(
+                                  String(appt.status)
+                                )}`}
+                                title={`${apptTime} - ${appt.doctorName ?? appt.doctorId}`}
+                              >
+                                {apptTime} {appt.doctorName ?? appt.doctorId}
+                              </button>
+                            )
+                          })}
+                          {dayBookings.length > 2 && (
+                            <div className="px-1 text-[10px] font-medium text-text-secondary">
+                              +{dayBookings.length - 2} more
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="mt-4">
+                  <h4 className="text-sm font-semibold text-primary">
+                    {dateLabel(selectedBookingDate)} ({bookingsForSelectedDate.length})
+                  </h4>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {bookingsForSelectedDate.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-text-secondary/20 bg-background/40 px-3 py-2 text-sm text-text-secondary">
+                        No bookings on selected date.
+                      </div>
+                    ) : (
+                      bookingsForSelectedDate.map((appt) => {
+                        const date = new Date(appt.appointmentTime)
+                        return (
+                          <button
+                            key={appt.id}
+                            type="button"
+                            onClick={() => setPopupBooking(appt)}
+                            className={`rounded-xl px-3 py-2 text-left text-xs font-medium ${statusPastelClass(
+                              String(appt.status)
+                            )}`}
+                          >
+                            {date.toLocaleTimeString('en-GB', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}{' '}
+                            {appt.doctorName ?? appt.doctorId}
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-text-secondary/15 bg-background/40 p-4">
+                <h3 className="mb-3 text-base font-semibold text-primary">All Bookings</h3>
+                <table className="w-full min-w-[52rem] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-text-secondary/20 text-text-secondary">
+                      <th className="px-3 py-2 font-medium">Doctor</th>
+                      <th className="px-3 py-2 font-medium">Specialty</th>
+                      <th className="px-3 py-2 font-medium">Date</th>
+                      <th className="px-3 py-2 font-medium">Time</th>
+                      <th className="px-3 py-2 font-medium">Type</th>
+                      <th className="px-3 py-2 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedMyAppointments.map((appt) => {
+                      const date = new Date(appt.appointmentTime)
+                      return (
+                        <tr
+                          key={appt.id}
+                          className="border-b border-text-secondary/10 hover:bg-background/40"
+                        >
+                          <td className="px-3 py-2">{appt.doctorName ?? appt.doctorId}</td>
+                          <td className="px-3 py-2">{appt.doctorSpecialty ?? '-'}</td>
+                          <td className="px-3 py-2">{date.toLocaleDateString('en-GB')}</td>
+                          <td className="px-3 py-2">
+                            {date.toLocaleTimeString('en-GB', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </td>
+                          <td className="px-3 py-2">{appt.type === 'TELEMEDICINE' ? 'Video' : 'In-person'}</td>
+                          <td className="px-3 py-2">
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusPastelClass(String(appt.status))}`}>
+                              {String(appt.status).toUpperCase()}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {popupBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-surface p-5" style={{ boxShadow: 'var(--shadow-card)' }}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-primary">Booking Details</h3>
+                <p className="text-sm text-text-secondary">Click outside or close to dismiss.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPopupBooking(null)}
+                className="rounded-lg border border-text-secondary/20 p-2 text-text-secondary transition hover:text-primary"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-2 text-sm">
+              <p><span className="font-medium text-primary">Doctor:</span> {popupBooking.doctorName ?? popupBooking.doctorId}</p>
+              <p><span className="font-medium text-primary">Specialty:</span> {popupBooking.doctorSpecialty ?? '-'}</p>
+              <p><span className="font-medium text-primary">Date:</span> {new Date(popupBooking.appointmentTime).toLocaleDateString('en-GB')}</p>
+              <p><span className="font-medium text-primary">Time:</span> {new Date(popupBooking.appointmentTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>
+              <p><span className="font-medium text-primary">Type:</span> {popupBooking.type === 'TELEMEDICINE' ? 'Video' : 'In-person'}</p>
+              <p><span className="font-medium text-primary">Status:</span> {String(popupBooking.status).toUpperCase()}</p>
+              {popupBooking.notes && <p><span className="font-medium text-primary">Notes:</span> {popupBooking.notes}</p>}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

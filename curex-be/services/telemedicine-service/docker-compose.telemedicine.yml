@@ -1,0 +1,58 @@
+services:
+  postgres-telemed:
+    image: postgres:15-alpine
+    container_name: postgres-telemed
+    environment:
+      POSTGRES_DB: telemed_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5436:5432"
+    volumes:
+      - telemed_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d telemed_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq-telemed:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq-telemed
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: password
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  telemedicine-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telemedicine-service
+    ports:
+      - "8089:8089"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-telemed:5432/telemed_db
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: secret
+      SPRING_RABBITMQ_HOST: rabbitmq-telemed
+      SPRING_RABBITMQ_USERNAME: admin
+      SPRING_RABBITMQ_PASSWORD: password
+      SERVICES_APPOINTMENT_URL: http://host.docker.internal:8088
+      TELEMEDICINE_STUB_MODE: "true"
+    depends_on:
+      postgres-telemed:
+        condition: service_healthy
+      rabbitmq-telemed:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  telemed_pg_data:
