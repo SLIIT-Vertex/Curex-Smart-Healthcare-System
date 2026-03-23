@@ -20,8 +20,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -117,17 +120,33 @@ public class AppointmentService {
     // ── Get By Patient ────────────────────────────────────────────────────────
 
     public List<AppointmentResponse> getByPatient(String patientId) {
-        return appointmentRepository
-                .findByPatientIdOrderByAppointmentTimeDesc(patientId)
-                .stream().map(this::toResponse).collect(Collectors.toList());
+        String normalizedPatientId = patientId == null ? "" : patientId.trim();
+        List<Appointment> directMatches = appointmentRepository
+                .findByPatientIdOrderByAppointmentTimeDesc(normalizedPatientId);
+
+        String looseKey = normalizeLooseId(normalizedPatientId);
+        List<Appointment> looseMatches = appointmentRepository.findAll().stream()
+            .filter(a -> normalizeLooseId(a.getPatientId()).equals(looseKey))
+            .collect(Collectors.toList());
+
+        return mergeAndSortAppointments(directMatches, looseMatches)
+            .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
     // ── Get By Doctor ─────────────────────────────────────────────────────────
 
     public List<AppointmentResponse> getByDoctor(String doctorId) {
-        return appointmentRepository
-                .findByDoctorIdOrderByAppointmentTimeDesc(doctorId)
-                .stream().map(this::toResponse).collect(Collectors.toList());
+        String normalizedDoctorId = doctorId == null ? "" : doctorId.trim();
+        List<Appointment> directMatches = appointmentRepository
+                .findByDoctorIdOrderByAppointmentTimeDesc(normalizedDoctorId);
+
+        String looseKey = normalizeLooseId(normalizedDoctorId);
+        List<Appointment> looseMatches = appointmentRepository.findAll().stream()
+            .filter(a -> normalizeLooseId(a.getDoctorId()).equals(looseKey))
+            .collect(Collectors.toList());
+
+        return mergeAndSortAppointments(directMatches, looseMatches)
+            .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
     // ── Get All ───────────────────────────────────────────────────────────────
@@ -288,5 +307,29 @@ public class AppointmentService {
                 .createdAt(a.getCreatedAt())
                 .updatedAt(a.getUpdatedAt())
                 .build();
+    }
+
+    private String normalizeLooseId(String id) {
+        if (id == null) {
+            return "";
+        }
+        return id.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+    }
+
+    private List<Appointment> mergeAndSortAppointments(
+            List<Appointment> directMatches,
+            List<Appointment> looseMatches
+    ) {
+        return java.util.stream.Stream.concat(directMatches.stream(), looseMatches.stream())
+                .collect(Collectors.toMap(
+                        Appointment::getId,
+                        a -> a,
+                        (existing, replacement) -> existing,
+                        java.util.LinkedHashMap::new
+                ))
+                .values()
+                .stream()
+                .sorted(Comparator.comparing(Appointment::getAppointmentTime).reversed())
+                .collect(Collectors.toList());
     }
 }

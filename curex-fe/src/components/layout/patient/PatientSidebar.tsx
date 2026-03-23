@@ -4,6 +4,8 @@ import {
   User,
   ClipboardList,
   Brain,
+  CalendarDays,
+  FileText,
   Settings,
   LogOut,
 } from 'lucide-react'
@@ -14,6 +16,8 @@ const navLinks = [
   { to: '/patient/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/patient/profile', icon: User, label: 'Profile' },
   { to: '/patient/prescriptions', icon: ClipboardList, label: 'Prescriptions' },
+  { to: '/patient/appointments', icon: CalendarDays, label: 'Appointments' },
+  { to: '/patient/reports', icon: FileText, label: 'Reports' },
   {
     to: '/patient/symptom-checker',
     icon: Brain,
