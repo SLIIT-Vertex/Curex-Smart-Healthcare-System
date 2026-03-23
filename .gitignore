@@ -1,3 +1,22 @@
+# Build outputs
+**/target/
+
+# Node
+**/node_modules/
+**/dist/
+
+# OS / editor
+.DS_Store
+
+# Environment files (DO NOT COMMIT)
+.env
+**/.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
 # ---- Java / Maven ----
 **/target/
 **/*.class
