@@ -1,0 +1,163 @@
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Notification Service — Deployment + ClusterIP Service
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: curex
+  labels:
+    app: notification-service
+    app.kubernetes.io/part-of: curex-healthcare
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: notification-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: notification-service
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z postgres 5432; do
+                echo "Waiting for postgres..."; sleep 2;
+              done
+        - name: wait-for-rabbitmq
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z rabbitmq 5672; do
+                echo "Waiting for rabbitmq..."; sleep 2;
+              done
+      containers:
+        - name: notification-service
+          image: your-registry/curex-notification-service:latest   # ← update this
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8082
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres:5432/curex_notifications
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: curex-secrets
+                  key: db-username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: curex-secrets
+                  key: db-password
+            - name: RABBITMQ_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: curex-config
+                  key: RABBITMQ_HOST
+            - name: RABBITMQ_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: curex-secrets
+                  key: rabbitmq-username
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: curex-secrets
+                  key: rabbitmq-password
+            - name: MAIL_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: curex-config
+                  key: MAIL_HOST
+            - name: MAIL_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: curex-config
+                  key: MAIL_PORT
+            - name: MAIL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: curex-secrets
+                  key: mail-username
+            - name: MAIL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: curex-secrets
+                  key: mail-password
+            - name: NOTIFICATION_EMAIL_FROM
+              valueFrom:
+                configMapKeyRef:
+                  name: curex-config
+                  key: NOTIFICATION_EMAIL_FROM
+            - name: TEXT_LK_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: curex-secrets
+                  key: text-lk-api-token
+            - name: TEXT_LK_SENDER_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: curex-config
+                  key: TEXT_LK_SENDER_ID
+            - name: TEXT_LK_API_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: curex-config
+                  key: TEXT_LK_API_BASE_URL
+            - name: SPRING_PROFILES_ACTIVE
+              value: docker
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "800m"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: curex
+  labels:
+    app: notification-service
+    app.kubernetes.io/part-of: curex-healthcare
+spec:
+  type: ClusterIP
+  selector:
+    app: notification-service
+  ports:
+    - port: 8082
+      targetPort: 8082
+      protocol: TCP

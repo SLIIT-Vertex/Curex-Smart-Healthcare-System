@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: curex
+  labels:
+    app.kubernetes.io/name: curex
+    app.kubernetes.io/part-of: curex-healthcare

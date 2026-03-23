@@ -1,0 +1,106 @@
+package com.curex.notification.repository;
+
+import com.curex.notification.entity.Notification;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Repository
+public interface NotificationRepository extends JpaRepository<Notification, String> {
+
+    /**
+     * Find notifications by user ID
+     */
+    List<Notification> findByUserIdOrderByCreatedAtDesc(String userId);
+
+    /**
+     * Find notifications by status
+     */
+    List<Notification> findByStatus(Notification.NotificationStatus status);
+
+    /**
+     * Find notifications by type
+     */
+    List<Notification> findByType(Notification.NotificationType type);
+
+    /**
+     * Find notifications by channel
+     */
+    List<Notification> findByChannel(Notification.NotificationChannel channel);
+
+    /**
+     * Find pending notifications for retry
+     */
+    @Query("SELECT n FROM Notification n WHERE n.status = 'FAILED' AND " +
+           "n.deliveryAttempts < n.maxAttempts AND " +
+           "n.nextRetryAt <= :currentTime")
+    List<Notification> findNotificationsForRetry(@Param("currentTime") LocalDateTime currentTime);
+
+    /**
+     * Find notifications by user ID with pagination
+     */
+    Page<Notification> findByUserIdOrderByCreatedAtDesc(String userId, Pageable pageable);
+
+    /**
+     * Find notifications by multiple criteria
+     */
+    @Query("SELECT n FROM Notification n WHERE " +
+           "(:userId IS NULL OR n.userId = :userId) AND " +
+           "(:type IS NULL OR n.type = :type) AND " +
+           "(:channel IS NULL OR n.channel = :channel) AND " +
+           "(:status IS NULL OR n.status = :status) " +
+           "ORDER BY n.createdAt DESC")
+    Page<Notification> findNotifications(
+        @Param("userId") String userId,
+        @Param("type") Notification.NotificationType type,
+        @Param("channel") Notification.NotificationChannel channel,
+        @Param("status") Notification.NotificationStatus status,
+        Pageable pageable
+    );
+
+    /**
+     * Count notifications by status
+     */
+    long countByStatus(Notification.NotificationStatus status);
+
+    /**
+     * Count notifications by user and status
+     */
+    long countByUserIdAndStatus(String userId, Notification.NotificationStatus status);
+
+    /**
+     * Find notifications created between dates
+     */
+    List<Notification> findByCreatedAtBetween(LocalDateTime startDate, LocalDateTime endDate);
+
+    /**
+     * Find failed notifications that exceeded max attempts
+     */
+    @Query("SELECT n FROM Notification n WHERE n.status = 'FAILED' AND " +
+           "n.deliveryAttempts >= n.maxAttempts")
+    List<Notification> findFailedNotificationsExceededAttempts();
+
+    /**
+     * Delete old notifications (cleanup job)
+     */
+    @Query("DELETE FROM Notification n WHERE n.createdAt < :cutoffDate AND " +
+           "n.status NOT IN ('PENDING', 'PROCESSING')")
+    void deleteOldNotifications(@Param("cutoffDate") LocalDateTime cutoffDate);
+
+    /**
+     * Get notification statistics
+     */
+    @Query("SELECT " +
+           "COUNT(CASE WHEN n.status = 'SENT' THEN 1 END) as sent, " +
+           "COUNT(CASE WHEN n.status = 'DELIVERED' THEN 1 END) as delivered, " +
+           "COUNT(CASE WHEN n.status = 'FAILED' THEN 1 END) as failed, " +
+           "COUNT(CASE WHEN n.status = 'PENDING' THEN 1 END) as pending " +
+           "FROM Notification n WHERE n.createdAt >= :fromDate")
+    Object[] getNotificationStatistics(@Param("fromDate") LocalDateTime fromDate);
+}

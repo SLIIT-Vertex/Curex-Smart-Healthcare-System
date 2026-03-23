@@ -1,0 +1,71 @@
+version: "3.8"
+
+# Development environment docker-compose file
+# This file runs only the infrastructure services for local development
+# Services should be run locally using your IDE
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: curex-postgres-dev
+    environment:
+      POSTGRES_DB: curex_main
+      POSTGRES_USER: curex_user
+      POSTGRES_PASSWORD: curex_password
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - curex-dev-network
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: curex-rabbitmq-dev
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_dev_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672" # Management UI
+    networks:
+      - curex-dev-network
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: curex-redis-dev
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_dev_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - curex-dev-network
+
+  # MailHog for email testing
+  mailhog:
+    image: mailhog/mailhog
+    container_name: curex-mailhog-dev
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # Web UI
+    networks:
+      - curex-dev-network
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  rabbitmq_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+
+networks:
+  curex-dev-network:
+    driver: bridge
