@@ -11,6 +11,7 @@
 #   kubectl apply -f k8s/deployments/rabbitmq.yaml
 #   kubectl apply -f k8s/deployments/user-service.yaml
 #   kubectl apply -f k8s/deployments/notification-service.yaml
+#   kubectl apply -f k8s/deployments/telemedicine-service.yaml
 #   kubectl apply -f k8s/deployments/api-gateway.yaml
 #   kubectl apply -f k8s/ingress.yaml
 # ─────────────────────────────────────────────────────────────────────────────
@@ -28,6 +29,7 @@ resources:
   - deployments/rabbitmq.yaml
   - deployments/user-service.yaml
   - deployments/notification-service.yaml
+  - deployments/telemedicine-service.yaml
   - deployments/api-gateway.yaml
   - ingress.yaml
 

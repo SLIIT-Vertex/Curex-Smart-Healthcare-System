@@ -50,6 +50,7 @@ data:
     CREATE DATABASE curex_doctors;
     CREATE DATABASE curex_payments;
     CREATE DATABASE curex_reports;
+    CREATE DATABASE curex_telemed;
 
     GRANT ALL PRIVILEGES ON DATABASE curex_users         TO curex_user;
     GRANT ALL PRIVILEGES ON DATABASE curex_notifications TO curex_user;
@@ -58,6 +59,7 @@ data:
     GRANT ALL PRIVILEGES ON DATABASE curex_doctors       TO curex_user;
     GRANT ALL PRIVILEGES ON DATABASE curex_payments      TO curex_user;
     GRANT ALL PRIVILEGES ON DATABASE curex_reports       TO curex_user;
+    GRANT ALL PRIVILEGES ON DATABASE curex_telemed       TO curex_user;
 
     \c curex_users;
     GRANT ALL ON SCHEMA public TO curex_user;
@@ -84,5 +86,9 @@ data:
     CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
     \c curex_reports;
+    GRANT ALL ON SCHEMA public TO curex_user;
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+    \c curex_telemed;
     GRANT ALL ON SCHEMA public TO curex_user;
     CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
