@@ -132,7 +132,7 @@ services:
 
   api-gateway:
     build:
-      context: ./curex-be/services/api-gateway
+      context: ./curex-be/api-gateway
       dockerfile: Dockerfile
     container_name: curex-api-gateway
     restart: unless-stopped

@@ -11,6 +11,10 @@
 *.p12
 *.jks
 secrets/
+client_secret*.json
+*credentials*.json
+*service-account*.json
+token.json
 
 # ── Maven (Java services) ─────────────────────────────────────────────────────
 target/
