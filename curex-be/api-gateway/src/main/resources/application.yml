@@ -1,0 +1,102 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      # Global CORS — handled once here, downstream services need none
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "${ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}"
+            allowedMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+            allowedHeaders: ["*"]
+            allowCredentials: true
+            maxAge: 3600
+
+      routes:
+        # ── User Service: auth routes ──────────────────────────────────────────
+        # Public paths (login, register, refresh) are whitelisted inside
+        # AuthenticationFilter (GlobalFilter) — no per-route config needed.
+        - id: user-auth
+          uri: http://user-service:8081
+          predicates:
+            - Path=/api/auth/**
+
+        # ── User Service: admin routes ─────────────────────────────────────────
+        - id: user-admin
+          uri: http://user-service:8081
+          predicates:
+            - Path=/api/admin/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: userServiceCB
+                fallbackUri: forward:/fallback/service-unavailable
+
+        # ── Notification Service ───────────────────────────────────────────────
+        - id: notification-service
+          uri: http://notification-service:8082
+          predicates:
+            - Path=/api/notifications/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: notificationServiceCB
+                fallbackUri: forward:/fallback/service-unavailable
+
+        # ── Circuit breaker fallback ──────────────────────────────────────────
+        - id: fallback
+          uri: http://localhost:8080
+          predicates:
+            - Path=/fallback/**
+
+        # ── Future services — follow this pattern ─────────────────────────────
+        # - id: appointment-service
+        #   uri: http://appointment-service:8083
+        #   predicates:
+        #     - Path=/api/appointments/**
+
+# AuthenticationFilter is a GlobalFilter — it applies to ALL routes automatically.
+# Public paths (/api/auth/login, /api/auth/register, etc.) are whitelisted inside
+# the filter itself. No per-route filter config is needed or allowed here.
+
+# JWT_SECRET must match exactly what user-service uses
+jwt:
+  secret: ${JWT_SECRET}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      userServiceCB:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+      notificationServiceCB:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: when-authorized
+    gateway:
+      enabled: true
+
+logging:
+  level:
+    com.curex.gateway: INFO
+    org.springframework.cloud.gateway: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

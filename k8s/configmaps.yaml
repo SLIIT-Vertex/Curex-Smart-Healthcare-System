@@ -1,0 +1,88 @@
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Curex ConfigMap — non-sensitive configuration
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: curex-config
+  namespace: curex
+  labels:
+    app.kubernetes.io/part-of: curex-healthcare
+data:
+  # Database
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  # RabbitMQ
+  RABBITMQ_HOST: "rabbitmq"
+  RABBITMQ_PORT: "5672"
+  # Mail
+  MAIL_HOST: "smtp.gmail.com"
+  MAIL_PORT: "587"
+  NOTIFICATION_EMAIL_FROM: "noreply@curex.com"
+  NOTIFICATION_EMAIL_FROM_NAME: "Curex"
+  # SMS
+  TEXT_LK_API_BASE_URL: "https://app.text.lk/api/v3"
+  TEXT_LK_SENDER_ID: "CUREX"
+  # JWT expiry (ms)
+  JWT_EXPIRATION: "900000"
+  JWT_REFRESH_EXPIRATION: "604800000"
+  # CORS — update to your real frontend URL in production
+  ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:5173"
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Postgres init SQL — mounted into the postgres container on first boot
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-sql
+  namespace: curex
+  labels:
+    app.kubernetes.io/part-of: curex-healthcare
+data:
+  init-db.sql: |
+    CREATE DATABASE curex_users;
+    CREATE DATABASE curex_notifications;
+    CREATE DATABASE curex_appointments;
+    CREATE DATABASE curex_patients;
+    CREATE DATABASE curex_doctors;
+    CREATE DATABASE curex_payments;
+    CREATE DATABASE curex_reports;
+
+    GRANT ALL PRIVILEGES ON DATABASE curex_users         TO curex_user;
+    GRANT ALL PRIVILEGES ON DATABASE curex_notifications TO curex_user;
+    GRANT ALL PRIVILEGES ON DATABASE curex_appointments  TO curex_user;
+    GRANT ALL PRIVILEGES ON DATABASE curex_patients      TO curex_user;
+    GRANT ALL PRIVILEGES ON DATABASE curex_doctors       TO curex_user;
+    GRANT ALL PRIVILEGES ON DATABASE curex_payments      TO curex_user;
+    GRANT ALL PRIVILEGES ON DATABASE curex_reports       TO curex_user;
+
+    \c curex_users;
+    GRANT ALL ON SCHEMA public TO curex_user;
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+    \c curex_notifications;
+    GRANT ALL ON SCHEMA public TO curex_user;
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+    \c curex_appointments;
+    GRANT ALL ON SCHEMA public TO curex_user;
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+    \c curex_patients;
+    GRANT ALL ON SCHEMA public TO curex_user;
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+    \c curex_doctors;
+    GRANT ALL ON SCHEMA public TO curex_user;
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+    \c curex_payments;
+    GRANT ALL ON SCHEMA public TO curex_user;
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+    \c curex_reports;
+    GRANT ALL ON SCHEMA public TO curex_user;
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

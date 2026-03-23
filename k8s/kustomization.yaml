@@ -1,0 +1,36 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Kustomize root — apply the entire stack with:
+#   kubectl apply -k k8s/
+#
+# Or apply in order manually (safer for first deploy):
+#   kubectl apply -f k8s/namespace.yaml
+#   kubectl apply -f k8s/secrets.yaml
+#   kubectl apply -f k8s/configmaps.yaml
+#   kubectl apply -f k8s/storage.yaml
+#   kubectl apply -f k8s/deployments/postgres.yaml
+#   kubectl apply -f k8s/deployments/rabbitmq.yaml
+#   kubectl apply -f k8s/deployments/user-service.yaml
+#   kubectl apply -f k8s/deployments/notification-service.yaml
+#   kubectl apply -f k8s/deployments/api-gateway.yaml
+#   kubectl apply -f k8s/ingress.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: curex
+
+resources:
+  - namespace.yaml
+  - secrets.yaml
+  - configmaps.yaml
+  - storage.yaml
+  - deployments/postgres.yaml
+  - deployments/rabbitmq.yaml
+  - deployments/user-service.yaml
+  - deployments/notification-service.yaml
+  - deployments/api-gateway.yaml
+  - ingress.yaml
+
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: curex-healthcare
