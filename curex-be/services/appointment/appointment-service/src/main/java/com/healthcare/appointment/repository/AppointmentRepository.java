@@ -14,9 +14,17 @@ import java.util.List;
 @Repository
 public interface AppointmentRepository extends JpaRepository<Appointment, String> {
 
-    List<Appointment> findByPatientIdOrderByAppointmentTimeDesc(String patientId);
+    @Query("SELECT a FROM Appointment a " +
+           "WHERE LOWER(TRIM(a.patientId)) = LOWER(TRIM(:patientId)) " +
+           "ORDER BY a.appointmentTime DESC")
+    List<Appointment> findByPatientIdOrderByAppointmentTimeDesc(
+            @Param("patientId") String patientId);
 
-    List<Appointment> findByDoctorIdOrderByAppointmentTimeDesc(String doctorId);
+    @Query("SELECT a FROM Appointment a " +
+           "WHERE LOWER(TRIM(a.doctorId)) = LOWER(TRIM(:doctorId)) " +
+           "ORDER BY a.appointmentTime DESC")
+    List<Appointment> findByDoctorIdOrderByAppointmentTimeDesc(
+            @Param("doctorId") String doctorId);
 
     List<Appointment> findByPatientIdAndStatus(String patientId, AppointmentStatus status);
 
