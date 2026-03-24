@@ -58,6 +58,19 @@ spring:
                 name: userServiceCB
                 fallbackUri: forward:/fallback/service-unavailable
 
+        # User Service: user lookup routes (search, by-id, by-role, approved users)
+        # /api/internal/** is intentionally NOT routed through the gateway —
+        # internal service-to-service calls go directly over the Docker network.
+        - id: user-service-users
+          uri: http://user-service:8081
+          predicates:
+            - Path=/api/users/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: userServiceCB
+                fallbackUri: forward:/fallback/service-unavailable
+
         # Notification Service
         - id: notification-service
           uri: http://notification-service:8082
