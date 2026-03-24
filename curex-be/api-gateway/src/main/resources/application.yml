@@ -87,6 +87,17 @@ spring:
                 name: appointmentServiceCB
                 fallbackUri: forward:/fallback/service-unavailable
 
+        # Payment Service
+        - id: payment-service
+          uri: http://payment-service:8087
+          predicates:
+            - Path=/api/payments/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: paymentServiceCB
+                fallbackUri: forward:/fallback/service-unavailable
+
         # Patient Service
         - id: patient-service
           uri: http://patient-service:8083
@@ -187,6 +198,11 @@ resilience4j:
         waitDurationInOpenState: 10s
         permittedNumberOfCallsInHalfOpenState: 3
       appointmentServiceCB:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+      paymentServiceCB:
         slidingWindowSize: 10
         failureRateThreshold: 50
         waitDurationInOpenState: 10s

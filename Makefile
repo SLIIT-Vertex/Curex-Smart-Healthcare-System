@@ -9,6 +9,11 @@ BE_DIR := curex-be
         be-build-doctor be-run-doctor \
         be-build-ai be-run-ai \
         be-build-report be-run-report \
+        be-build-payment be-run-payment \
+        be-build-notification be-run-notification \
+        be-build-telemed be-run-telemed \
+        be-build-appointment be-run-appointment \
+        be-build-gateway be-run-gateway \
         docker-up docker-down docker-logs
 
 help:
@@ -34,6 +39,16 @@ help:
 	@echo "  make be-run-ai          Run ai-symptom-service locally"
 	@echo "  make be-build-report    Build report-service JAR (port 8086)"
 	@echo "  make be-run-report      Run report-service locally"
+	@echo "  make be-build-payment   Build payment-service JAR (port 8087)"
+	@echo "  make be-run-payment     Run payment-service locally"
+	@echo "  make be-build-notification Build notification-service JAR (port 8082)"
+	@echo "  make be-run-notification   Run notification-service locally"
+	@echo "  make be-build-telemed   Build telemedicine-service JAR (port 8089)"
+	@echo "  make be-run-telemed     Run telemedicine-service locally"
+	@echo "  make be-build-appointment Build appointment-service JAR (port 8088)"
+	@echo "  make be-run-appointment   Run appointment-service locally"
+	@echo "  make be-build-gateway   Build api-gateway JAR (port 8080)"
+	@echo "  make be-run-gateway     Run api-gateway locally"
 	@echo ""
 	@echo "DOCKER COMPOSE"
 	@echo "  make docker-up          Start all services (docker-compose up)"
@@ -88,6 +103,36 @@ be-build-report:
 
 be-run-report:
 	cd $(BE_DIR)/services/report-service && mvn spring-boot:run
+
+be-build-payment:
+	cd $(BE_DIR)/services/payment-service && mvn clean package -DskipTests
+
+be-run-payment:
+	cd $(BE_DIR)/services/payment-service && mvn spring-boot:run
+
+be-build-notification:
+	cd $(BE_DIR)/services/notification-service && mvn clean package -DskipTests
+
+be-run-notification:
+	cd $(BE_DIR)/services/notification-service && mvn spring-boot:run
+
+be-build-telemed:
+	cd $(BE_DIR)/services/telemedicine-service && mvn clean package -DskipTests
+
+be-run-telemed:
+	cd $(BE_DIR)/services/telemedicine-service && mvn spring-boot:run
+
+be-build-appointment:
+	cd $(BE_DIR)/services/appointment/appointment-service && mvn clean package -DskipTests
+
+be-run-appointment:
+	cd $(BE_DIR)/services/appointment/appointment-service && mvn spring-boot:run
+
+be-build-gateway:
+	cd $(BE_DIR)/api-gateway && mvn clean package -DskipTests
+
+be-run-gateway:
+	cd $(BE_DIR)/api-gateway && mvn spring-boot:run
 
 #  Docker Targets 
 
