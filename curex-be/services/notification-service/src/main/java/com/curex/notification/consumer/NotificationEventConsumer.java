@@ -1,5 +1,6 @@
 package com.curex.notification.consumer;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.curex.notification.dto.NotificationRequest;
 import com.curex.notification.entity.Notification;
@@ -24,7 +25,7 @@ public class NotificationEventConsumer {
     public void handleUserRegistration(String message) {
         try {
             log.info("Received user.registration event");
-            Map<String, Object> event = objectMapper.readValue(message, Map.class);
+            Map<String, Object> event = objectMapper.readValue(message, new TypeReference<Map<String, Object>>() {});
 
             String userId = (String) event.get("userId");
             String email = (String) event.get("email");
@@ -61,7 +62,7 @@ public class NotificationEventConsumer {
     public void handleAppointmentBooking(String message) {
         try {
             log.info("Received appointment.booking event");
-            Map<String, Object> event = objectMapper.readValue(message, Map.class);
+            Map<String, Object> event = objectMapper.readValue(message, new TypeReference<Map<String, Object>>() {});
 
             String patientId = (String) event.get("patientId");
             String patientEmail = (String) event.get("patientEmail");
@@ -103,7 +104,7 @@ public class NotificationEventConsumer {
     public void handleDoctorApproval(String message) {
         try {
             log.info("Received doctor.approval event");
-            Map<String, Object> event = objectMapper.readValue(message, Map.class);
+            Map<String, Object> event = objectMapper.readValue(message, new TypeReference<Map<String, Object>>() {});
 
             String doctorId = (String) event.get("doctorId");
             String email = (String) event.get("email");
@@ -132,11 +133,43 @@ public class NotificationEventConsumer {
         }
     }
 
+    @RabbitListener(queues = "prescription.issued.queue")
+    public void handlePrescriptionIssued(String message) {
+        try {
+            log.info("Received prescription.issued event");
+            Map<String, Object> event = objectMapper.readValue(message, new TypeReference<Map<String, Object>>() {});
+
+            String patientId = (String) event.get("patientId");
+            String patientEmail = (String) event.get("patientEmail");
+            String doctorName = (String) event.get("doctorName");
+            String medicines = (String) event.get("medicines");
+            Object issuedAtObj = event.get("issuedAt");
+            Object validFromObj = event.get("validFrom");
+            Object validToObj = event.get("validTo");
+
+            if (patientEmail != null && !patientEmail.isBlank()) {
+                String issuedAtStr = issuedAtObj != null ? issuedAtObj.toString() : "";
+                String validFromStr = validFromObj != null ? validFromObj.toString() : "";
+                String validToStr = validToObj != null ? validToObj.toString() : "";
+                notificationService.sendNotificationAsync(NotificationRequest.builder()
+                        .userId(patientId)
+                        .recipientEmail(patientEmail)
+                        .type(Notification.NotificationType.PRESCRIPTION_READY)
+                        .channel(Notification.NotificationChannel.EMAIL)
+                        .subject("Your Prescription - Curex Healthcare")
+                        .content(buildPrescriptionIssuedContent(doctorName, medicines, issuedAtStr, validFromStr, validToStr))
+                        .build());
+            }
+        } catch (Exception e) {
+            log.error("Failed to process prescription.issued event: {}", e.getMessage());
+        }
+    }
+
     @RabbitListener(queues = "payment.confirmation.queue")
     public void handlePaymentConfirmation(String message) {
         try {
             log.info("Received payment.confirmation event");
-            Map<String, Object> event = objectMapper.readValue(message, Map.class);
+            Map<String, Object> event = objectMapper.readValue(message, new TypeReference<Map<String, Object>>() {});
 
             String patientId = (String) event.get("patientId");
             String patientEmail = (String) event.get("patientEmail");
@@ -221,6 +254,28 @@ public class NotificationEventConsumer {
                 """,
                 HtmlUtils.htmlEscape(firstName),
                 escapedNotes);
+    }
+
+    private String buildPrescriptionIssuedContent(String doctorName, String medicines, String issuedAt,
+                                                   String validFrom, String validTo) {
+        String validitySection = (validFrom != null && !validFrom.isBlank() && validTo != null && !validTo.isBlank())
+                ? String.format("<p><strong>Valid:</strong> %s to %s</p>",
+                HtmlUtils.htmlEscape(validFrom), HtmlUtils.htmlEscape(validTo))
+                : "";
+        return String.format("""
+                <div style="background:#e8f5e9;padding:15px;border-radius:5px;">
+                    <h3>Prescription Issued</h3>
+                    <p><strong>Doctor:</strong> %s</p>
+                    <p><strong>Medicines:</strong> %s</p>
+                    <p><strong>Issued:</strong> %s</p>
+                    %s
+                </div>
+                <p>Please collect your prescription from the pharmacy or follow your doctor's instructions.</p>
+                """,
+                HtmlUtils.htmlEscape(doctorName),
+                HtmlUtils.htmlEscape(medicines != null ? medicines : ""),
+                HtmlUtils.htmlEscape(issuedAt),
+                validitySection);
     }
 
     private String buildPaymentConfirmationContent(String patientName, String amount, String appointmentId) {

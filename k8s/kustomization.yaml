@@ -30,6 +30,9 @@ resources:
   - deployments/user-service.yaml
   - deployments/notification-service.yaml
   - deployments/telemedicine-service.yaml
+  - deployments/patient-service.yaml
+  - deployments/doctor-service.yaml
+  - deployments/ai-symptom-service.yaml
   - deployments/api-gateway.yaml
   - ingress.yaml
 
