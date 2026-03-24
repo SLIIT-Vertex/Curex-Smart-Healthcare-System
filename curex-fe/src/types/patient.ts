@@ -70,6 +70,11 @@ export interface SymptomCheckResponse {
   conditions: string[]
   specialty: string
   urgency: 'low' | 'medium' | 'high'
+  summary?: string
+  possibleCauses?: string[]
+  selfCareTips?: string[]
+  whenToSeekCare?: string
+  emergencyWarning?: string | null
 }
 
 export interface PatientDashboardData {

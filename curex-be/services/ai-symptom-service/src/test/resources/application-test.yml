@@ -1,0 +1,3 @@
+# Test profile: use rule-based fallback (no Groq API key required)
+ai:
+  api-key: ""
