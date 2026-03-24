@@ -53,9 +53,11 @@ export interface AppointmentRecord {
   appointmentTime: string
   status: AppointmentStatus
   type: 'IN_PERSON' | 'TELEMEDICINE'
+  sessionUrl?: string
   notes?: string
   cancellationReason?: string
   createdAt?: string
+  updatedAt?: string
 }
 
 export interface BookAppointmentPayload {

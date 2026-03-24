@@ -12,7 +12,7 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    // ── 400 Validation ────────────────────────────────────────────────────────
+    //  400 Validation 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(
             MethodArgumentNotValidException ex) {
@@ -30,7 +30,7 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), null);
     }
 
-    // ── 400 Business rule violations ─────────────────────────────────────────
+    //  400 Business rule violations 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegal(
             IllegalArgumentException ex) {
@@ -43,14 +43,14 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.CONFLICT, ex.getMessage(), null);
     }
 
-    // ── 404 Not found ─────────────────────────────────────────────────────────
+    //  404 Not found 
     @ExceptionHandler(NoSuchElementException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(
             NoSuchElementException ex) {
         return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage(), null);
     }
 
-    // ── 500 Catch-all ─────────────────────────────────────────────────────────
+    //  500 Catch-all 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneral(Exception ex) {
         return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR,

@@ -1,0 +1,36 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: ai-symptom-service
+
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+
+# Groq AI configuration
+# When GROQ_API_KEY is empty or missing, the service uses rule-based FallbackService.
+ai:
+  provider: ${AI_PROVIDER:groq}
+  api-key: ${GROQ_API_KEY:}
+  base-url: ${AI_BASE_URL:https://api.groq.com/openai/v1}
+  model: ${AI_MODEL:llama-3.1-8b-instant}
+  max-tokens: ${AI_MAX_TOKENS:700}
+  temperature: ${AI_TEMPERATURE:0.3}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    com.curex.ai: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

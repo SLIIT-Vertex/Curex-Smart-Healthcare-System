@@ -118,7 +118,7 @@ public class NotificationService {
         log.info("Cleaned up notifications older than {} days", daysOld);
     }
 
-    // ── private helpers ────────────────────────────────────────────────────────
+    //  private helpers 
 
     private boolean processNotification(Notification notification) {
         notification.setStatus(Notification.NotificationStatus.PROCESSING);

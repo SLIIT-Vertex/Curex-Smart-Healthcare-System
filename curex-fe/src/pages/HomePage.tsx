@@ -12,7 +12,7 @@ import consultationIllustration from '../assets/home/consultation.svg'
 import reportIllustration from '../assets/home/report.svg'
 import { HeroDecorations } from '../components/home/HeroDecorations'
 
-/* ── Static data ── */
+/*  Static data  */
 
 const STATUS_PILLS = [
   { bg: 'bg-status-healthy/20', dot: 'bg-status-healthy', label: 'Private video visits' },
@@ -98,7 +98,7 @@ const ROLES = [
   },
 ] as const
 
-/* ── Helpers ── */
+/*  Helpers  */
 
 function SectionHeader({ id, title, subtitle }: { id: string; title: string; subtitle: string }) {
   return (
@@ -109,7 +109,7 @@ function SectionHeader({ id, title, subtitle }: { id: string; title: string; sub
   )
 }
 
-/* ── Page ── */
+/*  Page  */
 
 export function HomePage() {
   return (

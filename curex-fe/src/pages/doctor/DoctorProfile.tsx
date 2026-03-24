@@ -6,7 +6,7 @@ import '../../styles/pages/DoctorDashboard.css'
 const INPUT_CLASS =
   'w-full rounded-xl border border-text-secondary/20 bg-surface px-4 py-2.5 text-sm text-primary placeholder:text-text-secondary focus:border-primary-light focus:outline-none focus:ring-2 focus:ring-primary-light/20'
 
-/* ── Mock data ── */
+/*  Mock data  */
 
 const MOCK_DOCTOR: Doctor = {
   id: 'd1',

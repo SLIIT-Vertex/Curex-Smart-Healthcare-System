@@ -8,7 +8,7 @@ import type {
 /** Use mock data when backend is unavailable (e.g. during development). */
 const USE_MOCK_ON_ERROR = true
 
-/* ── Mock data (fallback when API unreachable) ── */
+/*  Mock data (fallback when API unreachable)  */
 
 const MOCK_PROFILE: PatientProfile = {
   id: 'p1',
@@ -74,7 +74,7 @@ const MOCK_PRESCRIPTIONS: PatientPrescription[] = [
   },
 ]
 
-/* ── API functions ── */
+/*  API functions  */
 
 export async function getProfile(patientId: string): Promise<PatientProfile> {
   try {

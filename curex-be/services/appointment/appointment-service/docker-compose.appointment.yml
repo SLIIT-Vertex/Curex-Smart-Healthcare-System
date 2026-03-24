@@ -1,4 +1,4 @@
-# ─── Standalone docker-compose for appointment-service ────────────────────────
+# Standalone docker-compose for appointment-service
 # Run with:  docker-compose -f docker-compose.appointment.yml up --build
 #
 # Starts ONLY:
@@ -7,11 +7,10 @@
 #   • appointment-service (port 8088)
 #
 # stub-mode=true → no calls to doctor-service needed
-# ─────────────────────────────────────────────────────────────────────────────
 
 services:
 
-  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  # PostgreSQL
   postgres-appointment:
     image: postgres:15-alpine
     container_name: postgres-appointment
@@ -29,7 +28,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── RabbitMQ ────────────────────────────────────────────────────────────────
+  # RabbitMQ
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: rabbitmq-appointment
@@ -45,7 +44,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Appointment Service ─────────────────────────────────────────────────────
+  # Appointment Service
   appointment-service:
     build:
       context: .

@@ -6,6 +6,7 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -15,7 +16,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-import java.util.List;
 import java.util.Set;
 
 /**
@@ -50,6 +50,7 @@ public class AuthenticationFilter implements GlobalFilter, Ordered {
     /**
      * Routes that do not require a valid JWT token.
      * Exact path matching: register, login, refresh, validate, health, actuator.
+     * /api/ai/health allows frontend to check "AI available" before user logs in.
      */
     private static final Set<String> PUBLIC_PATHS = Set.of(
             "/api/auth/register",
@@ -58,6 +59,7 @@ public class AuthenticationFilter implements GlobalFilter, Ordered {
             "/api/auth/validate",
             "/api/auth/health",
             "/api/admin/health",
+            "/api/ai/health",
             "/actuator/health",
             "/fallback/service-unavailable"
     );
@@ -68,6 +70,13 @@ public class AuthenticationFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
+
+        // Short-circuit CORS preflight requests — the gateway's CorsWebFilter handles
+        // the response. No auth is needed and no headers should be stripped.
+        if (HttpMethod.OPTIONS.equals(request.getMethod())) {
+            log.debug("CORS preflight — passing through: {}", path);
+            return chain.filter(exchange);
+        }
 
         // Always strip client-provided identity headers regardless of route.
         // This prevents a malicious client from spoofing user identity.
