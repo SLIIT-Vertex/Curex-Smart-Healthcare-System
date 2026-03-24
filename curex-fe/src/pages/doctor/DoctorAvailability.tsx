@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { getAppointmentsByDoctor } from '../../services/appointmentService'
+import { getTelemedicineSession } from '../../services/telemedicineService'
 import {
   dateSlotKey,
   getDoctorAvailability,
@@ -10,6 +12,7 @@ import {
   toDateKey,
 } from '../../services/availabilityService'
 import type { AppointmentRecord } from '../../types/appointment'
+import type { TelemedicineSessionRecord } from '../../types/telemedicine'
 import '../../styles/pages/AppointmentFlow.css'
 import '../../styles/pages/DoctorDashboard.css'
 
@@ -123,6 +126,33 @@ function statusPastelClass(status: string): string {
   return 'bg-primary-light/15 text-primary'
 }
 
+function canOpenTelemedicineRoom(
+  appt: AppointmentRecord,
+  session: TelemedicineSessionRecord | null | undefined
+): boolean {
+  if (appt.type !== 'TELEMEDICINE') {
+    return false
+  }
+
+  if (session?.status === 'ENDED') {
+    return false
+  }
+
+  const statusEligible = appt.status === 'CONFIRMED' || appt.status === 'IN_SESSION'
+  const joinOpensAt = new Date(appt.appointmentTime).getTime() - 60 * 60 * 1000
+  return statusEligible && Date.now() >= joinOpensAt
+}
+
+function doctorBookingStatusLabel(
+  appt: AppointmentRecord,
+  session: TelemedicineSessionRecord | null | undefined
+): string {
+  if (appt.type === 'TELEMEDICINE' && session?.status === 'ENDED') {
+    return 'ENDED'
+  }
+  return String(appt.status).toUpperCase()
+}
+
 function isWeekday(dateKey: string): boolean {
   const d = new Date(`${dateKey}T00:00:00`)
   const day = d.getDay()
@@ -169,6 +199,9 @@ export function DoctorAvailability() {
   )
   const [hasChanges, setHasChanges] = useState(false)
   const [bookedAppointments, setBookedAppointments] = useState<AppointmentRecord[]>([])
+  const [telemedicineSessions, setTelemedicineSessions] = useState<
+    Record<string, TelemedicineSessionRecord | null>
+  >({})
   const [loadError, setLoadError] = useState<string | null>(null)
   const dateKeys = useMemo(() => getUpcomingDateKeys(30), [])
   const [selectedDateKey, setSelectedDateKey] = useState(dateKeys[0])
@@ -263,6 +296,50 @@ export function DoctorAvailability() {
 
     loadBookedAppointments()
   }, [])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadTeleSessions() {
+      const teleAppointments = bookedAppointments.filter(
+        (appt) => appt.type === 'TELEMEDICINE'
+      )
+
+      if (teleAppointments.length === 0) {
+        if (active) {
+          setTelemedicineSessions({})
+        }
+        return
+      }
+
+      const entries = await Promise.all(
+        teleAppointments.map(async (appt) => {
+          try {
+            const session = await getTelemedicineSession(appt.id)
+            return [appt.id, session] as const
+          } catch {
+            return [appt.id, null] as const
+          }
+        })
+      )
+
+      if (!active) {
+        return
+      }
+
+      const map: Record<string, TelemedicineSessionRecord | null> = {}
+      for (const [appointmentId, session] of entries) {
+        map[appointmentId] = session
+      }
+      setTelemedicineSessions(map)
+    }
+
+    loadTeleSessions()
+
+    return () => {
+      active = false
+    }
+  }, [bookedAppointments])
 
   const handleSave = () => {
     const availableSlotKeys = Object.entries(grid)
@@ -708,8 +785,10 @@ export function DoctorAvailability() {
                         className={`min-h-24 rounded-lg border px-1 py-1 text-left text-xs transition ${
                           selected
                             ? 'border-primary-light/40 bg-primary-light/10 text-primary'
-                            : cell.inMonth
-                              ? 'border-text-secondary/15 bg-surface text-primary'
+                            : marked
+                              ? 'border-accent-sky/45 bg-accent-sky/20 text-primary'
+                              : cell.inMonth
+                                ? 'border-text-secondary/15 bg-surface text-primary'
                               : 'border-text-secondary/10 bg-background/40 text-text-secondary/70'
                         }`}
                       >
@@ -794,11 +873,13 @@ export function DoctorAvailability() {
                       <th className="px-3 py-2 font-medium">Patient</th>
                       <th className="px-3 py-2 font-medium">Type</th>
                       <th className="px-3 py-2 font-medium">Status</th>
+                      <th className="px-3 py-2 font-medium">Telemedicine</th>
                     </tr>
                   </thead>
                   <tbody>
                     {upcomingBookedAppointments.map((appt) => {
                       const date = new Date(appt.appointmentTime)
+                      const teleSession = telemedicineSessions[appt.id]
                       return (
                         <tr
                           key={appt.id}
@@ -816,9 +897,25 @@ export function DoctorAvailability() {
                             {appt.type === 'TELEMEDICINE' ? 'Video' : 'In-person'}
                           </td>
                           <td className="px-3 py-2">
-                            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusPastelClass(String(appt.status))}`}>
-                              {String(appt.status).toUpperCase()}
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusPastelClass(doctorBookingStatusLabel(appt, teleSession))}`}>
+                              {doctorBookingStatusLabel(appt, teleSession)}
                             </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            {appt.type === 'TELEMEDICINE' && canOpenTelemedicineRoom(appt, teleSession) ? (
+                              <Link
+                                to={`/doctor/telemedicine/${appt.id}`}
+                                className="rounded-lg border border-primary-light/40 bg-primary-light/10 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary-light/20"
+                              >
+                                Open Room
+                              </Link>
+                            ) : appt.type === 'TELEMEDICINE' ? (
+                              <span className="text-xs text-text-secondary">
+                                {teleSession?.status === 'ENDED' ? 'Session ended' : 'Available 1 hour before'}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-text-secondary">-</span>
+                            )}
                           </td>
                         </tr>
                       )
@@ -853,9 +950,28 @@ export function DoctorAvailability() {
               <p><span className="font-medium text-primary">Date:</span> {new Date(popupBooked.appointmentTime).toLocaleDateString('en-GB')}</p>
               <p><span className="font-medium text-primary">Time:</span> {new Date(popupBooked.appointmentTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>
               <p><span className="font-medium text-primary">Type:</span> {popupBooked.type === 'TELEMEDICINE' ? 'Video' : 'In-person'}</p>
-              <p><span className="font-medium text-primary">Status:</span> {String(popupBooked.status).toUpperCase()}</p>
+              <p><span className="font-medium text-primary">Status:</span> {doctorBookingStatusLabel(popupBooked, telemedicineSessions[popupBooked.id])}</p>
               {popupBooked.notes && <p><span className="font-medium text-primary">Notes:</span> {popupBooked.notes}</p>}
             </div>
+
+            {popupBooked.type === 'TELEMEDICINE' && canOpenTelemedicineRoom(popupBooked, telemedicineSessions[popupBooked.id]) && (
+              <div className="mt-4">
+                <Link
+                  to={`/doctor/telemedicine/${popupBooked.id}`}
+                  className="btn-primary inline-flex items-center justify-center px-4 py-2 text-sm"
+                >
+                  Join Telemedicine Room
+                </Link>
+              </div>
+            )}
+
+            {popupBooked.type === 'TELEMEDICINE' && !canOpenTelemedicineRoom(popupBooked, telemedicineSessions[popupBooked.id]) && (
+              <p className="mt-4 rounded-lg border border-text-secondary/15 bg-background/50 px-3 py-2 text-xs text-text-secondary">
+                {telemedicineSessions[popupBooked.id]?.status === 'ENDED'
+                  ? 'This session has ended.'
+                  : 'Meeting link will be available 1 hour before the appointment.'}
+              </p>
+            )}
           </div>
         </div>
       )}

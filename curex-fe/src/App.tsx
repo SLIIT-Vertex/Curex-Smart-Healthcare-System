@@ -8,12 +8,14 @@ import { DoctorDashboard } from './pages/doctor/DoctorDashboard'
 import { DoctorProfile } from './pages/doctor/DoctorProfile'
 import { DoctorAvailability } from './pages/doctor/DoctorAvailability'
 import { DoctorPrescriptions } from './pages/doctor/DoctorPrescriptions'
+import { DoctorTelemedicineCenter } from './pages/doctor/DoctorTelemedicineCenter'
 import { PatientDashboard } from './pages/patient/PatientDashboard'
 import { PatientProfile } from './pages/patient/PatientProfile'
 import { PatientPrescriptions } from './pages/patient/PatientPrescriptions'
 import { PatientSymptomChecker } from './pages/patient/PatientSymptomChecker'
 import { PatientAppointments } from './pages/patient/PatientAppointments'
 import { PatientReports } from './pages/patient/PatientReports'
+import { PatientTelemedicineCenter } from './pages/patient/PatientTelemedicineCenter'
 
 function App() {
   return (
@@ -47,6 +49,8 @@ function App() {
           <Route path="profile" element={<DoctorProfile />} />
           <Route path="availability" element={<DoctorAvailability />} />
           <Route path="prescriptions" element={<DoctorPrescriptions />} />
+          <Route path="telemedicine" element={<DoctorTelemedicineCenter />} />
+          <Route path="telemedicine/:appointmentId" element={<DoctorTelemedicineCenter />} />
         </Route>
 
         {/* Patient dashboard — all /patient/* wrapped in PatientLayout */}
@@ -57,6 +61,8 @@ function App() {
           <Route path="prescriptions" element={<PatientPrescriptions />} />
           <Route path="symptom-checker" element={<PatientSymptomChecker />} />
           <Route path="appointments" element={<PatientAppointments />} />
+          <Route path="telemedicine" element={<PatientTelemedicineCenter />} />
+          <Route path="telemedicine/:appointmentId" element={<PatientTelemedicineCenter />} />
           <Route path="reports" element={<PatientReports />} />
         </Route>
 
