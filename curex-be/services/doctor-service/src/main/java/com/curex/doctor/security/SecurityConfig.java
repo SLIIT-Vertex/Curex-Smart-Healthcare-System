@@ -36,6 +36,7 @@ public class SecurityConfig {
                     "/actuator/health",
                     "/actuator/info",
                     "/doctors/health",
+                    "/internal/**",
                     "/error"
                 ).permitAll()
                 .anyRequest().authenticated()

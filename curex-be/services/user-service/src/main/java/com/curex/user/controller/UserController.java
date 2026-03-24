@@ -41,6 +41,7 @@ import java.util.Map;
  * GET /api/internal/users/{id}          — any user by ID  (no auth, internal only)
  * GET /api/internal/users/by-email/{e}  — any user by email (internal only)
  * GET /api/internal/users/by-role/{r}   — any users by role (internal only)
+ * GET /api/internal/users/approved/by-role/{r} — APPROVED users only (internal, for doctor-service etc.)
  */
 @RestController
 @RequiredArgsConstructor
@@ -146,5 +147,11 @@ public class UserController {
     @GetMapping("/api/internal/users/by-role/{role}")
     public ResponseEntity<List<UserResponse>> getInternalUsersByRole(@PathVariable User.Role role) {
         return ResponseEntity.ok(userQueryService.getAllUsersByRole(role));
+    }
+
+    /** Approved users of a role only — service-to-service (e.g. doctor-service filters bookable doctors). */
+    @GetMapping("/api/internal/users/approved/by-role/{role}")
+    public ResponseEntity<List<UserResponse>> getInternalApprovedUsersByRole(@PathVariable User.Role role) {
+        return ResponseEntity.ok(userQueryService.getApprovedUsersByRole(role));
     }
 }
