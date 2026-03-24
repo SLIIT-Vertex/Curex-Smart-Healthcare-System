@@ -2,7 +2,7 @@ import api from './axiosInstance'
 import type { SymptomCheckResponse } from '../types/patient'
 
 /** Use mock data when backend is unavailable (e.g. during development). */
-const USE_MOCK_ON_ERROR = true
+const USE_MOCK_ON_ERROR = false
 
 /* ── Mock response (fallback when API unreachable) ── */
 
@@ -51,7 +51,7 @@ export async function checkSymptoms(
 ): Promise<SymptomCheckResponse> {
   try {
     const { data } = await api.post<SymptomCheckResponse>(
-      '/ai/symptoms/check',
+      '/api/ai/symptoms/check',
       { symptoms }
     )
     return data
