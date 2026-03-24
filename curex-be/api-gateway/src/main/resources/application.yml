@@ -90,8 +90,8 @@ spring:
           filters:
             - name: RewritePath
               args:
-                regexp: /api/doctors(?<path>.*)
-                replacement: /doctors${path}
+                regexp: /api/doctors(?<uriSegment>.*)
+                replacement: /doctors${uriSegment}
             - name: CircuitBreaker
               args:
                 name: doctorServiceCB
@@ -103,8 +103,8 @@ spring:
           filters:
             - name: RewritePath
               args:
-                regexp: /api/prescriptions(?<path>.*)
-                replacement: /prescriptions${path}
+                regexp: /api/prescriptions(?<uriSegment>.*)
+                replacement: /prescriptions${uriSegment}
             - name: CircuitBreaker
               args:
                 name: doctorServiceCB
