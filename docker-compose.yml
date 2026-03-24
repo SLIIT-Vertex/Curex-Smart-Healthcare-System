@@ -260,6 +260,31 @@ services:
       retries: 3
       start_period: 60s
 
+  report-service:
+    build:
+      context: ./curex-be/services/report-service
+      dockerfile: Dockerfile
+    container_name: curex-report-service
+    restart: unless-stopped
+    expose:
+      - "8086"
+    ports:
+      - "8086:8086"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/curex_reports
+      DB_USERNAME: ${DB_USERNAME:-curex_user}
+      DB_PASSWORD: ${DB_PASSWORD:-curex_password}
+      UPLOAD_DIR: uploads/reports
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8086/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   api-gateway:
     build:
       context: ./curex-be/api-gateway
@@ -287,6 +312,8 @@ services:
       doctor-service:
         condition: service_started
       ai-symptom-service:
+        condition: service_started
+      report-service:
         condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]

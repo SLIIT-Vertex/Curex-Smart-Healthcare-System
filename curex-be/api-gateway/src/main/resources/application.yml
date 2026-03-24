@@ -137,6 +137,17 @@ spring:
                 name: aiSymptomServiceCB
                 fallbackUri: forward:/fallback/service-unavailable
 
+        # Report Service
+        - id: report-service
+          uri: http://report-service:8086
+          predicates:
+            - Path=/api/reports/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: reportServiceCB
+                fallbackUri: forward:/fallback/service-unavailable
+
         # Circuit breaker fallback
         - id: fallback
           uri: http://localhost:8080
@@ -191,6 +202,11 @@ resilience4j:
         waitDurationInOpenState: 10s
         permittedNumberOfCallsInHalfOpenState: 3
       aiSymptomServiceCB:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+      reportServiceCB:
         slidingWindowSize: 10
         failureRateThreshold: 50
         waitDurationInOpenState: 10s

@@ -8,6 +8,7 @@ BE_DIR := curex-be
         be-build-patient be-run-patient \
         be-build-doctor be-run-doctor \
         be-build-ai be-run-ai \
+        be-build-report be-run-report \
         docker-up docker-down docker-logs
 
 help:
@@ -31,6 +32,8 @@ help:
 	@echo "  make be-run-doctor      Run doctor-service locally"
 	@echo "  make be-build-ai        Build ai-symptom-service JAR (port 8085)"
 	@echo "  make be-run-ai          Run ai-symptom-service locally"
+	@echo "  make be-build-report    Build report-service JAR (port 8086)"
+	@echo "  make be-run-report      Run report-service locally"
 	@echo ""
 	@echo "DOCKER COMPOSE"
 	@echo "  make docker-up          Start all services (docker-compose up)"
@@ -79,6 +82,12 @@ be-build-ai:
 
 be-run-ai:
 	cd $(BE_DIR)/services/ai-symptom-service && mvn spring-boot:run
+
+be-build-report:
+	cd $(BE_DIR)/services/report-service && mvn clean package -DskipTests
+
+be-run-report:
+	cd $(BE_DIR)/services/report-service && mvn spring-boot:run
 
 #  Docker Targets 
 
