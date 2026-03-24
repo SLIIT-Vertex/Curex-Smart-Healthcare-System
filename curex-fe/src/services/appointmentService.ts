@@ -1,19 +1,9 @@
-import axios from 'axios'
+import api from './axiosInstance'
 import type {
   AppointmentRecord,
   BookAppointmentPayload,
   DoctorDirectoryItem,
 } from '../types/appointment'
-
-const APPOINTMENT_BASE_URL =
-  import.meta.env.VITE_APPOINTMENT_API_URL ?? 'http://localhost:8088'
-
-const appointmentApi = axios.create({
-  baseURL: APPOINTMENT_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
 
 const DOCTOR_DIRECTORY: DoctorDirectoryItem[] = [
   {
@@ -43,7 +33,7 @@ export function getDoctorDirectory(): DoctorDirectoryItem[] {
 export async function bookAppointment(
   payload: BookAppointmentPayload
 ): Promise<AppointmentRecord> {
-  const { data } = await appointmentApi.post<AppointmentRecord>(
+  const { data } = await api.post<AppointmentRecord>(
     '/api/appointments',
     payload
   )
@@ -53,7 +43,7 @@ export async function bookAppointment(
 export async function getAppointmentsByDoctor(
   doctorId: string
 ): Promise<AppointmentRecord[]> {
-  const { data } = await appointmentApi.get<AppointmentRecord[]>(
+  const { data } = await api.get<AppointmentRecord[]>(
     `/api/appointments/doctor/${doctorId}`
   )
   return data
@@ -62,7 +52,7 @@ export async function getAppointmentsByDoctor(
 export async function getAppointmentsByPatient(
   patientId: string
 ): Promise<AppointmentRecord[]> {
-  const { data } = await appointmentApi.get<AppointmentRecord[]>(
+  const { data } = await api.get<AppointmentRecord[]>(
     `/api/appointments/patient/${patientId}`
   )
   return data
@@ -71,7 +61,7 @@ export async function getAppointmentsByPatient(
 export async function getAppointmentById(
   appointmentId: string
 ): Promise<AppointmentRecord> {
-  const { data } = await appointmentApi.get<AppointmentRecord>(
+  const { data } = await api.get<AppointmentRecord>(
     `/api/appointments/${appointmentId}`
   )
   return data

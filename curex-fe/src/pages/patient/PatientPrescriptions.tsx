@@ -1,10 +1,12 @@
-import { useState, useEffect, useMemo, Fragment } from 'react'
+import { useState, useEffect, useMemo, Fragment, useCallback } from 'react'
 import { Search, ChevronDown, ChevronUp, PillBottle } from 'lucide-react'
-import { getPrescriptions } from '../../services/patientService'
+import { getPrescriptions, getPatientByUserId } from '../../services/patientService'
 import type { PatientPrescription } from '../../types/patient'
+import { useAuth } from '../../store/hooks'
+import { useToast } from '../../store/hooks'
 
-/*  Mock patient ID (replace with auth when M1 ready)  */
-const MOCK_PATIENT_ID = 'p1'
+/** Use mock data when backend is unavailable (e.g. during development). */
+const USE_MOCK_ON_ERROR = true
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', {
@@ -22,6 +24,7 @@ function formatDateShort(iso: string): string {
 }
 
 function truncate(str: string, maxLen: number): string {
+  if (!str) return ''
   if (str.length <= maxLen) return str
   return str.slice(0, maxLen) + '…'
 }
@@ -40,7 +43,7 @@ function StatusBadge({
   const s = status ?? 'ACTIVE'
   return (
     <span
-      className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[s]}`}
+      className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[s] ?? 'bg-background/50'}`}
     >
       {s}
     </span>
@@ -48,35 +51,52 @@ function StatusBadge({
 }
 
 export function PatientPrescriptions() {
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const [patientId, setPatientId] = useState<string | null>(null)
   const [prescriptions, setPrescriptions] = useState<PatientPrescription[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [doctorFilter, setDoctorFilter] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      try {
-        const data = await getPrescriptions(MOCK_PATIENT_ID)
-        if (!cancelled) setPrescriptions(data)
-      } finally {
-        if (!cancelled) setLoading(false)
+  const fetchPrescriptions = useCallback(async () => {
+    if (!user?.id || user.role !== 'PATIENT') return
+    setLoading(true)
+    setError(null)
+    try {
+      const patient = await getPatientByUserId(user.id)
+      setPatientId(patient.id)
+      const data = await getPrescriptions(patient.id)
+      setPrescriptions(data)
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : 'Failed to load prescriptions'
+      setError(msg)
+      if (USE_MOCK_ON_ERROR) {
+        setPrescriptions([])
+        toast(msg, 'error')
+      } else {
+        throw err
       }
+    } finally {
+      setLoading(false)
     }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  }, [user?.id, user?.role, toast])
+
+  useEffect(() => {
+    fetchPrescriptions()
+  }, [fetchPrescriptions])
 
   const filtered = useMemo(() => {
     return prescriptions.filter((rx) => {
       if (doctorFilter) {
         const name = (rx.doctorName ?? '').toLowerCase()
-        if (!name.includes(doctorFilter.toLowerCase())) return false
+        const specialty = (rx.doctorSpecialty ?? '').toLowerCase()
+        const q = doctorFilter.toLowerCase()
+        if (!name.includes(q) && !specialty.includes(q)) return false
       }
       const issued = rx.issuedAt
       if (dateFrom && issued < dateFrom) return false
@@ -89,7 +109,7 @@ export function PatientPrescriptions() {
     setExpandedId((prev) => (prev === id ? null : id))
   }
 
-  if (loading) {
+  if (loading && !patientId) {
     return (
       <div className="space-y-6">
         <div className="flex items-stretch gap-4">
@@ -104,6 +124,41 @@ export function PatientPrescriptions() {
         </div>
         <div className="patient-card overflow-hidden">
           <div className="patient-loading-skeleton h-64 w-full" />
+        </div>
+      </div>
+    )
+  }
+
+  if (user?.role !== 'PATIENT') {
+    return (
+      <div className="patient-card p-6">
+        <p className="text-text-secondary">
+          You must be logged in as a patient to view prescriptions.
+        </p>
+      </div>
+    )
+  }
+
+  if (error && !patientId) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-stretch gap-4">
+          <span className="flex w-12 shrink-0 items-center justify-center rounded-xl bg-accent-sky/15 text-accent-sky">
+            <PillBottle className="h-7 w-7" strokeWidth={1.5} />
+          </span>
+          <div>
+            <h1 className="section-heading">Prescriptions</h1>
+            <p className="section-subtext mt-1">
+              View prescriptions issued by your doctors.
+            </p>
+          </div>
+        </div>
+        <div className="patient-card rounded-2xl border border-error/30 p-6">
+          <p className="text-error">{error}</p>
+          <p className="mt-2 text-sm text-text-secondary">
+            Ensure you have created a patient profile. Prescriptions require a
+            patient profile linked to your account.
+          </p>
         </div>
       </div>
     )
@@ -134,7 +189,7 @@ export function PatientPrescriptions() {
             type="text"
             value={doctorFilter}
             onChange={(e) => setDoctorFilter(e.target.value)}
-            placeholder="Search doctor name…"
+            placeholder="Search doctor name or specialty…"
             className="patient-page-input w-full pl-10"
           />
         </div>
@@ -169,6 +224,9 @@ export function PatientPrescriptions() {
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
                   Doctor
+                </th>
+                <th className="hidden px-4 py-3 text-left text-xs font-medium text-text-secondary sm:table-cell">
+                  Specialty
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
                   Medicines
@@ -218,11 +276,14 @@ export function PatientPrescriptions() {
                         <td className="px-4 py-3 text-sm font-medium text-primary">
                           {rx.doctorName ?? '—'}
                         </td>
+                        <td className="hidden px-4 py-3 text-sm text-text-secondary sm:table-cell">
+                          {rx.doctorSpecialty ?? '—'}
+                        </td>
                         <td className="max-w-[10rem] truncate px-4 py-3 text-sm text-text-secondary sm:max-w-[14rem]">
                           {truncate(rx.medicines, 30)}
                         </td>
                         <td className="hidden max-w-[12rem] truncate px-4 py-3 text-sm text-text-secondary sm:table-cell">
-                          {truncate(rx.instructions, 35)}
+                          {truncate(rx.instructions ?? '', 35)}
                         </td>
                         <td className="px-4 py-3">
                           <StatusBadge status={rx.status} />
@@ -242,29 +303,101 @@ export function PatientPrescriptions() {
                           key={`${rx.id}-expanded`}
                           className="border-b border-text-secondary/10 bg-background/30"
                         >
-                          <td colSpan={7} className="px-4 py-4">
+                          <td colSpan={8} className="px-4 py-4">
                             <div className="rounded-xl border border-text-secondary/10 bg-surface/80 p-4">
-                              <div className="grid gap-4 sm:grid-cols-2">
+                              {/* Rich Prescription View */}
+                              <div className="space-y-4">
+                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                  <div>
+                                    <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                                      Prescription ID
+                                    </h4>
+                                    <p className="mt-1 text-sm font-mono text-primary">
+                                      {rx.id}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                                      Issue date
+                                    </h4>
+                                    <p className="mt-1 text-sm text-primary">
+                                      {formatDate(rx.issuedAt)}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                                      Status
+                                    </h4>
+                                    <p className="mt-1">
+                                      <StatusBadge status={rx.status} />
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                  <div>
+                                    <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                                      Doctor
+                                    </h4>
+                                    <p className="mt-1 text-sm font-medium text-primary">
+                                      {rx.doctorName ?? '—'}
+                                    </p>
+                                    {rx.doctorSpecialty && (
+                                      <p className="mt-0.5 text-xs text-text-secondary">
+                                        {rx.doctorSpecialty}
+                                      </p>
+                                    )}
+                                  </div>
+                                  {(rx.validFrom || rx.validTo) && (
+                                    <div>
+                                      <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                                        Valid period
+                                      </h4>
+                                      <p className="mt-1 text-sm text-primary">
+                                        {rx.validFrom && rx.validTo
+                                          ? `${formatDate(rx.validFrom)} – ${formatDate(rx.validTo)}`
+                                          : rx.validFrom
+                                            ? `From ${formatDate(rx.validFrom)}`
+                                            : rx.validTo
+                                              ? `Until ${formatDate(rx.validTo)}`
+                                              : '—'}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                                {rx.diagnosis && (
+                                  <div>
+                                    <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                                      Diagnosis
+                                    </h4>
+                                    <p className="mt-1 text-sm text-primary">
+                                      {rx.diagnosis}
+                                    </p>
+                                  </div>
+                                )}
                                 <div>
                                   <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
                                     Medicines
                                   </h4>
-                                  <p className="mt-1.5 text-sm text-primary">
+                                  <p className="mt-1 text-sm text-primary whitespace-pre-wrap">
                                     {rx.medicines}
                                   </p>
                                 </div>
-                                <div>
-                                  <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-                                    Instructions
-                                  </h4>
-                                  <p className="mt-1.5 text-sm text-primary">
-                                    {rx.instructions}
+                                {rx.instructions && (
+                                  <div>
+                                    <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                                      Instructions
+                                    </h4>
+                                    <p className="mt-1 text-sm text-primary whitespace-pre-wrap">
+                                      {rx.instructions}
+                                    </p>
+                                  </div>
+                                )}
+                                {rx.appointmentId && (
+                                  <p className="text-xs text-text-secondary">
+                                    Appointment reference: {rx.appointmentId}
                                   </p>
-                                </div>
+                                )}
                               </div>
-                              <p className="mt-3 text-xs text-text-secondary">
-                                Issued {formatDate(rx.issuedAt)}
-                              </p>
                             </div>
                           </td>
                         </tr>
@@ -274,11 +407,12 @@ export function PatientPrescriptions() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="p-0">
+                  <td colSpan={8} className="p-0">
                     <div className="patient-empty-state">
                       <p className="text-text-secondary">
-                        No prescriptions found. Use filters to refine your
-                        search.
+                        {loading
+                          ? 'Loading prescriptions…'
+                          : 'No prescriptions found. Use filters to refine your search.'}
                       </p>
                     </div>
                   </td>

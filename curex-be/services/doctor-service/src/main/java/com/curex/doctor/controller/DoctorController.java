@@ -32,6 +32,11 @@ public class DoctorController {
         return ResponseEntity.status(HttpStatus.CREATED).body(doctorService.create(request));
     }
 
+    @GetMapping("/by-user/{userId}")
+    public ResponseEntity<DoctorResponse> getByUserId(@PathVariable String userId) {
+        return ResponseEntity.ok(doctorService.getByUserId(userId));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<DoctorResponse> getById(@PathVariable String id) {
         return ResponseEntity.ok(doctorService.getById(id));
