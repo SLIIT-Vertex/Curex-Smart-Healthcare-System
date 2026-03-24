@@ -50,6 +50,7 @@ public class AuthenticationFilter implements GlobalFilter, Ordered {
     /**
      * Routes that do not require a valid JWT token.
      * Exact path matching: register, login, refresh, validate, health, actuator.
+     * /api/ai/health allows frontend to check "AI available" before user logs in.
      */
     private static final Set<String> PUBLIC_PATHS = Set.of(
             "/api/auth/register",
@@ -58,6 +59,7 @@ public class AuthenticationFilter implements GlobalFilter, Ordered {
             "/api/auth/validate",
             "/api/auth/health",
             "/api/admin/health",
+            "/api/ai/health",
             "/actuator/health",
             "/fallback/service-unavailable"
     );
