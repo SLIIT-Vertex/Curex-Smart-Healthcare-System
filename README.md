@@ -6,38 +6,38 @@ This repository contains the frontend and backend scaffold for the healthcare pl
 
 ```text
 Curex/
-├── Makefile
-├── README.md
-├── curex-fe/
-│   ├── package.json
-│   ├── src/
-│   └── ...
-├── curex-be/
-│   ├── api-gateway/
-│   │   └── src/main/
-│   │       ├── java/
-│   │       └── resources/
-│   └── services/
-│       ├── auth-service/
-│       │   └── src/main/java/com/healthcare/auth/
-│       │       ├── controller/
-│       │       ├── service/
-│       │       ├── repository/
-│       │       ├── entity/
-│       │       ├── dto/
-│       │       └── security/
-│       ├── notification-service/
-│       ├── patient-service/
-│       ├── doctor-service/
-│       ├── ai-symptom-service/
-│       ├── report-service/
-│       ├── payment-service/
-│       ├── appointment-service/
-│       └── telemedicine-service/
-├── k8s/
-│   ├── deployments/
-│   └── services/
-└── docs/
+├ Makefile
+├ README.md
+├ curex-fe/
+│   ├ package.json
+│   ├ src/
+│   └ ...
+├ curex-be/
+│   ├ api-gateway/
+│   │   └ src/main/
+│   │       ├ java/
+│   │       └ resources/
+│   └ services/
+│       ├ auth-service/
+│       │   └ src/main/java/com/healthcare/auth/
+│       │       ├ controller/
+│       │       ├ service/
+│       │       ├ repository/
+│       │       ├ entity/
+│       │       ├ dto/
+│       │       └ security/
+│       ├ notification-service/
+│       ├ patient-service/
+│       ├ doctor-service/
+│       ├ ai-symptom-service/
+│       ├ report-service/
+│       ├ payment-service/
+│       ├ appointment-service/
+│       └ telemedicine-service/
+├ k8s/
+│   ├ deployments/
+│   └ services/
+└ docs/
 ```
 
 ## Prerequisites

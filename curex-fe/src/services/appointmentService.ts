@@ -67,3 +67,12 @@ export async function getAppointmentsByPatient(
   )
   return data
 }
+
+export async function getAppointmentById(
+  appointmentId: string
+): Promise<AppointmentRecord> {
+  const { data } = await appointmentApi.get<AppointmentRecord>(
+    `/api/appointments/${appointmentId}`
+  )
+  return data
+}

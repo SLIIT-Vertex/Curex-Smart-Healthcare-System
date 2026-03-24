@@ -14,7 +14,7 @@ import { StatCard } from '../../components/doctor/StatCard'
 import type { Appointment, Prescription, DashboardStats } from '../../types/doctor'
 import '../../styles/pages/DoctorDashboard.css'
 
-/* ── Mock data ── */
+/*  Mock data  */
 
 const MOCK_STATS: DashboardStats = {
   todayAppointments: 5,

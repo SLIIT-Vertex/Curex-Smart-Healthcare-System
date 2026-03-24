@@ -5,6 +5,9 @@ BE_DIR := curex-be
 
 .PHONY: help fe fe-install fe-dev fe-build fe-preview \
         be-build-auth be-run-auth \
+        be-build-patient be-run-patient \
+        be-build-doctor be-run-doctor \
+        be-build-ai be-run-ai \
         docker-up docker-down docker-logs
 
 help:
@@ -21,7 +24,13 @@ help:
 	@echo ""
 	@echo "BACKEND (Spring Boot Services)"
 	@echo "  make be-build-auth      Build auth-service JAR"
-	@echo "  make be-run-auth        Run auth-service locally (requires pom.xml)"
+	@echo "  make be-run-auth        Run auth-service locally"
+	@echo "  make be-build-patient   Build patient-service JAR (port 8083)"
+	@echo "  make be-run-patient     Run patient-service locally"
+	@echo "  make be-build-doctor    Build doctor-service JAR (port 8084)"
+	@echo "  make be-run-doctor      Run doctor-service locally"
+	@echo "  make be-build-ai        Build ai-symptom-service JAR (port 8085)"
+	@echo "  make be-run-ai          Run ai-symptom-service locally"
 	@echo ""
 	@echo "DOCKER COMPOSE"
 	@echo "  make docker-up          Start all services (docker-compose up)"
@@ -44,29 +53,34 @@ fe-build:
 fe-preview:
 	npm --prefix $(FE_DIR) run preview
 
-# ─── Backend Service Targets (Examples) ───
+#  Backend Service Targets (Examples) 
 # Uncomment and copy these patterns for each service you add
 
 be-build-auth:
-	cd $(BE_DIR)/services/auth-service && mvn clean package -DskipTests
+	cd $(BE_DIR)/services/user-service && mvn clean package -DskipTests
 
 be-run-auth:
-	cd $(BE_DIR)/services/auth-service && mvn spring-boot:run
+	cd $(BE_DIR)/services/user-service && mvn spring-boot:run
 
-# be-build-patient:
-# 	cd $(BE_DIR)/services/patient-service && mvn clean package -DskipTests
-#
-# be-run-patient:
-# 	cd $(BE_DIR)/services/patient-service && mvn spring-boot:run
-#
-# PATTERN: To add a new service, copy these lines and replace 'auth' with 'service-name':
-# be-build-SERVICE_NAME:
-# 	cd $(BE_DIR)/services/SERVICE_NAME && mvn clean package -DskipTests
-#
-# be-run-SERVICE_NAME:
-# 	cd $(BE_DIR)/services/SERVICE_NAME && mvn spring-boot:run
+be-build-patient:
+	cd $(BE_DIR)/services/patient-service && mvn clean package -DskipTests
 
-# ─── Docker Targets ───
+be-run-patient:
+	cd $(BE_DIR)/services/patient-service && mvn spring-boot:run
+
+be-build-doctor:
+	cd $(BE_DIR)/services/doctor-service && mvn clean package -DskipTests
+
+be-run-doctor:
+	cd $(BE_DIR)/services/doctor-service && mvn spring-boot:run
+
+be-build-ai:
+	cd $(BE_DIR)/services/ai-symptom-service && mvn clean package -DskipTests
+
+be-run-ai:
+	cd $(BE_DIR)/services/ai-symptom-service && mvn spring-boot:run
+
+#  Docker Targets 
 
 docker-up:
 	docker-compose up --build

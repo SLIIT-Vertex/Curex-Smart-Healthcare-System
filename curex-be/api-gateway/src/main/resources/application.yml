@@ -11,15 +11,31 @@ spring:
       globalcors:
         cors-configurations:
           '[/**]':
-            allowedOrigins:
-              - "${ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}"
-            allowedMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
-            allowedHeaders: ["*"]
+            # allowedOriginPatterns supports wildcards and works with allowCredentials: true.
+            # List every trusted origin explicitly in production via ALLOWED_ORIGINS env var
+            # (comma-separated, e.g. https://app.curex.com,https://admin.curex.com).
+            # Localhost patterns cover local dev for any port (Vite default 5173, CRA 3000, etc.).
+            allowedOriginPatterns:
+              - "http://localhost:*"
+              - "https://localhost:*"
+              - "${ALLOWED_ORIGINS:}"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+              - OPTIONS
+            allowedHeaders:
+              - "*"
+            exposedHeaders:
+              - Authorization
+              - X-Refresh-Token
             allowCredentials: true
             maxAge: 3600
 
       routes:
-        # ── User Service: auth routes ──────────────────────────────────────────
+        # User Service: auth routes
         # Public paths (login, register, refresh) are whitelisted inside
         # AuthenticationFilter (GlobalFilter) — no per-route config needed.
         - id: user-auth
@@ -27,7 +43,7 @@ spring:
           predicates:
             - Path=/api/auth/**
 
-        # ── User Service: admin routes ─────────────────────────────────────────
+        # User Service: admin routes
         - id: user-admin
           uri: http://user-service:8081
           predicates:
@@ -38,7 +54,7 @@ spring:
                 name: userServiceCB
                 fallbackUri: forward:/fallback/service-unavailable
 
-        # ── Notification Service ───────────────────────────────────────────────
+        # Notification Service
         - id: notification-service
           uri: http://notification-service:8082
           predicates:
@@ -49,7 +65,7 @@ spring:
                 name: notificationServiceCB
                 fallbackUri: forward:/fallback/service-unavailable
 
-        # ── Telemedicine Service ───────────────────────────────────────────────
+        # Telemedicine Service
         - id: telemedicine-service
           uri: http://telemedicine-service:8089
           predicates:
@@ -60,7 +76,7 @@ spring:
                 name: telemedicineServiceCB
                 fallbackUri: forward:/fallback/service-unavailable
 
-        # ── Appointment Service ───────────────────────────────────────────────
+        # Appointment Service
         - id: appointment-service
           uri: http://appointment-service:8088
           predicates:
@@ -71,13 +87,63 @@ spring:
                 name: appointmentServiceCB
                 fallbackUri: forward:/fallback/service-unavailable
 
-        # ── Circuit breaker fallback ──────────────────────────────────────────
+        # Patient Service
+        - id: patient-service
+          uri: http://patient-service:8083
+          predicates:
+            - Path=/api/patients/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: patientServiceCB
+                fallbackUri: forward:/fallback/service-unavailable
+
+        # Doctor Service
+        - id: doctor-service-doctors
+          uri: http://doctor-service:8084
+          predicates:
+            - Path=/api/doctors/**
+          filters:
+            - name: RewritePath
+              args:
+                regexp: /api/doctors(?<uriSegment>.*)
+                replacement: /doctors${uriSegment}
+            - name: CircuitBreaker
+              args:
+                name: doctorServiceCB
+                fallbackUri: forward:/fallback/service-unavailable
+        - id: doctor-service-prescriptions
+          uri: http://doctor-service:8084
+          predicates:
+            - Path=/api/prescriptions/**
+          filters:
+            - name: RewritePath
+              args:
+                regexp: /api/prescriptions(?<uriSegment>.*)
+                replacement: /prescriptions${uriSegment}
+            - name: CircuitBreaker
+              args:
+                name: doctorServiceCB
+                fallbackUri: forward:/fallback/service-unavailable
+
+        # AI Symptom Service (Groq)
+        - id: ai-symptom-service
+          uri: http://ai-symptom-service:8085
+          predicates:
+            - Path=/api/ai/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: aiSymptomServiceCB
+                fallbackUri: forward:/fallback/service-unavailable
+
+        # Circuit breaker fallback
         - id: fallback
           uri: http://localhost:8080
           predicates:
             - Path=/fallback/**
 
-        # ── Future services — follow this pattern ─────────────────────────────
+        # Future services — follow this pattern
         # - id: appointment-service
         #   uri: http://appointment-service:8083
         #   predicates:
@@ -110,6 +176,21 @@ resilience4j:
         waitDurationInOpenState: 10s
         permittedNumberOfCallsInHalfOpenState: 3
       appointmentServiceCB:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+      patientServiceCB:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+      doctorServiceCB:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+      aiSymptomServiceCB:
         slidingWindowSize: 10
         failureRateThreshold: 50
         waitDurationInOpenState: 10s

@@ -1,4 +1,4 @@
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # Kustomize root — apply the entire stack with:
 #   kubectl apply -k k8s/
 #
@@ -14,7 +14,7 @@
 #   kubectl apply -f k8s/deployments/telemedicine-service.yaml
 #   kubectl apply -f k8s/deployments/api-gateway.yaml
 #   kubectl apply -f k8s/ingress.yaml
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -30,6 +30,9 @@ resources:
   - deployments/user-service.yaml
   - deployments/notification-service.yaml
   - deployments/telemedicine-service.yaml
+  - deployments/patient-service.yaml
+  - deployments/doctor-service.yaml
+  - deployments/ai-symptom-service.yaml
   - deployments/api-gateway.yaml
   - ingress.yaml
 

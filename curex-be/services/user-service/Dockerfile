@@ -1,4 +1,4 @@
-# ── Stage 1: Build ───────────────────────────────────────────────────────────
+#  Stage 1: Build 
 # maven:3.9-eclipse-temurin-17 has both JDK 17 and Maven pre-installed
 FROM maven:3.9-eclipse-temurin-17 AS build
 
@@ -11,7 +11,7 @@ RUN mvn dependency:go-offline -q
 COPY src ./src
 RUN mvn clean package -DskipTests -q
 
-# ── Stage 2: Runtime ──────────────────────────────────────────────────────────
+#  Stage 2: Runtime 
 # eclipse-temurin:17-jre-jammy — JRE only, ~200 MB smaller than JDK image
 FROM eclipse-temurin:17-jre-jammy AS runtime
 

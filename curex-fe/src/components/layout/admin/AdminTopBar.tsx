@@ -1,0 +1,49 @@
+import { Menu, Bell } from 'lucide-react'
+import { useAuth } from '../../../store/hooks'
+
+interface AdminTopBarProps {
+  onMenuClick: () => void
+}
+
+export function AdminTopBar({ onMenuClick }: AdminTopBarProps) {
+  const { user } = useAuth()
+
+  return (
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-text-secondary/10 bg-surface/95 px-4 backdrop-blur-md sm:px-6">
+      <button
+        type="button"
+        aria-label="Open sidebar"
+        onClick={onMenuClick}
+        className="rounded-lg p-2 text-text-secondary transition-colors hover:bg-primary-light/5 hover:text-primary lg:hidden"
+      >
+        <Menu className="h-5 w-5" strokeWidth={1.5} />
+      </button>
+
+      <p className="hidden text-sm font-medium text-text-secondary lg:block">
+        Platform Administration
+      </p>
+
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          aria-label="Notifications"
+          className="relative rounded-lg p-2 text-text-secondary transition-colors hover:bg-primary-light/5 hover:text-primary"
+        >
+          <Bell className="h-5 w-5" strokeWidth={1.5} />
+        </button>
+
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-surface">
+            {user?.firstName?.[0] ?? 'A'}
+          </div>
+          <div className="hidden flex-col sm:flex">
+            <span className="text-sm font-medium text-primary leading-tight">
+              {user ? `${user.firstName} ${user.lastName}` : 'Admin'}
+            </span>
+            <span className="text-xs text-text-secondary">Admin</span>
+          </div>
+        </div>
+      </div>
+    </header>
+  )
+}
