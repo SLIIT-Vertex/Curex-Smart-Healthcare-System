@@ -60,6 +60,17 @@ spring:
                 name: telemedicineServiceCB
                 fallbackUri: forward:/fallback/service-unavailable
 
+        # ── Appointment Service ───────────────────────────────────────────────
+        - id: appointment-service
+          uri: http://appointment-service:8088
+          predicates:
+            - Path=/api/appointments/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: appointmentServiceCB
+                fallbackUri: forward:/fallback/service-unavailable
+
         # ── Circuit breaker fallback ──────────────────────────────────────────
         - id: fallback
           uri: http://localhost:8080
@@ -94,6 +105,11 @@ resilience4j:
         waitDurationInOpenState: 10s
         permittedNumberOfCallsInHalfOpenState: 3
       telemedicineServiceCB:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+      appointmentServiceCB:
         slidingWindowSize: 10
         failureRateThreshold: 50
         waitDurationInOpenState: 10s
