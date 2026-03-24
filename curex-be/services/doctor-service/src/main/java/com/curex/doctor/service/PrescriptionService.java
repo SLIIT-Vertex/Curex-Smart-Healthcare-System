@@ -75,10 +75,22 @@ public class PrescriptionService {
             throw new InvalidPrescriptionException("Appointment does not belong to this patient");
         }
 
+        if (prescriptionRepository.existsByAppointmentId(request.getAppointmentId())) {
+            throw new InvalidPrescriptionException("A prescription already exists for this appointment");
+        }
+
+        // patientName: from request if provided, else from appointment
+        String patientName = request.getPatientName();
+        if (patientName == null || patientName.isBlank()) {
+            patientName = appointment.getPatientName();
+        }
+
         Prescription prescription = Prescription.builder()
                 .doctor(doctor)
                 .patientId(request.getPatientId())
                 .appointmentId(request.getAppointmentId())
+                .patientName(patientName)
+                .diagnosis(request.getDiagnosis())
                 .medicines(request.getMedicines())
                 .instructions(request.getInstructions())
                 .validFrom(validFrom)
@@ -131,8 +143,11 @@ public class PrescriptionService {
                 .id(prescription.getId())
                 .doctorId(prescription.getDoctor().getId())
                 .doctorName(prescription.getDoctor().getFullName())
+                .doctorSpecialty(prescription.getDoctor().getSpecialization())
                 .patientId(prescription.getPatientId())
+                .patientName(prescription.getPatientName())
                 .appointmentId(prescription.getAppointmentId())
+                .diagnosis(prescription.getDiagnosis())
                 .medicines(prescription.getMedicines())
                 .instructions(prescription.getInstructions())
                 .validFrom(prescription.getValidFrom())

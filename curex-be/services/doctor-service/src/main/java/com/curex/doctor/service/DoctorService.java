@@ -59,6 +59,13 @@ public class DoctorService {
         return toDoctorResponse(doctor);
     }
 
+    @Transactional(readOnly = true)
+    public DoctorResponse getByUserId(String userId) {
+        Doctor doctor = doctorRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor not found for user id: " + userId));
+        return toDoctorResponse(doctor);
+    }
+
     @Transactional
     public DoctorResponse update(String id, UpdateDoctorRequest request) {
         Doctor doctor = doctorRepository.findById(id)

@@ -4,7 +4,7 @@ BE_DIR := curex-be
 .DEFAULT_GOAL := help
 
 .PHONY: help fe fe-install fe-dev fe-build fe-preview \
-        be-build-auth be-run-auth \
+        be-build-auth be-run-auth be-build-gateway be-run-gateway \
         be-build-patient be-run-patient \
         be-build-doctor be-run-doctor \
         be-build-ai be-run-ai \
@@ -23,6 +23,8 @@ help:
 	@echo "  make fe-preview    Preview production build"
 	@echo ""
 	@echo "BACKEND (Spring Boot Services)"
+	@echo "  make be-build-gateway   Build API Gateway JAR"
+	@echo "  make be-run-gateway     Run API Gateway locally (port 8080)"
 	@echo "  make be-build-auth      Build auth-service JAR"
 	@echo "  make be-run-auth        Run auth-service locally"
 	@echo "  make be-build-patient   Build patient-service JAR (port 8083)"
@@ -55,6 +57,12 @@ fe-preview:
 
 #  Backend Service Targets (Examples) 
 # Uncomment and copy these patterns for each service you add
+
+be-build-gateway:
+	cd $(BE_DIR)/api-gateway && mvn clean package -DskipTests
+
+be-run-gateway:
+	cd $(BE_DIR)/api-gateway && mvn spring-boot:run
 
 be-build-auth:
 	cd $(BE_DIR)/services/user-service && mvn clean package -DskipTests

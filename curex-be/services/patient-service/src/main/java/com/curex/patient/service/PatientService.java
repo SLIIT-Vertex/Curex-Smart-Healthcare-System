@@ -63,6 +63,13 @@ public class PatientService {
         return toPatientResponse(patient);
     }
 
+    @Transactional(readOnly = true)
+    public PatientResponse getByUserId(String userId) {
+        Patient patient = patientRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found for user id: " + userId));
+        return toPatientResponse(patient);
+    }
+
     @Transactional
     public PatientResponse update(String id, UpdatePatientRequest request) {
         Patient patient = patientRepository.findById(id)
