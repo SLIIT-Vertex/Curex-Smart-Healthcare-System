@@ -1,7 +1,6 @@
 package com.curex.report.controller;
 
 import com.curex.report.dto.ApiMessageResponse;
-import com.curex.report.dto.ApiResponse;
 import com.curex.report.dto.ReportResponse;
 import com.curex.report.dto.ReportUploadResponse;
 import com.curex.report.entity.Report;
@@ -28,21 +27,21 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping
+@RequestMapping("/api/reports")
 @RequiredArgsConstructor
 @Validated
 public class ReportController {
 
     private final ReportService reportService;
 
-    @PostMapping(value = "/reports/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<ReportUploadResponse>> upload(
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ReportUploadResponse> upload(
             @RequestParam("patientId") @NotBlank String patientId,
             @RequestPart("file") MultipartFile file) {
         Report report = reportService.uploadReport(patientId, file);
 
         String downloadUrl = ServletUriComponentsBuilder.fromCurrentContextPath()
-                .path("/reports/")
+                .path("/api/reports/")
                 .path(report.getId().toString())
                 .path("/download")
                 .toUriString();
@@ -56,15 +55,15 @@ public class ReportController {
                 .downloadUrl(downloadUrl)
                 .build();
 
-        return ResponseEntity.ok(ApiResponse.of("Report uploaded", payload));
+        return ResponseEntity.ok(payload);
     }
 
-    @GetMapping("/reports/{id}")
-    public ResponseEntity<ApiResponse<ReportResponse>> getMetadata(@PathVariable UUID id) {
+    @GetMapping("/{id}")
+    public ResponseEntity<ReportResponse> getMetadata(@PathVariable UUID id) {
         Report report = reportService.getReport(id);
 
         String downloadUrl = ServletUriComponentsBuilder.fromCurrentContextPath()
-                .path("/reports/")
+                .path("/api/reports/")
                 .path(report.getId().toString())
                 .path("/download")
                 .toUriString();
@@ -79,10 +78,10 @@ public class ReportController {
                 .downloadUrl(downloadUrl)
                 .build();
 
-        return ResponseEntity.ok(ApiResponse.of("Report metadata", payload));
+        return ResponseEntity.ok(payload);
     }
 
-    @GetMapping("/reports/{id}/download")
+    @GetMapping("/{id}/download")
     public ResponseEntity<Resource> download(@PathVariable UUID id) {
         Report report = reportService.getReport(id);
         Resource resource = reportService.loadReportAsResource(id);
@@ -94,8 +93,8 @@ public class ReportController {
                 .body(resource);
     }
 
-    @GetMapping("/patients/{patientId}/reports")
-    public ResponseEntity<ApiResponse<List<ReportResponse>>> listByPatient(@PathVariable @NotBlank String patientId) {
+    @GetMapping("/patient/{patientId}")
+    public ResponseEntity<List<ReportResponse>> listByPatient(@PathVariable @NotBlank String patientId) {
         List<ReportResponse> payload = reportService.getReportsForPatient(patientId).stream()
                 .map(r -> ReportResponse.builder()
                         .id(r.getId())
@@ -105,19 +104,19 @@ public class ReportController {
                         .fileSize(r.getFileSize())
                         .uploadedAt(r.getUploadedAt())
                         .downloadUrl(ServletUriComponentsBuilder.fromCurrentContextPath()
-                                .path("/reports/")
+                                .path("/api/reports/")
                                 .path(r.getId().toString())
                                 .path("/download")
                                 .toUriString())
                         .build())
                 .toList();
 
-        return ResponseEntity.ok(ApiResponse.of("Patient reports", payload));
+        return ResponseEntity.ok(payload);
     }
 
-    @DeleteMapping("/reports/{id}")
-    public ResponseEntity<ApiResponse<ApiMessageResponse>> delete(@PathVariable UUID id) {
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiMessageResponse> delete(@PathVariable UUID id) {
         reportService.deleteReport(id);
-        return ResponseEntity.ok(ApiResponse.of("Report deleted", ApiMessageResponse.of("Deleted report: " + id)));
+        return ResponseEntity.ok(ApiMessageResponse.of("Deleted report: " + id));
     }
 }
