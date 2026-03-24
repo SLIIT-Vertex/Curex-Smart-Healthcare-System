@@ -42,7 +42,7 @@ public class TextLkSmsService {
     private final TextLkProperties properties;
     private final RestTemplate restTemplate;
 
-    // ── Core send operations ─────────────────────────────────────────────────────
+    //  Core send operations 
 
     /**
      * Send SMS to a single or multiple recipients.
@@ -115,7 +115,7 @@ public class TextLkSmsService {
         return sendSms(recipient, message, "plain", null, null);
     }
 
-    // ── Campaign ─────────────────────────────────────────────────────────────────
+    //  Campaign 
 
     /**
      * Send a campaign to a saved Text.lk contact list.
@@ -154,7 +154,7 @@ public class TextLkSmsService {
         return response;
     }
 
-    // ── Read operations ──────────────────────────────────────────────────────────
+    //  Read operations 
 
     /**
      * View a single SMS by UID.
@@ -224,7 +224,7 @@ public class TextLkSmsService {
         return response;
     }
 
-    // ── Infrastructure ───────────────────────────────────────────────────────────
+    //  Infrastructure 
 
     private TextLkApiResponse post(String path, Object body) {
         try {
@@ -272,7 +272,7 @@ public class TextLkSmsService {
         }
     }
 
-    // ── Dedicated exception ──────────────────────────────────────────────────────
+    //  Dedicated exception 
 
     public static class TextLkException extends RuntimeException {
         public TextLkException(String message) {

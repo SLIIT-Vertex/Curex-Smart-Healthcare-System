@@ -9,6 +9,7 @@ import {
   Settings,
   LogOut,
 } from 'lucide-react'
+import { useAuth, useAuthActions } from '../../../store/hooks'
 
 const LOGO_SRC = '/logo.svg'
 
@@ -31,6 +32,9 @@ interface PatientSidebarProps {
 }
 
 export function PatientSidebar({ isOpen = true, onClose }: PatientSidebarProps) {
+  const { user } = useAuth()
+  const { logout } = useAuthActions()
+
   return (
     <>
       {/* Mobile overlay */}
@@ -99,19 +103,19 @@ export function PatientSidebar({ isOpen = true, onClose }: PatientSidebarProps) 
             <button
               type="button"
               className="sidebar-link flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-text-secondary transition-colors hover:bg-primary-light/5 hover:text-primary"
-              onClick={() => {
-                // TODO: logout from AuthContext (M1)
-              }}
+              onClick={logout}
             >
               <LogOut className="h-5 w-5 shrink-0" strokeWidth={1.5} />
               Sign out
             </button>
           </nav>
 
-          {/* Bottom profile card — TODO: name from auth or patient profile */}
+          {/* Bottom profile card */}
           <div className="shrink-0 border-t border-text-secondary/10 p-4">
             <div className="rounded-xl bg-background px-4 py-3">
-              <p className="text-sm font-semibold text-primary">Emma Tin</p>
+              <p className="text-sm font-semibold text-primary">
+                {user ? `${user.firstName} ${user.lastName}` : 'Patient'}
+              </p>
               <p className="text-xs text-text-secondary">Patient</p>
             </div>
           </div>

@@ -1,9 +1,7 @@
-# ─────────────────────────────────────────────────────────────────────────────
 # Curex Smart Healthcare System — .dockerignore
 # Keeps build contexts lean; secrets never reach the daemon.
-# ─────────────────────────────────────────────────────────────────────────────
 
-# ── Secrets & environment ─────────────────────────────────────────────────────
+#  Secrets & environment
 .env
 .env.local
 .env.*.local
@@ -17,53 +15,53 @@ client_secret*.json
 *service-account*.json
 token.json
 
-# ── Git & CI ──────────────────────────────────────────────────────────────────
+# Git & CI 
 .git/
 .gitignore
 .github/
 .gitattributes
 
-# ── Maven build output ────────────────────────────────────────────────────────
+# Maven build output
 **/target/
 **/.mvn/
 **/mvnw
 **/mvnw.cmd
 
-# ── Node / frontend artefacts ─────────────────────────────────────────────────
+# Node / frontend artefacts
 **/node_modules/
 **/dist/
 **/.cache/
 **/.vite/
 **/dist-ssr/
 
-# ── Logs ──────────────────────────────────────────────────────────────────────
+# Logs
 logs/
 *.log
 
-# ── IDEs & OS ─────────────────────────────────────────────────────────────────
+# IDEs & OS
 .idea/
 .vscode/
 *.iml
 .DS_Store
 Thumbs.db
 
-# ── Docs & non-runtime files ──────────────────────────────────────────────────
+# Docs & non-runtime files
 README*.md
 ARCHITECTURE*.md
 docs/
 postman/
 k8s/
 
-# ── Test artefacts ────────────────────────────────────────────────────────────
+# Test artefacts
 **/src/test/
 coverage/
 *.lcov
 
-# ── Kubernetes secrets ────────────────────────────────────────────────────────
+# Kubernetes secrets
 k8s/*-secret.yaml
 k8s/*-secrets.yaml
 
-# ── Misc ──────────────────────────────────────────────────────────────────────
+# Misc
 *.tmp
 *.swp
 *~

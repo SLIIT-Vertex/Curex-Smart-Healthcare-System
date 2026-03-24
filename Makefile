@@ -53,7 +53,7 @@ fe-build:
 fe-preview:
 	npm --prefix $(FE_DIR) run preview
 
-# ─── Backend Service Targets (Examples) ───
+#  Backend Service Targets (Examples) 
 # Uncomment and copy these patterns for each service you add
 
 be-build-auth:
@@ -80,7 +80,7 @@ be-build-ai:
 be-run-ai:
 	cd $(BE_DIR)/services/ai-symptom-service && mvn spring-boot:run
 
-# ─── Docker Targets ───
+#  Docker Targets 
 
 docker-up:
 	docker-compose up --build

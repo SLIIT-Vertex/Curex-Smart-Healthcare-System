@@ -1,10 +1,10 @@
 ---
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # User Service — Deployment + ClusterIP Service
 # Image: build and push to your registry, then update image: below
 #   docker build -t your-registry/curex-user-service:latest ./curex-be/services/user-service
 #   docker push your-registry/curex-user-service:latest
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 apiVersion: apps/v1
 kind: Deployment
 metadata:

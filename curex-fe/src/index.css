@@ -1,35 +1,35 @@
 @import "tailwindcss";
 
 @theme {
-  /* ── Core palette ── */
+  /*  Core palette  */
   --color-primary: #1C274C;
   --color-primary-light: #3A4F8A;
   --color-background: #F7FAFF;
   --color-surface: #FFFFFF;
 
-  /* ── Accents ── */
+  /*  Accents  */
   --color-accent-mint: #6EE7B7;
   --color-accent-sky: #7DD3FC;
   --color-accent-peach: #FDBA74;
 
-  /* ── Feedback ── */
+  /*  Feedback  */
   --color-error: #F87171;
 
-  /* ── Text ── */
+  /*  Text  */
   --color-text-primary: #1C274C;
   --color-text-secondary: #6B7280;
 
-  /* ── Status ── */
+  /*  Status  */
   --color-status-healthy: #6EE7B7;
   --color-status-attention: #FDBA74;
   --color-status-critical: #F87171;
   --color-status-info: #7DD3FC;
 
-  /* ── Fonts ── */
+  /*  Fonts  */
   --font-sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, Consolas, monospace;
 
-  /* ── Layout ── */
+  /*  Layout  */
   --width-content: 72rem;
   --shadow-header: 0 1px 0 rgb(28 39 76 / 0.06), 0 4px 24px rgb(28 39 76 / 0.04);
   --shadow-card: 0 4px 24px rgb(28 39 76 / 0.06);
@@ -86,4 +86,18 @@
     /* items-center + justify-center: block is centered in viewport; w-full child still spans width */
     @apply flex w-full min-h-svh flex-col items-center justify-center;
   }
+
+  /*  Auth form input  */
+  .auth-input {
+    @apply w-full rounded-xl border border-text-secondary/20 bg-surface px-4 py-2.5 text-sm text-primary
+           placeholder:text-text-secondary
+           focus:border-primary-light focus:outline-none focus:ring-2 focus:ring-primary-light/20
+           transition-colors;
+  }
+}
+
+/*  Toast slide-in animation  */
+@keyframes slideInRight {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
 }

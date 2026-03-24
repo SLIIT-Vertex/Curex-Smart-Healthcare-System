@@ -147,7 +147,7 @@ public class AdminService {
                 .collect(Collectors.toList());
     }
 
-    // ── private helpers ────────────────────────────────────────────────────────
+    //  private helpers 
 
     private void applyStatusAction(User user, UserApprovalRequest.ApprovalAction action) {
         User.AccountStatus newStatus = switch (action) {

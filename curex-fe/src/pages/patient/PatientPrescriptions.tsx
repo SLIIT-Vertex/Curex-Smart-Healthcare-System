@@ -3,7 +3,7 @@ import { Search, ChevronDown, ChevronUp, PillBottle } from 'lucide-react'
 import { getPrescriptions } from '../../services/patientService'
 import type { PatientPrescription } from '../../types/patient'
 
-/* ── Mock patient ID (replace with auth when M1 ready) ── */
+/*  Mock patient ID (replace with auth when M1 ready)  */
 const MOCK_PATIENT_ID = 'p1'
 
 function formatDate(iso: string): string {

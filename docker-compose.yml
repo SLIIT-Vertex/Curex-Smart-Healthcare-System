@@ -11,7 +11,7 @@
 
 services:
 
-  # ── Infrastructure ────────────────────────────────────────────────────────
+  # Infrastructure
 
   postgres:
     image: postgres:16-alpine
@@ -63,7 +63,7 @@ services:
       api-gateway:
         condition: service_started
 
-  # ── Application Services ──────────────────────────────────────────────────
+  # Application Services
 
   user-service:
     build:
