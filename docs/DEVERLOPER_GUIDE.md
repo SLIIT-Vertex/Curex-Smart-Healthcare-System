@@ -1614,6 +1614,22 @@ docker-compose down             # stop everything
 docker-compose up auth-service  # start just one service
 ```
 
+### Troubleshooting: 500 on /api/doctors/by-user or Prescriptions
+
+**Symptom:** "Request failed with status code 500" when a doctor logs in and goes to Prescriptions.
+
+**Causes and fixes:**
+
+1. **Doctor profile not created**  
+   Doctors must create a profile (via the doctor dashboard) before using Prescriptions. If missing, you should see "Doctor not found for user id: xxx". Create a doctor profile first.
+
+2. **Gateway cannot reach doctor-service** (500 or 503)  
+   - **Full Docker:** Ensure `docker-compose up` has started doctor-service. Run `docker-compose ps` and check `curex-doctor-service`.  
+   - **Mixed setup (gateway in Docker, doctor-service locally):** Set `SERVICES_DOCTOR_URL=http://host.docker.internal:8084` in `.env` and restart the gateway container.
+
+3. **Frontend must use API Gateway**  
+   Ensure `VITE_API_URL` (or the default) points to the gateway (`http://localhost:8080`), not directly to doctor-service. All API calls go through the gateway.
+
 ---
 
 ## 11. Kubernetes Setup

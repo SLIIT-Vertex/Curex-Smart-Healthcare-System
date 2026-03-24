@@ -7,6 +7,10 @@ spring:
 
   cloud:
     gateway:
+      # Dedupe CORS headers — downstream services (e.g. appointment-service) may add their
+      # own; gateway + downstream = duplicate Access-Control-Allow-Origin = browser error.
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_FIRST
       # Global CORS — handled once here, downstream services need none
       globalcors:
         cors-configurations:
@@ -98,9 +102,9 @@ spring:
                 name: patientServiceCB
                 fallbackUri: forward:/fallback/service-unavailable
 
-        # Doctor Service
+        # Doctor Service (SERVICES_DOCTOR_URL overrides when running doctor-service locally)
         - id: doctor-service-doctors
-          uri: http://doctor-service:8084
+          uri: ${SERVICES_DOCTOR_URL:http://doctor-service:8084}
           predicates:
             - Path=/api/doctors/**
           filters:
@@ -113,7 +117,7 @@ spring:
                 name: doctorServiceCB
                 fallbackUri: forward:/fallback/service-unavailable
         - id: doctor-service-prescriptions
-          uri: http://doctor-service:8084
+          uri: ${SERVICES_DOCTOR_URL:http://doctor-service:8084}
           predicates:
             - Path=/api/prescriptions/**
           filters:

@@ -8,8 +8,13 @@ const INPUT_CLASS =
 export interface PrescriptionFormData {
   patientId: string
   appointmentId: string
+  patientEmail?: string
+  patientName?: string
+  diagnosis?: string
   medicines: MedicineLine[]
   instructions: string
+  validFrom: string
+  validTo: string
 }
 
 export interface PrescriptionFormProps {
@@ -17,7 +22,13 @@ export interface PrescriptionFormProps {
   onClose: () => void
   onSubmit: (data: PrescriptionFormData) => void
   patients: { id: string; name: string }[]
-  appointments: { id: string; patientId: string; patientName: string; date: string }[]
+  appointments: {
+    id: string
+    patientId: string
+    patientName?: string
+    patientEmail?: string
+    date: string
+  }[]
 }
 
 const emptyMedicine: MedicineLine = {
@@ -34,10 +45,18 @@ export function PrescriptionForm({
   patients,
   appointments,
 }: PrescriptionFormProps) {
+  const today = new Date().toISOString().slice(0, 10)
+  const defaultValidTo = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10)
+
   const [patientId, setPatientId] = useState('')
   const [appointmentId, setAppointmentId] = useState('')
   const [medicines, setMedicines] = useState<MedicineLine[]>([{ ...emptyMedicine }])
   const [instructions, setInstructions] = useState('')
+  const [diagnosis, setDiagnosis] = useState('')
+  const [validFrom, setValidFrom] = useState(today)
+  const [validTo, setValidTo] = useState(defaultValidTo)
   const [patientSearch, setPatientSearch] = useState('')
 
   const filteredPatients = patientSearch
@@ -52,11 +71,26 @@ export function PrescriptionForm({
     (a) => !patientId || a.patientId === patientId
   )
 
+  // When appointment is selected, auto-fill patientId from the appointment
+  const handleAppointmentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = e.target.value
+    setAppointmentId(id)
+    if (id) {
+      const appt = appointments.find((a) => a.id === id)
+      if (appt) {
+        setPatientId(appt.patientId)
+      }
+    }
+  }
+
   const reset = () => {
     setPatientId('')
     setAppointmentId('')
     setMedicines([{ ...emptyMedicine }])
     setInstructions('')
+    setDiagnosis('')
+    setValidFrom(today)
+    setValidTo(defaultValidTo)
     setPatientSearch('')
   }
 
@@ -68,13 +102,20 @@ export function PrescriptionForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const validMedicines = medicines.filter((m) => m.name.trim())
-    if (!patientId || validMedicines.length === 0) return
+    const selectedAppt = appointments.find((a) => a.id === appointmentId)
+    const resolvedPatientId = patientId || selectedAppt?.patientId
+    if (!resolvedPatientId || !appointmentId || validMedicines.length === 0) return
 
     onSubmit({
-      patientId,
-      appointmentId: appointmentId || '',
+      patientId: resolvedPatientId,
+      appointmentId,
+      patientEmail: selectedAppt?.patientEmail,
+      patientName: selectedAppt?.patientName,
+      diagnosis: diagnosis.trim() || undefined,
       medicines: validMedicines,
       instructions,
+      validFrom,
+      validTo,
     })
     handleClose()
   }
@@ -152,23 +193,66 @@ export function PrescriptionForm({
             </select>
           </div>
 
-          {/* Appointment selector */}
+          {/* Appointment selector — required for prescriptions */}
           <div>
             <label className="block text-sm font-medium text-primary">
-              Appointment (optional)
+              Appointment (required)
             </label>
             <select
               value={appointmentId}
-              onChange={(e) => setAppointmentId(e.target.value)}
+              onChange={handleAppointmentChange}
+              required
               className={`mt-1.5 ${INPUT_CLASS}`}
             >
-              <option value="">None selected</option>
+              <option value="">Select an appointment</option>
               {filteredAppointments.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.patientName} — {a.date}
+                  {a.patientName ?? a.patientId} — {a.date}
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Valid from / Valid to */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-primary">
+                Valid from
+              </label>
+              <input
+                type="date"
+                value={validFrom}
+                onChange={(e) => setValidFrom(e.target.value)}
+                required
+                className={`mt-1.5 ${INPUT_CLASS}`}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-primary">
+                Valid to
+              </label>
+              <input
+                type="date"
+                value={validTo}
+                onChange={(e) => setValidTo(e.target.value)}
+                required
+                className={`mt-1.5 ${INPUT_CLASS}`}
+              />
+            </div>
+          </div>
+
+          {/* Diagnosis / Clinical notes */}
+          <div>
+            <label className="block text-sm font-medium text-primary">
+              Diagnosis / Clinical notes (optional)
+            </label>
+            <textarea
+              value={diagnosis}
+              onChange={(e) => setDiagnosis(e.target.value)}
+              rows={2}
+              placeholder="e.g. Viral upper respiratory tract infection"
+              className={`mt-1.5 ${INPUT_CLASS} resize-y`}
+            />
           </div>
 
           {/* Medicines */}

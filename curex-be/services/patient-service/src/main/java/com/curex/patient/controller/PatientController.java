@@ -28,6 +28,11 @@ public class PatientController {
         return ResponseEntity.status(HttpStatus.CREATED).body(patientService.create(request));
     }
 
+    @GetMapping("/by-user/{userId}")
+    public ResponseEntity<PatientResponse> getByUserId(@PathVariable String userId) {
+        return ResponseEntity.ok(patientService.getByUserId(userId));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<PatientResponse> getById(@PathVariable String id) {
         return ResponseEntity.ok(patientService.getById(id));

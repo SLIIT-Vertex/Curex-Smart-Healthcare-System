@@ -28,6 +28,12 @@ public class Prescription {
     @Column(name = "appointment_id")
     private String appointmentId;
 
+    @Column(name = "patient_name")
+    private String patientName;
+
+    @Column(name = "diagnosis", columnDefinition = "TEXT")
+    private String diagnosis;
+
     @Column(name = "medicines", nullable = false, columnDefinition = "TEXT")
     private String medicines;
 
