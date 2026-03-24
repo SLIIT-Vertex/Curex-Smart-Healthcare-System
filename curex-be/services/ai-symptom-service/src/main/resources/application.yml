@@ -11,12 +11,13 @@ spring:
       - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
 
 # Groq AI configuration
+# When GROQ_API_KEY is empty or missing, the service uses rule-based FallbackService.
 ai:
   provider: ${AI_PROVIDER:groq}
   api-key: ${GROQ_API_KEY:}
   base-url: ${AI_BASE_URL:https://api.groq.com/openai/v1}
   model: ${AI_MODEL:llama-3.1-8b-instant}
-  max-tokens: ${AI_MAX_TOKENS:300}
+  max-tokens: ${AI_MAX_TOKENS:700}
   temperature: ${AI_TEMPERATURE:0.3}
 
 management:
