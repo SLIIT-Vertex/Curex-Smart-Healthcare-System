@@ -60,6 +60,7 @@ public class AuthenticationFilter implements GlobalFilter, Ordered {
             "/api/auth/health",
             "/api/admin/health",
             "/api/ai/health",
+            "/api/payments/webhook",
             "/actuator/health",
             "/fallback/service-unavailable"
     );

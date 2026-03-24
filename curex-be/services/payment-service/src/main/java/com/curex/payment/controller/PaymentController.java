@@ -28,7 +28,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping
+@RequestMapping("/api")
 @RequiredArgsConstructor
 @Validated
 public class PaymentController {
@@ -48,7 +48,7 @@ public class PaymentController {
         return ResponseEntity.ok(ApiResponse.of("Payment details", paymentService.getPayment(id)));
     }
 
-    @GetMapping("/patients/{patientId}/payments")
+    @GetMapping("/payments/patients/{patientId}")
     public ResponseEntity<ApiResponse<List<PaymentResponse>>> listPayments(@PathVariable @NotBlank String patientId) {
         return ResponseEntity.ok(ApiResponse.of("Patient payments", paymentService.getPaymentsForPatient(patientId)));
     }
