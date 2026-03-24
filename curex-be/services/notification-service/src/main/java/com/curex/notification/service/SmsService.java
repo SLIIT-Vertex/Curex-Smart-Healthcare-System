@@ -84,7 +84,7 @@ public class SmsService {
         return textLkProperties.isConfigured();
     }
 
-    // ── Content builders ─────────────────────────────────────────────────────────
+    //  Content builders 
 
     public String getWelcomeSmsContent(String firstName) {
         return "Hi " + firstName + "! Welcome to Curex Healthcare. Your account is ready.";
@@ -99,7 +99,7 @@ public class SmsService {
         return "Your Curex verification code is: " + otp + ". Do not share this code with anyone.";
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────────
+    //  Private helpers 
 
     /**
      * Normalise phone numbers to international format without '+'.

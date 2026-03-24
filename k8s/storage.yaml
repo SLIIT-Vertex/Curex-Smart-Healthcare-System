@@ -1,7 +1,7 @@
 ---
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # PostgreSQL persistent volume claim
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -19,9 +19,9 @@ spec:
   # storageClassName: standard   # uncomment and set to your cluster's StorageClass
 
 ---
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # RabbitMQ persistent volume claim
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

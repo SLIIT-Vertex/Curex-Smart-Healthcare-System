@@ -11,23 +11,23 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMQConfig {
 
-    // ── Exchange ──────────────────────────────────────────────────────────────
+    // Exchange
     public static final String EXCHANGE = "healthcare.exchange";
 
-    // ── Routing keys (publishers) ─────────────────────────────────────────────
+    //  Routing keys (publishers)
     public static final String APPOINTMENT_BOOKED_KEY   = "appointment.booked";
     public static final String APPOINTMENT_CANCELLED_KEY = "appointment.cancelled";
 
-    // ── Queue names (what this service CONSUMES) ──────────────────────────────
+    //  Queue names (what this service CONSUMES) 
     public static final String PAYMENT_CONFIRMED_QUEUE  = "payment.confirmed.queue";
 
-    // ── Exchange bean ─────────────────────────────────────────────────────────
+    //  Exchange bean 
     @Bean
     public TopicExchange healthcareExchange() {
         return new TopicExchange(EXCHANGE, true, false);
     }
 
-    // ── Queues this service listens to ────────────────────────────────────────
+    //  Queues this service listens to 
     @Bean
     public Queue paymentConfirmedQueue() {
         return new Queue(PAYMENT_CONFIRMED_QUEUE, true);
@@ -41,7 +41,7 @@ public class RabbitMQConfig {
                 .with("payment.confirmed");
     }
 
-    // ── JSON message converter ────────────────────────────────────────────────
+    //  JSON message converter 
     @Bean
     public MessageConverter jsonMessageConverter() {
         return new Jackson2JsonMessageConverter();

@@ -11,7 +11,7 @@
 
 services:
 
-  # ── Infrastructure ────────────────────────────────────────────────────────
+  # Infrastructure
 
   postgres:
     image: postgres:16-alpine
@@ -63,7 +63,7 @@ services:
       api-gateway:
         condition: service_started
 
-  # ── Application Services ──────────────────────────────────────────────────
+  # Application Services
 
   user-service:
     build:
@@ -161,6 +161,59 @@ services:
       retries: 3
       start_period: 60s
 
+  patient-service:
+    build:
+      context: ./curex-be/services/patient-service
+      dockerfile: Dockerfile
+    container_name: curex-patient-service
+    restart: unless-stopped
+    expose:
+      - "8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/curex_patients
+      DB_USERNAME: ${DB_USERNAME:-curex_user}
+      DB_PASSWORD: ${DB_PASSWORD:-curex_password}
+      SERVICES_DOCTOR_URL: http://doctor-service:8084
+    depends_on:
+      postgres:
+        condition: service_healthy
+      doctor-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  doctor-service:
+    build:
+      context: ./curex-be/services/doctor-service
+      dockerfile: Dockerfile
+    container_name: curex-doctor-service
+    restart: unless-stopped
+    expose:
+      - "8084"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/curex_doctors
+      DB_USERNAME: ${DB_USERNAME:-curex_user}
+      DB_PASSWORD: ${DB_PASSWORD:-curex_password}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      SERVICES_APPOINTMENT_URL: ${SERVICES_APPOINTMENT_URL:-http://appointment-service:8088}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8084/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   appointment-service:
     build:
       context: ./curex-be/services/appointment/appointment-service
@@ -185,6 +238,27 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      doctor-service:
+        condition: service_healthy
+
+  ai-symptom-service:
+    build:
+      context: ./curex-be/services/ai-symptom-service
+      dockerfile: Dockerfile
+    container_name: curex-ai-symptom-service
+    restart: unless-stopped
+    expose:
+      - "8085"
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      AI_PROVIDER: ${AI_PROVIDER:-groq}
+      AI_MODEL: ${AI_MODEL:-llama-3.1-8b-instant}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8085/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   api-gateway:
     build:
@@ -207,6 +281,12 @@ services:
       telemedicine-service:
         condition: service_started
       appointment-service:
+        condition: service_started
+      patient-service:
+        condition: service_started
+      doctor-service:
+        condition: service_started
+      ai-symptom-service:
         condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]

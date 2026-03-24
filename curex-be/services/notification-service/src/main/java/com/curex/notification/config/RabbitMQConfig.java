@@ -23,12 +23,14 @@ public class RabbitMQConfig {
     public static final String APPOINTMENT_BOOKING_QUEUE = "appointment.booking.queue";
     public static final String PAYMENT_CONFIRMATION_QUEUE = "payment.confirmation.queue";
     public static final String DOCTOR_APPROVAL_QUEUE = "doctor.approval.queue";
+    public static final String PRESCRIPTION_ISSUED_QUEUE = "prescription.issued.queue";
 
     // Routing keys
     public static final String USER_REGISTRATION_ROUTING_KEY = "user.registration";
     public static final String APPOINTMENT_BOOKING_ROUTING_KEY = "appointment.booking";
     public static final String PAYMENT_CONFIRMATION_ROUTING_KEY = "payment.confirmation";
     public static final String DOCTOR_APPROVAL_ROUTING_KEY = "doctor.approval";
+    public static final String PRESCRIPTION_ISSUED_ROUTING_KEY = "prescription.issued";
 
     // Message converter for JSON
     @Bean
@@ -129,5 +131,19 @@ public class RabbitMQConfig {
                 .bind(doctorApprovalQueue())
                 .to(doctorExchange())
                 .with(DOCTOR_APPROVAL_ROUTING_KEY);
+    }
+
+    // === PRESCRIPTION EVENTS (from doctor-service) ===
+    @Bean
+    public Queue prescriptionIssuedQueue() {
+        return QueueBuilder.durable(PRESCRIPTION_ISSUED_QUEUE).build();
+    }
+
+    @Bean
+    public Binding prescriptionIssuedBinding() {
+        return BindingBuilder
+                .bind(prescriptionIssuedQueue())
+                .to(doctorExchange())
+                .with(PRESCRIPTION_ISSUED_ROUTING_KEY);
     }
 }
