@@ -30,10 +30,7 @@
         </dependency>
 
         <!-- Security — GatewayAuthFilter reads X-User-* headers from the API Gateway -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-security</artifactId>
-        </dependency>
+
 
         <!-- JPA + Hibernate -->
         <dependency>
