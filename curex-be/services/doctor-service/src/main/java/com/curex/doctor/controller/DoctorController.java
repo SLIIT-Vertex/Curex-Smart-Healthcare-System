@@ -32,6 +32,15 @@ public class DoctorController {
         return ResponseEntity.status(HttpStatus.CREATED).body(doctorService.create(request));
     }
 
+    /**
+     * Static path segments must be declared before /{id}, otherwise e.g. GET /doctors/search
+     * is matched as getById("search").
+     */
+    @GetMapping("/search")
+    public ResponseEntity<List<DoctorResponse>> search(@RequestParam(required = false) String specialty) {
+        return ResponseEntity.ok(doctorService.searchBySpecialty(specialty));
+    }
+
     @GetMapping("/by-user/{userId}")
     public ResponseEntity<DoctorResponse> getByUserId(@PathVariable String userId) {
         return ResponseEntity.ok(doctorService.getByUserId(userId));
@@ -46,11 +55,6 @@ public class DoctorController {
     public ResponseEntity<DoctorResponse> update(@PathVariable String id,
                                                  @Valid @RequestBody UpdateDoctorRequest request) {
         return ResponseEntity.ok(doctorService.update(id, request));
-    }
-
-    @GetMapping("/search")
-    public ResponseEntity<List<DoctorResponse>> search(@RequestParam(required = false) String specialty) {
-        return ResponseEntity.ok(doctorService.searchBySpecialty(specialty));
     }
 
     @PostMapping("/{id}/availability")

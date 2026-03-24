@@ -1,18 +1,33 @@
-import axios, { type AxiosError } from 'axios'
+import axios from 'axios'
 import { store } from '../store'
 import { clearCredentials } from '../store/slices/authSlice'
 import { ACCESS_TOKEN_KEY } from '../store/slices/authSlice'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
 
+type ErrorBody = { message?: unknown; error?: unknown }
+
+function messageFromBody(data: unknown): string | null {
+  if (data == null) return null
+  if (typeof data === 'string' && data.trim().length > 0) return data
+  if (typeof data !== 'object') return null
+  const o = data as ErrorBody
+  if (typeof o.message === 'string' && o.message.length > 0) return o.message
+  if (typeof o.error === 'string' && o.error.length > 0) return o.error
+  return null
+}
+
 /** Extract user-friendly message from API error response (e.g. Doctor not found for user id) */
 export function getApiErrorMessage(err: unknown, fallback = 'Request failed'): string {
   if (axios.isAxiosError(err)) {
-    const data = (err as AxiosError<{ message?: string }>).response?.data
-    if (data?.message && typeof data.message === 'string') return data.message
-    const status = (err as AxiosError).response?.status
+    const status = err.response?.status
+    const fromBody = messageFromBody(err.response?.data)
+    if (fromBody) return fromBody
     if (status === 404) return 'Resource not found'
     if (status === 503) return 'Service temporarily unavailable. Please try again.'
+    if (status === 500) {
+      return 'Server error. Check api-gateway and doctor-service logs; ensure PostgreSQL is reachable.'
+    }
   }
   return err instanceof Error ? err.message : fallback
 }

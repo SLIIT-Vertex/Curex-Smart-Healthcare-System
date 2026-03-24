@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import axios from 'axios'
 import { Plus, Search, X } from 'lucide-react'
 import { PrescriptionForm } from '../../components/doctor/PrescriptionForm'
 import type { Prescription, PrescriptionStatus } from '../../types/doctor'
@@ -136,7 +137,11 @@ export function DoctorPrescriptions() {
       setPrescriptions(rxList as Prescription[])
       setAppointments(apptList)
     } catch (err: unknown) {
-      const msg = getApiErrorMessage(err, 'Failed to load prescriptions')
+      let msg = getApiErrorMessage(err, 'Failed to load prescriptions')
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        msg =
+          'No doctor profile is linked to your user account. Create your doctor profile from the dashboard first.'
+      }
       setError(msg)
       toast(msg, 'error')
     } finally {
