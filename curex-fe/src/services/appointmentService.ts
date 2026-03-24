@@ -3,7 +3,7 @@ import type {
   AppointmentRecord,
   BookAppointmentPayload,
   DoctorDirectoryItem,
-} from '../types/appointment'
+} from '../types/appointment.ts'
 
 const APPOINTMENT_BASE_URL =
   import.meta.env.VITE_APPOINTMENT_API_URL ?? 'http://localhost:8088'

@@ -3,7 +3,7 @@ import type {
   PatientProfile,
   MedicalHistory,
   PatientPrescription,
-} from '../types/patient'
+} from '../types/patient.ts'
 
 /** Use mock data when backend is unavailable (e.g. during development). */
 const USE_MOCK_ON_ERROR = true

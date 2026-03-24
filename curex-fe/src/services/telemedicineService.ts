@@ -3,7 +3,7 @@ import type {
   CreateTelemedicineSessionPayload,
   EndTelemedicineSessionPayload,
   TelemedicineSessionRecord,
-} from '../types/telemedicine'
+} from '../types/telemedicine.ts'
 
 const TELEMEDICINE_BASE_URL =
   import.meta.env.VITE_TELEMEDICINE_API_URL ?? 'http://localhost:8089'

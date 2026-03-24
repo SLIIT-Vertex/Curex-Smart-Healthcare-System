@@ -4,7 +4,7 @@ import type {
   UserApprovalRequest,
   UserResponse,
   UsersPage,
-} from '../types/auth'
+} from '../types/auth.ts'
 
 const ADMIN = '/api/admin'
 

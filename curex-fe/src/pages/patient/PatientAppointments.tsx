@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
@@ -21,8 +22,8 @@ import {
 import {
   type AppointmentRecord,
   type DoctorDirectoryItem,
-} from '../../types/appointment'
-import type { TelemedicineSessionRecord } from '../../types/telemedicine'
+} from '../../types/appointment.ts'
+import type { TelemedicineSessionRecord } from '../../types/telemedicine.ts'
 import '../../styles/pages/AppointmentFlow.css'
 
 const DEFAULT_PATIENT_ID = 'pat-001'
@@ -180,6 +181,7 @@ function bookingStatusLabel(
 }
 
 export function PatientAppointments() {
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<'make' | 'bookings'>('make')
   const [search, setSearch] = useState('')
   const [doctors] = useState<DoctorDirectoryItem[]>(() => getDoctorDirectory())
@@ -920,6 +922,27 @@ export function PatientAppointments() {
                               String(appt.status)
                             )}`}
                           >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span
+                                className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${statusPastelClass(
+                                  appt.status
+                                )}`}
+                              >
+                                {bookingStatusLabel(appt, telemedicineSessions[appt.id])}
+                              </span>
+                              {appt.status.toUpperCase() === 'PENDING' && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    navigate(`/patient/checkout/${appt.id}`)
+                                  }}
+                                  className="rounded-full bg-primary px-3 py-0.5 text-[10px] font-bold text-surface transition hover:bg-primary/90"
+                                >
+                                  PAY NOW
+                                </button>
+                              )}
+                            </div>
                             {date.toLocaleTimeString('en-GB', {
                               hour: '2-digit',
                               minute: '2-digit',
