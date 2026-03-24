@@ -4,6 +4,7 @@ import {
   User,
   CalendarClock,
   ClipboardList,
+  Video,
   Settings,
   LogOut,
 } from 'lucide-react'
@@ -15,6 +16,7 @@ const navLinks = [
   { to: '/doctor/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/doctor/profile', icon: User, label: 'Profile' },
   { to: '/doctor/availability', icon: CalendarClock, label: 'Availability' },
+  { to: '/doctor/telemedicine', icon: Video, label: 'Telemedicine' },
   { to: '/doctor/prescriptions', icon: ClipboardList, label: 'Prescriptions' },
 ] as const
 

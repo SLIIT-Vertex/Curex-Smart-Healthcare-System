@@ -138,6 +138,8 @@ services:
     restart: unless-stopped
     expose:
       - "8089"
+    ports:
+      - "8089:8089"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/curex_telemed
       SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-curex_user}

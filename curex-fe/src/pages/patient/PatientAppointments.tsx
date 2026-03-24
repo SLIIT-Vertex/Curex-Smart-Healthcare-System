@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import {
   bookAppointment,
   getAppointmentsByDoctor,
   getAppointmentsByPatient,
   getDoctorDirectory,
 } from '../../services/appointmentService'
+import {
+  createTelemedicineSession,
+  getTelemedicineSession,
+} from '../../services/telemedicineService'
 import {
   dateSlotKey,
   getDoctorAvailability,
@@ -17,6 +22,7 @@ import {
   type AppointmentRecord,
   type DoctorDirectoryItem,
 } from '../../types/appointment'
+import type { TelemedicineSessionRecord } from '../../types/telemedicine'
 import '../../styles/pages/AppointmentFlow.css'
 
 const DEFAULT_PATIENT_ID = 'pat-001'
@@ -121,6 +127,58 @@ function statusPastelClass(status: string): string {
   return 'bg-primary-light/15 text-primary'
 }
 
+function canJoinTelemedicine(
+  appt: AppointmentRecord,
+  session: TelemedicineSessionRecord | null | undefined
+): boolean {
+  if (appt.type !== 'TELEMEDICINE' || !session?.sessionUrl || session.status === 'ENDED') {
+    return false
+  }
+
+  const statusEligible = appt.status === 'CONFIRMED' || appt.status === 'IN_SESSION'
+  const joinOpensAt = new Date(appt.appointmentTime).getTime() - 60 * 60 * 1000
+  const startsWithinOneHour = Date.now() >= joinOpensAt
+  return statusEligible && startsWithinOneHour
+}
+
+function telemedicineStateLabel(
+  appt: AppointmentRecord,
+  session: TelemedicineSessionRecord | null | undefined
+): string {
+  if (appt.type !== 'TELEMEDICINE') {
+    return 'In-person visit'
+  }
+
+  if (appt.status !== 'CONFIRMED' && appt.status !== 'IN_SESSION') {
+    return 'Video link available after confirmation'
+  }
+
+  if (!session?.sessionUrl) {
+    return 'Preparing session link'
+  }
+
+  if (session.status === 'ENDED') {
+    return 'Session ended'
+  }
+
+  const joinOpensAt = new Date(appt.appointmentTime).getTime() - 60 * 60 * 1000
+  if (Date.now() < joinOpensAt) {
+    return 'Link unlocks 1 hour before appointment'
+  }
+
+  return 'Join video consultation'
+}
+
+function bookingStatusLabel(
+  appt: AppointmentRecord,
+  session: TelemedicineSessionRecord | null | undefined
+): string {
+  if (appt.type === 'TELEMEDICINE' && session?.status === 'ENDED') {
+    return 'ENDED'
+  }
+  return String(appt.status).toUpperCase()
+}
+
 export function PatientAppointments() {
   const [activeTab, setActiveTab] = useState<'make' | 'bookings'>('make')
   const [search, setSearch] = useState('')
@@ -139,6 +197,7 @@ export function PatientAppointments() {
   const [patientName, setPatientName] = useState(DEFAULT_PATIENT_NAME)
   const [patientEmail, setPatientEmail] = useState(DEFAULT_PATIENT_EMAIL)
   const [notes, setNotes] = useState('')
+  const [appointmentType, setAppointmentType] = useState<'IN_PERSON' | 'TELEMEDICINE'>('TELEMEDICINE')
 
   const [doctorAppointments, setDoctorAppointments] = useState<AppointmentRecord[]>(
     []
@@ -146,6 +205,9 @@ export function PatientAppointments() {
   const [myAppointments, setMyAppointments] = useState<AppointmentRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [booking, setBooking] = useState(false)
+  const [telemedicineSessions, setTelemedicineSessions] = useState<
+    Record<string, TelemedicineSessionRecord | null>
+  >({})
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -314,6 +376,50 @@ export function PatientAppointments() {
     loadAppointments()
   }, [selectedDoctor, patientId])
 
+  useEffect(() => {
+    let active = true
+
+    async function loadTelemedicineSessions() {
+      const telemedicineAppointments = myAppointments.filter(
+        (appt) => appt.type === 'TELEMEDICINE'
+      )
+
+      if (telemedicineAppointments.length === 0) {
+        if (active) {
+          setTelemedicineSessions({})
+        }
+        return
+      }
+
+      const entries = await Promise.all(
+        telemedicineAppointments.map(async (appt) => {
+          try {
+            const session = await getTelemedicineSession(appt.id)
+            return [appt.id, session] as const
+          } catch {
+            return [appt.id, null] as const
+          }
+        })
+      )
+
+      if (!active) {
+        return
+      }
+
+      const nextMap: Record<string, TelemedicineSessionRecord | null> = {}
+      for (const [appointmentId, session] of entries) {
+        nextMap[appointmentId] = session
+      }
+      setTelemedicineSessions(nextMap)
+    }
+
+    loadTelemedicineSessions()
+
+    return () => {
+      active = false
+    }
+  }, [myAppointments])
+
   const handleBook = async () => {
     if (!selectedDoctor || !selectedSlot) {
       return
@@ -332,7 +438,7 @@ export function PatientAppointments() {
 
       const appointmentTime = toAppointmentDateTime(parsed.dateKey, parsed.time)
 
-      await bookAppointment({
+      const createdAppointment = await bookAppointment({
         patientId,
         patientName,
         patientEmail,
@@ -341,11 +447,31 @@ export function PatientAppointments() {
         doctorSpecialty: selectedDoctor.specialty,
         slotId: selectedSlot,
         appointmentTime,
-        type: 'IN_PERSON',
+        type: appointmentType,
         notes,
       })
 
-      setMessage('Appointment booked. It will be confirmed after payment is completed.')
+      let bookingMessage =
+        'Appointment booked. It will be confirmed after payment is completed.'
+
+      if (appointmentType === 'TELEMEDICINE') {
+        try {
+          const session = await createTelemedicineSession(createdAppointment.id, {
+            patientId,
+            doctorId: selectedDoctor.id,
+          })
+          setTelemedicineSessions((prev) => ({
+            ...prev,
+            [createdAppointment.id]: session,
+          }))
+          bookingMessage += ' Video session has been prepared for this appointment.'
+        } catch {
+          bookingMessage +=
+            ' Video session creation is in progress. Refresh My Bookings if link is not visible yet.'
+        }
+      }
+
+      setMessage(bookingMessage)
       setSelectedSlot(null)
       setNotes('')
 
@@ -556,17 +682,46 @@ export function PatientAppointments() {
                   className="symptom-input min-h-[90px]"
                 />
 
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setAppointmentType('IN_PERSON')}
+                    className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                      appointmentType === 'IN_PERSON'
+                        ? 'border-primary-light/40 bg-primary-light/10 text-primary'
+                        : 'border-text-secondary/20 text-text-secondary hover:text-primary'
+                    }`}
+                  >
+                    In-person
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAppointmentType('TELEMEDICINE')}
+                    className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                      appointmentType === 'TELEMEDICINE'
+                        ? 'border-primary-light/40 bg-primary-light/10 text-primary'
+                        : 'border-text-secondary/20 text-text-secondary hover:text-primary'
+                    }`}
+                  >
+                    Telemedicine
+                  </button>
+                </div>
+
                 <button
                   type="button"
                   onClick={handleBook}
                   disabled={!selectedSlot || booking}
                   className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {booking ? 'Booking...' : 'Book Selected Slot'}
+                  {booking
+                    ? 'Booking...'
+                    : appointmentType === 'TELEMEDICINE'
+                      ? 'Book and Create Video Session'
+                      : 'Book Selected Slot'}
                 </button>
 
                 <p className="text-xs text-text-secondary">
-                  Booking status will remain PENDING until payment integration confirms it.
+                  Booking remains PENDING until payment confirmation. Telemedicine links become joinable 1 hour before scheduled time.
                 </p>
               </div>
 
@@ -694,8 +849,10 @@ export function PatientAppointments() {
                         className={`min-h-24 rounded-lg border px-1 py-1 text-left text-xs transition ${
                           selected
                             ? 'border-primary-light/40 bg-primary-light/10 text-primary'
-                            : cell.inMonth
-                              ? 'border-text-secondary/15 bg-surface text-primary'
+                            : marked
+                              ? 'border-accent-mint/45 bg-accent-mint/20 text-primary'
+                              : cell.inMonth
+                                ? 'border-text-secondary/15 bg-surface text-primary'
                               : 'border-text-secondary/10 bg-background/40 text-text-secondary/70'
                         }`}
                       >
@@ -787,11 +944,14 @@ export function PatientAppointments() {
                       <th className="px-3 py-2 font-medium">Time</th>
                       <th className="px-3 py-2 font-medium">Type</th>
                       <th className="px-3 py-2 font-medium">Status</th>
+                      <th className="px-3 py-2 font-medium">Telemedicine</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sortedMyAppointments.map((appt) => {
                       const date = new Date(appt.appointmentTime)
+                      const telemedSession = telemedicineSessions[appt.id]
+                      const canJoin = canJoinTelemedicine(appt, telemedSession)
                       return (
                         <tr
                           key={appt.id}
@@ -809,8 +969,24 @@ export function PatientAppointments() {
                           <td className="px-3 py-2">{appt.type === 'TELEMEDICINE' ? 'Video' : 'In-person'}</td>
                           <td className="px-3 py-2">
                             <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusPastelClass(String(appt.status))}`}>
-                              {String(appt.status).toUpperCase()}
+                              {bookingStatusLabel(appt, telemedSession)}
                             </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            {appt.type !== 'TELEMEDICINE' ? (
+                              <span className="text-xs text-text-secondary">-</span>
+                            ) : canJoin ? (
+                              <Link
+                                to={`/patient/telemedicine/${appt.id}`}
+                                className="rounded-lg border border-primary-light/40 bg-primary-light/10 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary-light/20"
+                              >
+                                Join Call
+                              </Link>
+                            ) : (
+                              <span className="text-xs text-text-secondary">
+                                {telemedicineStateLabel(appt, telemedSession)}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       )
@@ -846,9 +1022,26 @@ export function PatientAppointments() {
               <p><span className="font-medium text-primary">Date:</span> {new Date(popupBooking.appointmentTime).toLocaleDateString('en-GB')}</p>
               <p><span className="font-medium text-primary">Time:</span> {new Date(popupBooking.appointmentTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>
               <p><span className="font-medium text-primary">Type:</span> {popupBooking.type === 'TELEMEDICINE' ? 'Video' : 'In-person'}</p>
-              <p><span className="font-medium text-primary">Status:</span> {String(popupBooking.status).toUpperCase()}</p>
+              <p><span className="font-medium text-primary">Status:</span> {bookingStatusLabel(popupBooking, telemedicineSessions[popupBooking.id])}</p>
+              {popupBooking.type === 'TELEMEDICINE' && (
+                <p>
+                  <span className="font-medium text-primary">Telemedicine:</span>{' '}
+                  {telemedicineStateLabel(popupBooking, telemedicineSessions[popupBooking.id])}
+                </p>
+              )}
               {popupBooking.notes && <p><span className="font-medium text-primary">Notes:</span> {popupBooking.notes}</p>}
             </div>
+
+            {popupBooking.type === 'TELEMEDICINE' && canJoinTelemedicine(popupBooking, telemedicineSessions[popupBooking.id]) && (
+              <div className="mt-4">
+                <Link
+                  to={`/patient/telemedicine/${popupBooking.id}`}
+                  className="btn-primary inline-flex items-center justify-center px-4 py-2 text-sm"
+                >
+                  Open Telemedicine Room
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       )}

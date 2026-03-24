@@ -6,6 +6,7 @@ import {
   Brain,
   CalendarDays,
   FileText,
+  Video,
   Settings,
   LogOut,
 } from 'lucide-react'
@@ -18,6 +19,7 @@ const navLinks = [
   { to: '/patient/profile', icon: User, label: 'Profile' },
   { to: '/patient/prescriptions', icon: ClipboardList, label: 'Prescriptions' },
   { to: '/patient/appointments', icon: CalendarDays, label: 'Appointments' },
+  { to: '/patient/telemedicine', icon: Video, label: 'Telemedicine' },
   { to: '/patient/reports', icon: FileText, label: 'Reports' },
   {
     to: '/patient/symptom-checker',
