@@ -19,6 +19,11 @@ public class FallbackService {
                 .conditions(List.of("Tension headache", "Migraine", "Vertigo (BPPV)"))
                 .specialty("Neurologist")
                 .urgency("medium")
+                .summary("Your symptoms may indicate headache or dizziness-related conditions. A specialist can help narrow this down.")
+                .possibleCauses(List.of("Stress", "Dehydration", "Neck strain"))
+                .selfCareTips(List.of("Rest in a quiet, dark room", "Stay hydrated", "Avoid screens if possible"))
+                .whenToSeekCare("If headaches persist for more than a week or worsen, see a doctor.")
+                .emergencyWarning(null)
                 .build();
         }
 
@@ -27,6 +32,11 @@ public class FallbackService {
                 .conditions(List.of("Angina", "GERD (Acid reflux)", "Musculoskeletal strain"))
                 .specialty("Cardiologist")
                 .urgency("high")
+                .summary("Chest symptoms can have various causes. Prompt evaluation is recommended.")
+                .possibleCauses(List.of("Heart-related", "Digestive (reflux)", "Muscle strain"))
+                .selfCareTips(List.of("Avoid heavy meals", "Rest until evaluated"))
+                .whenToSeekCare("Seek medical evaluation soon, especially for new or severe chest pain.")
+                .emergencyWarning("Seek emergency care immediately for severe chest pain, shortness of breath, or arm/jaw pain.")
                 .build();
         }
 
@@ -35,6 +45,11 @@ public class FallbackService {
                 .conditions(List.of("Common cold", "Influenza", "Upper respiratory infection"))
                 .specialty("General Practitioner")
                 .urgency("low")
+                .summary("Your symptoms suggest a respiratory infection. Most resolve with self-care.")
+                .possibleCauses(List.of("Viral infection", "Seasonal illness"))
+                .selfCareTips(List.of("Rest", "Stay hydrated", "Use over-the-counter remedies as directed"))
+                .whenToSeekCare("See a doctor if fever persists beyond 3 days or symptoms worsen.")
+                .emergencyWarning(null)
                 .build();
         }
 
@@ -74,6 +89,11 @@ public class FallbackService {
             .conditions(List.of("General consultation recommended"))
             .specialty("General Practitioner")
             .urgency("low")
+            .summary(null)
+            .possibleCauses(null)
+            .selfCareTips(null)
+            .whenToSeekCare(null)
+            .emergencyWarning(null)
             .build();
     }
 

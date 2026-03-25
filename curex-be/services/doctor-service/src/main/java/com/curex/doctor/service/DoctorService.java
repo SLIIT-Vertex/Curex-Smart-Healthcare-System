@@ -1,11 +1,18 @@
 package com.curex.doctor.service;
 
-import com.curex.doctor.dto.*;
+import com.curex.doctor.dto.AvailabilitySlotResponse;
+import com.curex.doctor.dto.BookableDoctorResponse;
+import com.curex.doctor.dto.CreateAvailabilityBulkRequest;
+import com.curex.doctor.dto.CreateDoctorRequest;
+import com.curex.doctor.dto.DoctorResponse;
+import com.curex.doctor.dto.UpdateDoctorRequest;
 import com.curex.doctor.entity.Doctor;
 import com.curex.doctor.entity.DoctorAvailability;
 import com.curex.doctor.exception.DoctorAlreadyExistsException;
 import com.curex.doctor.exception.ResourceNotFoundException;
 import com.curex.doctor.exception.SlotNotFoundException;
+import com.curex.doctor.feign.UserServiceClient;
+import com.curex.doctor.feign.dto.ApprovedUserFeignDto;
 import com.curex.doctor.repository.DoctorAvailabilityRepository;
 import com.curex.doctor.repository.DoctorRepository;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +20,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -23,6 +32,7 @@ public class DoctorService {
 
     private final DoctorRepository doctorRepository;
     private final DoctorAvailabilityRepository availabilityRepository;
+    private final UserServiceClient userServiceClient;
 
     @Transactional
     public DoctorResponse create(CreateDoctorRequest request) {
@@ -59,6 +69,13 @@ public class DoctorService {
         return toDoctorResponse(doctor);
     }
 
+    @Transactional(readOnly = true)
+    public DoctorResponse getByUserId(String userId) {
+        Doctor doctor = doctorRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor not found for user id: " + userId));
+        return toDoctorResponse(doctor);
+    }
+
     @Transactional
     public DoctorResponse update(String id, UpdateDoctorRequest request) {
         Doctor doctor = doctorRepository.findById(id)
@@ -74,6 +91,29 @@ public class DoctorService {
         doctor = doctorRepository.save(doctor);
         log.info("Updated doctor profile {}", id);
         return toDoctorResponse(doctor);
+    }
+
+    /**
+     * Doctors who have a profile here and whose user account is {@code APPROVED} in user-service.
+     */
+    @Transactional(readOnly = true)
+    public List<BookableDoctorResponse> listApprovedForBooking() {
+        List<ApprovedUserFeignDto> approved;
+        try {
+            approved = userServiceClient.getApprovedUsersByRole("DOCTOR");
+        } catch (Exception e) {
+            log.error("Failed to fetch approved doctors from user-service: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+        if (approved == null || approved.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Set<String> userIds = approved.stream()
+                .map(ApprovedUserFeignDto::getId)
+                .collect(Collectors.toSet());
+        return doctorRepository.findByUserIdIn(userIds).stream()
+                .map(doctor -> toBookableDoctorResponse(doctor))
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -132,6 +172,24 @@ public class DoctorService {
         slot.setBooked(true);
         availabilityRepository.save(slot);
         log.info("Marked slot {} as booked for doctor {}", slotId, doctorId);
+    }
+
+    private BookableDoctorResponse toBookableDoctorResponse(Doctor doctor) {
+        return BookableDoctorResponse.builder()
+                .userId(doctor.getUserId())
+                .id(doctor.getId())
+                .firstName(doctor.getFirstName())
+                .lastName(doctor.getLastName())
+                .email(doctor.getEmail())
+                .phone(doctor.getPhone())
+                .specialization(doctor.getSpecialization())
+                .qualifications(doctor.getQualifications())
+                .experience(doctor.getExperience())
+                .consultationFee(doctor.getConsultationFee())
+                .bio(doctor.getBio())
+                .avatarUrl(doctor.getAvatarUrl())
+                .verified(doctor.isVerified())
+                .build();
     }
 
     private DoctorResponse toDoctorResponse(Doctor doctor) {

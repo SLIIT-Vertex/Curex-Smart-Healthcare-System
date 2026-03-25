@@ -81,6 +81,8 @@ spec:
                   key: rabbitmq-password
             - name: SERVICES_APPOINTMENT_URL
               value: http://appointment-service:8088
+            - name: SERVICES_USER_URL
+              value: http://user-service:8081
             - name: SPRING_PROFILES_ACTIVE
               value: docker
           resources:

@@ -32,6 +32,11 @@ public class DoctorController {
         return ResponseEntity.status(HttpStatus.CREATED).body(doctorService.create(request));
     }
 
+    @GetMapping("/by-user/{userId}")
+    public ResponseEntity<DoctorResponse> getByUserId(@PathVariable String userId) {
+        return ResponseEntity.ok(doctorService.getByUserId(userId));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<DoctorResponse> getById(@PathVariable String id) {
         return ResponseEntity.ok(doctorService.getById(id));
@@ -46,6 +51,11 @@ public class DoctorController {
     @GetMapping("/search")
     public ResponseEntity<List<DoctorResponse>> search(@RequestParam(required = false) String specialty) {
         return ResponseEntity.ok(doctorService.searchBySpecialty(specialty));
+    }
+
+    @GetMapping("/bookable")
+    public ResponseEntity<List<BookableDoctorResponse>> listBookable() {
+        return ResponseEntity.ok(doctorService.listApprovedForBooking());
     }
 
     @PostMapping("/{id}/availability")

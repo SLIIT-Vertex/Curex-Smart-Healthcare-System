@@ -202,10 +202,13 @@ services:
       RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-guest}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
       SERVICES_APPOINTMENT_URL: ${SERVICES_APPOINTMENT_URL:-http://appointment-service:8088}
+      SERVICES_USER_URL: ${SERVICES_USER_URL:-http://user-service:8081}
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      user-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8084/actuator/health || exit 1"]
@@ -240,6 +243,39 @@ services:
         condition: service_healthy
       doctor-service:
         condition: service_healthy
+
+  payment-service:
+    build:
+      context: ./curex-be/services/payment-service
+      dockerfile: Dockerfile
+    container_name: curex-payment-service
+    restart: unless-stopped
+    expose:
+      - "8087"
+    ports:
+      - "8087:8087"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/curex_payments
+      DB_USER: ${DB_USERNAME:-curex_user}
+      DB_PASSWORD: ${DB_PASSWORD:-curex_password}
+      RABBIT_HOST: rabbitmq
+      RABBIT_USER: ${RABBITMQ_USERNAME:-guest}
+      RABBIT_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL:-http://localhost:5173/payment/success}
+      STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL:-http://localhost:5173/payment/cancel}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8087/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   ai-symptom-service:
     build:
@@ -310,6 +346,8 @@ services:
       patient-service:
         condition: service_started
       doctor-service:
+        condition: service_started
+      payment-service:
         condition: service_started
       ai-symptom-service:
         condition: service_started

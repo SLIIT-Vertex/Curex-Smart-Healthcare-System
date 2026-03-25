@@ -1,9 +1,21 @@
-import axios from 'axios'
+import axios, { type AxiosError } from 'axios'
 import { store } from '../store'
 import { clearCredentials } from '../store/slices/authSlice'
 import { ACCESS_TOKEN_KEY } from '../store/slices/authSlice'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+
+/** Extract user-friendly message from API error response (e.g. Doctor not found for user id) */
+export function getApiErrorMessage(err: unknown, fallback = 'Request failed'): string {
+  if (axios.isAxiosError(err)) {
+    const data = (err as AxiosError<{ message?: string }>).response?.data
+    if (data?.message && typeof data.message === 'string') return data.message
+    const status = (err as AxiosError).response?.status
+    if (status === 404) return 'Resource not found'
+    if (status === 503) return 'Service temporarily unavailable. Please try again.'
+  }
+  return err instanceof Error ? err.message : fallback
+}
 
 const api = axios.create({
   baseURL: API_BASE_URL,

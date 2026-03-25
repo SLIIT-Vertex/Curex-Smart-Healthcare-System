@@ -29,15 +29,26 @@ export interface AvailabilitySlot {
   isBooked: boolean
 }
 
-export type PrescriptionStatus = 'ISSUED' | 'PENDING' | 'CANCELLED'
+export type PrescriptionStatus =
+  | 'ACTIVE'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'ISSUED'
+  | 'PENDING'
 
 export interface Prescription {
   id: string
   doctorId: string
+  doctorName?: string
+  doctorSpecialty?: string
   patientId: string
-  appointmentId: string
+  patientName?: string
+  appointmentId?: string
+  diagnosis?: string
   medicines: string
-  instructions: string
+  instructions?: string
+  validFrom?: string
+  validTo?: string
   issuedAt: string
   status?: PrescriptionStatus
 }

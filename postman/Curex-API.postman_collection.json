@@ -745,6 +745,85 @@
           }
         }
       ]
+    },
+    {
+      "name": "Payments (Stripe)",
+      "item": [
+        {
+          "name": "Create Checkout Session",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": \"{{userId}}\",\n  \"amount\": 50.00,\n  \"currency\": \"usd\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/payments/appointments/APPOINTMENT_ID_HERE", "host": ["{{baseUrl}}"], "path": ["api", "payments", "appointments", "APPOINTMENT_ID_HERE"] }
+          }
+        },
+        {
+          "name": "Get Payment Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/payments/PAYMENT_ID_HERE", "host": ["{{baseUrl}}"], "path": ["api", "payments", "PAYMENT_ID_HERE"] }
+          }
+        },
+        {
+          "name": "List Patient Payments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/payments/patients/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api", "payments", "patients", "{{userId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Appointments",
+      "item": [
+        {
+          "name": "Book Appointment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": \"{{userId}}\",\n  \"patientName\": \"John Doe\",\n  \"patientEmail\": \"patient@curex.com\",\n  \"doctorId\": \"DOCTOR_ID_HERE\",\n  \"doctorName\": \"Dr. Jane Smith\",\n  \"doctorSpecialty\": \"Cardiology\",\n  \"appointmentTime\": \"2024-12-31T10:00:00\",\n  \"type\": \"VIRTUAL\",\n  \"notes\": \"General checkup\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/appointments", "host": ["{{baseUrl}}"], "path": ["api", "appointments"] }
+          }
+        },
+        {
+          "name": "Get Appointment by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/appointments/APPOINTMENT_ID_HERE", "host": ["{{baseUrl}}"], "path": ["api", "appointments", "APPOINTMENT_ID_HERE"] }
+          }
+        },
+        {
+          "name": "Confirm Appointment",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/appointments/APPOINTMENT_ID_HERE/confirm", "host": ["{{baseUrl}}"], "path": ["api", "appointments", "APPOINTMENT_ID_HERE", "confirm"] }
+          }
+        },
+        {
+          "name": "Search by Specialty",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/appointments/search?specialty=Cardiology",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "appointments", "search"],
+              "query": [{ "key": "specialty", "value": "Cardiology" }]
+            }
+          }
+        }
+      ]
     }
   ]
 }

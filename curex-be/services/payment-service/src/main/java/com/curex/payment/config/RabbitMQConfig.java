@@ -2,7 +2,7 @@ package com.curex.payment.config;
 
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
-import org.springframework.amqp.core.DirectExchange;
+import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -18,8 +18,8 @@ public class RabbitMQConfig {
     public static final String PAYMENT_CONFIRMED_ROUTING_KEY = "payment.confirmed";
 
     @Bean
-    public DirectExchange healthcareExchange() {
-        return new DirectExchange(HEALTHCARE_EXCHANGE);
+    public TopicExchange healthcareExchange() {
+        return new TopicExchange(HEALTHCARE_EXCHANGE);
     }
 
     @Bean
@@ -28,7 +28,7 @@ public class RabbitMQConfig {
     }
 
     @Bean
-    public Binding paymentConfirmedBinding(DirectExchange healthcareExchange, Queue paymentConfirmedQueue) {
+    public Binding paymentConfirmedBinding(TopicExchange healthcareExchange, Queue paymentConfirmedQueue) {
         return BindingBuilder.bind(paymentConfirmedQueue)
                 .to(healthcareExchange)
                 .with(PAYMENT_CONFIRMED_ROUTING_KEY);
