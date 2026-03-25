@@ -9,6 +9,7 @@ import {
   Video,
   Settings,
   LogOut,
+  CreditCard,
 } from 'lucide-react'
 import { useAuth, useAuthActions } from '../../../store/hooks'
 
@@ -26,6 +27,7 @@ const navLinks = [
     icon: Brain,
     label: 'Symptom Checker',
   },
+  { to: '/patient/payments', icon: CreditCard, label: 'Payments' },
 ] as const
 
 interface PatientSidebarProps {

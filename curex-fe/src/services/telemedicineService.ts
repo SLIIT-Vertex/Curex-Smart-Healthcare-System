@@ -3,7 +3,7 @@ import type {
   CreateTelemedicineSessionPayload,
   EndTelemedicineSessionPayload,
   TelemedicineSessionRecord,
-} from '../types/telemedicine'
+} from '../types/telemedicine.ts'
 
 export async function createTelemedicineSession(
   appointmentId: string,

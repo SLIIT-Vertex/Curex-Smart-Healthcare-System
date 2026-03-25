@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Calendar, Brain, FileUp } from 'lucide-react'
+import { Calendar, Brain, FileUp, CreditCard } from 'lucide-react'
 
 const actions = [
   {
@@ -22,6 +22,13 @@ const actions = [
     title: 'Upload Report',
     description: 'Medical reports & lab results.',
     accentClass: 'bg-accent-peach/15 text-accent-peach',
+  },
+  {
+    to: '/patient/payments',
+    icon: CreditCard,
+    title: 'Payments & Billing',
+    description: 'View your billing history.',
+    accentClass: 'bg-primary-light/15 text-primary',
   },
 ] as const
 
