@@ -59,7 +59,7 @@ public class AppointmentController {
         AppointmentResponse appointment = appointmentService.getById(id);
         if (!isAdmin(userRole)
                 && !userId.equals(appointment.getPatientId())
-                && !userId.equals(appointment.getDoctorId())) {
+                && !appointmentService.isAuthenticatedDoctorFor(userId, appointment.getDoctorId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only access your own appointments");
         }
         return ResponseEntity.ok(appointment);
@@ -88,11 +88,19 @@ public class AppointmentController {
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String userRole) {
         requireAuthenticated(userId);
+        String pathDoctorId = doctorId != null ? doctorId.trim() : "";
         if (!isAdmin(userRole)) {
             requireRole(userRole, "DOCTOR");
-            requireSameUser(doctorId, userId, "Doctors can only view their own appointments");
+            if (!appointmentService.isAuthenticatedDoctorFor(userId, pathDoctorId)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Doctors can only view their own appointments");
+            }
         }
-        return ResponseEntity.ok(appointmentService.getByDoctor(doctorId));
+        String lookupDoctorId = pathDoctorId;
+        if (userId.equals(pathDoctorId)) {
+            lookupDoctorId = appointmentService.resolveDoctorProfileIdForDoctorUser(userId);
+        }
+        return ResponseEntity.ok(appointmentService.getByDoctor(lookupDoctorId));
     }
 
     //  PATCH /api/appointments/{id} 
@@ -107,7 +115,7 @@ public class AppointmentController {
         AppointmentResponse appointment = appointmentService.getById(id);
         if (!isAdmin(userRole)
                 && !userId.equals(appointment.getPatientId())
-                && !userId.equals(appointment.getDoctorId())) {
+                && !appointmentService.isAuthenticatedDoctorFor(userId, appointment.getDoctorId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only update your own appointments");
         }
         return ResponseEntity.ok(appointmentService.updateAppointment(id, request));
@@ -123,7 +131,10 @@ public class AppointmentController {
         requireAuthenticated(userId);
         requireRole(userRole, "DOCTOR");
         AppointmentResponse appointment = appointmentService.getById(id);
-        requireSameUser(appointment.getDoctorId(), userId, "Doctors can only confirm their own appointments");
+        if (!appointmentService.isAuthenticatedDoctorFor(userId, appointment.getDoctorId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Doctors can only confirm their own appointments");
+        }
         return ResponseEntity.ok(appointmentService.confirmAppointment(id));
     }
 
@@ -140,7 +151,7 @@ public class AppointmentController {
         AppointmentResponse appointment = appointmentService.getById(id);
         if (!isAdmin(userRole)
                 && !userId.equals(appointment.getPatientId())
-                && !userId.equals(appointment.getDoctorId())) {
+                && !appointmentService.isAuthenticatedDoctorFor(userId, appointment.getDoctorId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only cancel your own appointments");
         }
         return ResponseEntity.ok(appointmentService.cancelAppointment(id, reason));

@@ -22,6 +22,10 @@ public interface DoctorClient {
     @GetMapping("/doctors/bookable")
     List<BookableDoctorDto> getApprovedDoctorsForBooking();
 
+    /** Resolve auth user id → doctor profile (same JSON shape as bookable row, minus userId in some responses). */
+    @GetMapping("/doctors/by-user/{userId}")
+    BookableDoctorDto getDoctorByUserId(@PathVariable("userId") String userId);
+
     @GetMapping("/doctors/{id}/availability")
     List<AvailabilitySlotDto> getAvailability(@PathVariable("id") String doctorId);
 
