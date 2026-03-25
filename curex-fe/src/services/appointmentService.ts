@@ -99,6 +99,20 @@ const doctorProfileIdByUserId = new Map<string, string>()
 /** Fetch doctors approved for booking (doctor profile + user id) from doctor-service. */
 export async function getDoctorDirectory(specialty?: string): Promise<DoctorDirectoryItem[]> {
   try {
+    let userSpecialtyById = new Map<string, string>()
+    try {
+      const { data: users } = await api.get<UserDoctorResponse[]>('/api/users/doctors')
+      if (Array.isArray(users)) {
+        userSpecialtyById = new Map(
+          users
+            .filter((user) => !!user.specialization)
+            .map((user) => [user.id, String(user.specialization).trim()])
+        )
+      }
+    } catch {
+      // Keep going with doctor-service data only.
+    }
+
     // Preferred source: doctor-service returns profileId + userId together.
     const { data } = await api.get<BookableDoctorResponse[]>('/api/doctors/bookable')
     if (Array.isArray(data) && data.length > 0) {
@@ -106,11 +120,13 @@ export async function getDoctorDirectory(specialty?: string): Promise<DoctorDire
         if (doctor.userId && doctor.id) {
           doctorProfileIdByUserId.set(doctor.userId, doctor.id)
         }
+        const normalizedSpecialty =
+          doctor.specialization?.trim() || userSpecialtyById.get(doctor.userId) || 'General'
         return {
           // Keep doctor user ID for appointment ownership semantics.
           id: doctor.userId,
           name: `Dr. ${doctor.firstName} ${doctor.lastName}`.trim(),
-          specialty: doctor.specialization || 'General',
+          specialty: normalizedSpecialty,
           hospital: 'Curex Health Network',
         }
       })

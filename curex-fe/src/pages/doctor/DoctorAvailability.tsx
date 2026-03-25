@@ -15,7 +15,7 @@ import type { AppointmentRecord } from '../../types/appointment'
 import type { TelemedicineSessionRecord } from '../../types/telemedicine'
 import '../../styles/pages/AppointmentFlow.css'
 import '../../styles/pages/DoctorDashboard.css'
-import { useAuth } from '../../store/hooks'
+import { useAuth, useToast } from '../../store/hooks'
 
 type SlotState = 'unavailable' | 'available' | 'booked'
 function hydrateGridFromStorage(doctorId: string): Record<string, SlotState> {
@@ -187,6 +187,7 @@ function withDayPattern(
 
 export function DoctorAvailability() {
   const { user } = useAuth()
+  const { toast } = useToast()
   const doctorId = user?.id ?? ''
   const [activeTab, setActiveTab] = useState<'availability' | 'booked'>('availability')
   const [grid, setGrid] = useState<Record<string, SlotState>>(() =>
@@ -200,12 +201,12 @@ export function DoctorAvailability() {
   const [telemedicineSessions, setTelemedicineSessions] = useState<
     Record<string, TelemedicineSessionRecord | null>
   >({})
-  const [loadError, setLoadError] = useState<string | null>(null)
   const dateKeys = useMemo(() => getUpcomingDateKeys(30), [])
   const [selectedDateKey, setSelectedDateKey] = useState(dateKeys[0])
   const [weekStartIndex, setWeekStartIndex] = useState(0)
   const [bookedMonth, setBookedMonth] = useState(() => monthStart(new Date()))
   const [showBookedMonthPicker, setShowBookedMonthPicker] = useState(false)
+  const [showBookedCalendar, setShowBookedCalendar] = useState(true)
   const [selectedBookedDate, setSelectedBookedDate] = useState(toDateKey(new Date()))
   const [popupBooked, setPopupBooked] = useState<AppointmentRecord | null>(null)
   const dragRef = useRef<{
@@ -296,11 +297,10 @@ export function DoctorAvailability() {
         return
       }
       try {
-        setLoadError(null)
         const data = await getAppointmentsByDoctor(doctorId)
         setBookedAppointments(data)
       } catch {
-        setLoadError('Could not load booked appointments. Showing local availability only.')
+        toast('Could not load booked appointments. Showing local availability only.', 'error')
       }
     }
 
@@ -503,6 +503,15 @@ export function DoctorAvailability() {
     return () => window.removeEventListener('pointerup', clearDrag)
   }, [])
 
+  const handleBookedCalendarDateClick = (dateKey: string) => {
+    const todayDateKey = toDateKey(new Date())
+    if (dateKey < todayDateKey) {
+      toast('Previous dates cannot be selected.', 'error')
+      return
+    }
+    setSelectedBookedDate(dateKey)
+  }
+
   return (
     <div className="space-y-6 pb-24">
       <div>
@@ -511,12 +520,6 @@ export function DoctorAvailability() {
           Set your availability for the next 30 days. Patients will see exact dates and times.
         </p>
       </div>
-
-      {loadError && (
-        <div className="rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-primary">
-          {loadError}
-        </div>
-      )}
 
       <div className="inline-flex rounded-xl border border-text-secondary/20 bg-surface p-1">
         <button
@@ -545,7 +548,7 @@ export function DoctorAvailability() {
 
       {activeTab === 'availability' && (
         <>
-          <div className="appointment-panel p-4 lg:p-5">
+          <div className="appointment-panel calendar-surface p-4 lg:p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-primary">Weekly Timetable</h2>
@@ -698,13 +701,17 @@ export function DoctorAvailability() {
             These are patient bookings from the appointment service.
           </p>
 
-          {upcomingBookedAppointments.length === 0 ? (
-            <div className="mt-4 rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-6 py-8 text-center text-text-secondary">
-              No bookings yet.
-            </div>
-          ) : (
             <div className="mt-4 space-y-5">
-              <div className="rounded-2xl border border-text-secondary/15 bg-background/40 p-4">
+              <button
+                type="button"
+                onClick={() => setShowBookedCalendar((v) => !v)}
+                className="inline-flex items-center gap-2 rounded-xl border border-text-secondary/20 bg-surface px-3 py-2 text-sm font-medium text-primary"
+              >
+                {showBookedCalendar ? 'Hide Calendar' : 'Show Calendar'}
+              </button>
+
+              {showBookedCalendar && (
+              <div className="calendar-surface rounded-2xl border border-text-secondary/15 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <button
                     type="button"
@@ -795,7 +802,7 @@ export function DoctorAvailability() {
                     return (
                       <div
                         key={cell.dateKey}
-                        onClick={() => setSelectedBookedDate(cell.dateKey)}
+                        onClick={() => handleBookedCalendarDateClick(cell.dateKey)}
                         className={`min-h-24 rounded-lg border px-1 py-1 text-left text-xs transition ${
                           selected
                             ? 'border-primary-light/40 bg-primary-light/10 text-primary'
@@ -875,10 +882,20 @@ export function DoctorAvailability() {
                     )}
                   </div>
                 </div>
+
+                <p className="mt-3 text-xs text-text-secondary">
+                  Previous dates are view-only.
+                </p>
               </div>
+              )}
 
               <div className="overflow-x-auto rounded-2xl border border-text-secondary/15 bg-background/40 p-4">
                 <h3 className="mb-3 text-base font-semibold text-primary">All Booked Appointments</h3>
+                {upcomingBookedAppointments.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-6 py-8 text-center text-text-secondary">
+                    No bookings yet.
+                  </div>
+                ) : (
                 <table className="w-full min-w-[42rem] text-left text-sm">
                   <thead>
                     <tr className="border-b border-text-secondary/20 text-text-secondary">
@@ -936,9 +953,9 @@ export function DoctorAvailability() {
                     })}
                   </tbody>
                 </table>
+                )}
               </div>
             </div>
-          )}
         </div>
       )}
 

@@ -29,4 +29,24 @@
   .slot-pill--active {
     @apply border-accent-mint/50 bg-accent-mint/20;
   }
+
+  .calendar-surface {
+    background-color: #e2e8f2;
+  }
+
+  .doctor-card-horizontal {
+    @apply flex items-center gap-3 rounded-2xl border border-text-secondary/20 bg-surface px-3 py-3 transition-colors hover:border-primary-light/35;
+  }
+
+  .doctor-card-horizontal--active {
+    @apply border-primary-light/45 bg-primary-light/10;
+  }
+
+  .doctor-card-avatar {
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-xl border border-primary-light/30 bg-primary-light/10 text-sm font-semibold text-primary;
+  }
+
+  .doctor-profile-avatar {
+    @apply inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-primary-light/30 bg-primary-light/10 text-lg font-semibold text-primary;
+  }
 }
