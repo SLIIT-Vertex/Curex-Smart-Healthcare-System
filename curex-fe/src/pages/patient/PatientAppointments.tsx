@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import {
   bookAppointment,
   getAppointmentsByPatient,
+  getDoctorAppointments,
   getDoctorDirectory,
   getDoctorSlots,
 } from '../../services/appointmentService'
@@ -168,6 +169,23 @@ function doctorInitials(doctor: DoctorDirectoryItem | null): string {
   return `${first}${second}`.toUpperCase()
 }
 
+function appointmentDateTimeKey(appointmentTime: string): { dateKey: string; time: string } | null {
+  const match = String(appointmentTime).match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/)
+  if (match) {
+    return { dateKey: match[1], time: match[2] }
+  }
+
+  const parsed = new Date(appointmentTime)
+  if (Number.isNaN(parsed.getTime())) {
+    return null
+  }
+
+  return {
+    dateKey: toDateKey(parsed),
+    time: `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`,
+  }
+}
+
 export function PatientAppointments() {
   const { user } = useAuth()
   const { toast } = useToast()
@@ -176,6 +194,7 @@ export function PatientAppointments() {
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('ALL')
   const [doctors, setDoctors] = useState<DoctorDirectoryItem[]>([])
   const [doctorSlots, setDoctorSlots] = useState<Record<string, Array<{ day: string; startTime: string; endTime: string; booked: boolean }>>>({})
+  const [doctorAppointmentsById, setDoctorAppointmentsById] = useState<Record<string, AppointmentRecord[]>>({})
   const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null)
   const [doctorsLoading, setDoctorsLoading] = useState(false)
   const [slotsLoading, setSlotsLoading] = useState(false)
@@ -245,6 +264,34 @@ export function PatientAppointments() {
     fetchSlots()
   }, [selectedDoctorId])
 
+  useEffect(() => {
+    if (!selectedDoctorId) return
+
+    const fetchDoctorAppointments = async () => {
+      try {
+        const selected = doctors.find((d) => d.id === selectedDoctorId)
+        const idsToCheck = [selectedDoctorId, selected?.profileId]
+          .filter((id): id is string => Boolean(id))
+
+        const settled = await Promise.allSettled(idsToCheck.map((id) => getDoctorAppointments(id)))
+        const merged = settled
+          .filter((result): result is PromiseFulfilledResult<AppointmentRecord[]> => result.status === 'fulfilled')
+          .flatMap((result) => result.value)
+          .flat()
+          .filter((appt, idx, arr) => arr.findIndex((x) => x.id === appt.id) === idx)
+
+        setDoctorAppointmentsById((prev) => ({
+          ...prev,
+          [selectedDoctorId]: merged,
+        }))
+      } catch (err) {
+        console.error('Failed to fetch doctor appointments:', err)
+      }
+    }
+
+    fetchDoctorAppointments()
+  }, [selectedDoctorId, doctors])
+
   const selectedDoctor = useMemo(
     () => {
       if (!selectedDoctorId) return null
@@ -280,10 +327,11 @@ export function PatientAppointments() {
 
   const availableSlotsForSelectedDoctor = useMemo(() => {
     if (!selectedDoctor || !selectedDoctorId) {
-      return [] as Array<{ key: string; time: string; isBooked: boolean; isAvailable: boolean }>
+      return [] as Array<{ key: string; time: string; isBooked: boolean; isAvailable: boolean; isPast: boolean }>
     }
 
     const slots = doctorSlots[selectedDoctorId] || []
+    const doctorAppointments = doctorAppointmentsById[selectedDoctorId] || []
     
     // Convert backend slots to date-time format for the selected date
     const availableForDate = new Set<string>()
@@ -307,6 +355,27 @@ export function PatientAppointments() {
       }
     }
 
+    // Merge appointment records as booked markers so patients can always see booked slots.
+    for (const appt of doctorAppointments) {
+      const status = String(appt.status).toUpperCase()
+      if (status === 'CANCELLED' || status === 'COMPLETED') {
+        continue
+      }
+
+      const parsedSlot = appt.slotId ? parseDateSlotKey(appt.slotId) : null
+      if (parsedSlot && parsedSlot.dateKey === selectedDateKey) {
+        bookedForDate.add(appt.slotId as string)
+        continue
+      }
+
+      const appointmentKey = appointmentDateTimeKey(appt.appointmentTime)
+      if (!appointmentKey || appointmentKey.dateKey !== selectedDateKey) {
+        continue
+      }
+
+      bookedForDate.add(dateSlotKey(appointmentKey.dateKey, appointmentKey.time))
+    }
+
     const merged = new Set<string>([...availableForDate, ...bookedForDate])
 
     return [...merged]
@@ -320,6 +389,7 @@ export function PatientAppointments() {
           time: parsed.time,
           isBooked: bookedForDate.has(key),
           isAvailable: availableForDate.has(key),
+          isPast: new Date(`${parsed.dateKey}T${parsed.time}:00`).getTime() <= Date.now(),
         }
       })
       .filter(
@@ -330,10 +400,11 @@ export function PatientAppointments() {
           time: string
           isBooked: boolean
           isAvailable: boolean
+          isPast: boolean
         } => Boolean(slot)
       )
       .sort((a, b) => TIME_SLOTS.indexOf(a.time) - TIME_SLOTS.indexOf(b.time))
-  }, [selectedDoctor, selectedDoctorId, doctorSlots, selectedDateKey])
+  }, [selectedDoctor, selectedDoctorId, doctorSlots, doctorAppointmentsById, selectedDateKey])
 
   const visibleSlots = useMemo(() => {
     return availableSlotsForSelectedDoctor.slice(slotStartIndex, slotStartIndex + 8)
@@ -499,6 +570,12 @@ export function PatientAppointments() {
       return
     }
 
+    const selectedSlotTime = new Date(`${parsed.dateKey}T${parsed.time}:00`).getTime()
+    if (selectedSlotTime <= Date.now()) {
+      toast('Selected time has already passed. Please choose a future slot.', 'error')
+      return
+    }
+
     try {
       setBooking(true)
       setMessage(null)
@@ -550,6 +627,18 @@ export function PatientAppointments() {
       setDoctorSlots((prev) => ({
         ...prev,
         [selectedDoctor.id]: slots,
+      }))
+
+      const idsToCheck = [selectedDoctor.id, selectedDoctor.profileId]
+        .filter((id): id is string => Boolean(id))
+      const latestSettled = await Promise.allSettled(idsToCheck.map((id) => getDoctorAppointments(id)))
+      const mergedAppointments = latestSettled
+        .filter((result): result is PromiseFulfilledResult<AppointmentRecord[]> => result.status === 'fulfilled')
+        .flatMap((result) => result.value)
+        .filter((appt, idx, arr) => arr.findIndex((x) => x.id === appt.id) === idx)
+      setDoctorAppointmentsById((prev) => ({
+        ...prev,
+        [selectedDoctor.id]: mergedAppointments,
       }))
     } catch (err: any) {
       const serverMessage = err?.response?.data?.message
@@ -771,18 +860,18 @@ export function PatientAppointments() {
                           <ChevronLeft className="h-4 w-4" />
                         </button>
 
-                        <div className="flex flex-1 gap-2 overflow-x-auto pb-1">
+                        <div className="grid flex-1 grid-cols-8 gap-2">
                           {visibleSlots.map((slot) => (
                             <button
                               key={slot.key}
                               type="button"
                               onClick={() => {
-                                if (!slot.isBooked && slot.isAvailable) {
+                                if (!slot.isBooked && slot.isAvailable && !slot.isPast) {
                                   setSelectedSlot(slot.key)
                                 }
                               }}
-                              disabled={slot.isBooked || !slot.isAvailable}
-                              className={`slot-pill min-w-24 ${
+                              disabled={slot.isBooked || !slot.isAvailable || slot.isPast}
+                              className={`slot-pill min-w-0 w-full ${
                                 selectedSlot === slot.key ? 'slot-pill--active' : ''
                               } ${
                                 slot.isBooked
@@ -792,12 +881,22 @@ export function PatientAppointments() {
                                 !slot.isAvailable
                                   ? 'cursor-not-allowed border-text-secondary/15 bg-background/40 text-text-secondary'
                                   : ''
+                              } ${
+                                !slot.isBooked && slot.isPast
+                                  ? 'cursor-not-allowed border-text-secondary/20 bg-background/60 text-text-secondary/80'
+                                  : ''
                               }`}
                             >
                               <div className="text-center">
                                 <div>{slot.time}</div>
                                 <div className="text-[10px] text-text-secondary">
-                                  {slot.isBooked ? 'Booked' : slot.isAvailable ? 'Available' : 'Off'}
+                                  {slot.isBooked
+                                    ? 'Booked'
+                                    : slot.isPast
+                                      ? 'Passed'
+                                      : slot.isAvailable
+                                        ? 'Available'
+                                        : 'Off'}
                                 </div>
                               </div>
                             </button>

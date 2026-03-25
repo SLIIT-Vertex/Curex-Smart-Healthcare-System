@@ -125,6 +125,7 @@ export async function getDoctorDirectory(specialty?: string): Promise<DoctorDire
         return {
           // Keep doctor user ID for appointment ownership semantics.
           id: doctor.userId,
+          profileId: doctor.id,
           name: `Dr. ${doctor.firstName} ${doctor.lastName}`.trim(),
           specialty: normalizedSpecialty,
           hospital: 'Curex Health Network',
@@ -173,6 +174,7 @@ export async function getDoctorDirectory(specialty?: string): Promise<DoctorDire
 
       return {
         id: user.id,
+        profileId: profile?.id,
         name: `Dr. ${user.firstName} ${user.lastName}`.trim(),
         specialty: profile?.specialization || user.specialization || 'General',
         hospital: 'Curex Health Network',

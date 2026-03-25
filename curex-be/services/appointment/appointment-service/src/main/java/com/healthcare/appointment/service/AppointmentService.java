@@ -58,14 +58,17 @@ public class AppointmentService {
     @Transactional
     public AppointmentResponse bookAppointment(BookAppointmentRequest req) {
 
-        // 2. Conflict check: same doctor, same ±30-minute window
-        LocalDateTime from = req.getAppointmentTime().minusMinutes(30);
-        LocalDateTime to   = req.getAppointmentTime().plusMinutes(30);
-        List<Appointment> conflicts = appointmentRepository
-                .findConflictingAppointments(req.getDoctorId(), from, to);
-        if (!conflicts.isEmpty()) {
+        // 1. Hard-stop any booking for now/past times on server side.
+        if (req.getAppointmentTime() == null || !req.getAppointmentTime().isAfter(LocalDateTime.now())) {
+            throw new IllegalArgumentException("Selected appointment time has already passed.");
+        }
+
+        // 2. Conflict check: same doctor, exact slot time only.
+        boolean hasConflict = appointmentRepository.existsActiveConflictAtExactTime(
+            req.getDoctorId(), req.getAppointmentTime());
+        if (hasConflict) {
             throw new IllegalStateException(
-                    "Doctor already has an appointment in this time window.");
+                "Doctor already has an appointment at this exact time.");
         }
 
         // 3. Check slot availability via Feign (skipped in stub-mode)
