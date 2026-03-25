@@ -41,7 +41,7 @@ public class StripeServiceImpl implements StripeService {
     }
 
     @Override
-    public Session createCheckoutSession(Payment payment) {
+    public Session createCheckoutSession(Payment payment, String customSuccessUrl, String customCancelUrl) {
         if (payment == null) {
             throw new IllegalArgumentException("payment is required");
         }
@@ -56,19 +56,21 @@ public class StripeServiceImpl implements StripeService {
         String currency = normalizeCurrency(payment.getCurrency());
         long unitAmount = toStripeUnitAmount(payment.getAmount(), currency);
 
-        // Tricky area: success_url should include {CHECKOUT_SESSION_ID} placeholder so
-        // frontend can fetch session if needed.
-        String successUrl = ensureSessionIdPlaceholder(stripeProperties.getSuccessUrl());
-        String cancelUrl = stripeProperties.getCancelUrl();
-        if (!StringUtils.hasText(successUrl) || !StringUtils.hasText(cancelUrl)) {
+        // Preference: passed URLs -> properties URLs
+        String finalSuccessUrl = StringUtils.hasText(customSuccessUrl) ? customSuccessUrl : stripeProperties.getSuccessUrl();
+        String finalCancelUrl = StringUtils.hasText(customCancelUrl) ? customCancelUrl : stripeProperties.getCancelUrl();
+
+        finalSuccessUrl = ensureSessionIdPlaceholder(finalSuccessUrl);
+
+        if (!StringUtils.hasText(finalSuccessUrl) || !StringUtils.hasText(finalCancelUrl)) {
             throw new IllegalStateException(
                     "Stripe success/cancel URLs are not configured (stripe.success-url, stripe.cancel-url)");
         }
 
         SessionCreateParams params = SessionCreateParams.builder()
                 .setMode(SessionCreateParams.Mode.PAYMENT)
-                .setSuccessUrl(successUrl)
-                .setCancelUrl(cancelUrl)
+                .setSuccessUrl(finalSuccessUrl)
+                .setCancelUrl(finalCancelUrl)
                 // Client reference helps correlating in Stripe dashboard.
                 .setClientReferenceId(payment.getAppointmentId())
                 // Line item shown in Stripe Checkout.

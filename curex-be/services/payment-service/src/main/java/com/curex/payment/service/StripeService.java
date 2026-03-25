@@ -15,7 +15,7 @@ public interface StripeService {
     /**
      * Create a Stripe Checkout Session for the given payment.
      */
-    Session createCheckoutSession(Payment payment);
+    Session createCheckoutSession(Payment payment, String successUrl, String cancelUrl);
 
     /**
      * Verify Stripe webhook signature and construct the Event.

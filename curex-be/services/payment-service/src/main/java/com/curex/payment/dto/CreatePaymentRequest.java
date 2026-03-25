@@ -27,4 +27,8 @@ public class CreatePaymentRequest {
 
     @NotBlank(message = "currency is required")
     private String currency;
+
+    private String successUrl;
+
+    private String cancelUrl;
 }

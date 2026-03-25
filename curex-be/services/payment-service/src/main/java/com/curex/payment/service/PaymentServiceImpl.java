@@ -50,7 +50,7 @@ public class PaymentServiceImpl implements PaymentService {
         // Save first so we have a DB id to put into Stripe metadata.
         payment = paymentRepository.save(payment);
 
-        Session session = stripeService.createCheckoutSession(payment);
+        Session session = stripeService.createCheckoutSession(payment, request.getSuccessUrl(), request.getCancelUrl());
 
         payment.setStripeSessionId(session.getId());
         // For Checkout, payment intent id may be null until completion.

@@ -1,7 +1,5 @@
-import axios from 'axios'
+import api from './axiosInstance'
 import type { ApiResponse } from '../types/common.ts'
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
 
 export interface CreatePaymentRequest {
   patientId: string
@@ -12,7 +10,13 @@ export interface CreatePaymentRequest {
 }
 
 export interface StripeCheckoutResponse {
-  sessionId: string
+  paymentId: string
+  appointmentId: string
+  patientId: string
+  amount: number
+  currency: string
+  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED'
+  stripeSessionId: string
   checkoutUrl: string
 }
 
@@ -22,9 +26,10 @@ export interface PaymentRecord {
   patientId: string
   amount: number
   currency: string
-  status: 'PENDING' | 'COMPLETED' | 'CANCELLED' | 'REFUNDED'
+  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED'
   stripePaymentIntentId?: string
-  stripeCheckoutSessionId?: string
+  stripeSessionId?: string
+  paymentMethod?: string
   createdAt: string
   updatedAt: string
 }
@@ -33,23 +38,23 @@ export async function createCheckoutSession(
   appointmentId: string,
   request: CreatePaymentRequest
 ): Promise<StripeCheckoutResponse> {
-  const response = await axios.post<ApiResponse<StripeCheckoutResponse>>(
-    `${API_BASE_URL}/payments/appointments/${appointmentId}`,
+  const { data } = await api.post<ApiResponse<StripeCheckoutResponse>>(
+    `/api/payments/appointments/${appointmentId}`,
     request
   )
-  return response.data.payload
+  return data.payload
 }
 
 export async function getPaymentDetails(id: string): Promise<PaymentRecord> {
-  const response = await axios.get<ApiResponse<PaymentRecord>>(
-    `${API_BASE_URL}/payments/${id}`
+  const { data } = await api.get<ApiResponse<PaymentRecord>>(
+    `/api/payments/${id}`
   )
-  return response.data.payload
+  return data.payload
 }
 
 export async function getPatientPayments(patientId: string): Promise<PaymentRecord[]> {
-  const response = await axios.get<ApiResponse<PaymentRecord[]>>(
-    `${API_BASE_URL}/patients/${patientId}/payments`
+  const { data } = await api.get<ApiResponse<PaymentRecord[]>>(
+    `/api/payments/patients/${patientId}`
   )
-  return response.data.payload
+  return data.payload
 }
