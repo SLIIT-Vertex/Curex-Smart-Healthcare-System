@@ -29,9 +29,14 @@ public class GroqAiService {
         1. Exactly three possible medical conditions (most likely first)
         2. The single most appropriate doctor specialty to consult
         3. An urgency level: "low", "medium", or "high"
+        4. A 1-2 sentence lay summary of the analysis
+        5. Brief possible causes (2-3 items)
+        6. Self-care tips (2-4 items) for what to do at home
+        7. When to see a doctor (1-2 sentences)
+        8. When to seek emergency care, or null if not applicable
 
         Respond ONLY with a valid JSON object in this exact format, no extra text:
-        {"conditions":["condition1","condition2","condition3"],"specialty":"SpecialtyName","urgency":"low|medium|high"}
+        {"conditions":["condition1","condition2","condition3"],"specialty":"SpecialtyName","urgency":"low|medium|high","summary":"1-2 sentence lay summary","possibleCauses":["cause1","cause2"],"selfCareTips":["tip1","tip2","tip3"],"whenToSeekCare":"When to see a doctor (1-2 sentences)","emergencyWarning":"When to seek emergency care, or null if not applicable"}
         """;
 
     public SymptomCheckResponse analyzeSymptoms(String symptoms) {
@@ -85,20 +90,44 @@ public class GroqAiService {
 
             JsonNode parsed = objectMapper.readTree(content);
 
-            List<String> conditions = new ArrayList<>();
-            if (parsed.has("conditions") && parsed.get("conditions").isArray()) {
-                parsed.get("conditions").forEach(c -> conditions.add(c.asText()));
+            List<String> conditions = parseStringArray(parsed, "conditions");
+            List<String> possibleCauses = parseStringArray(parsed, "possibleCauses");
+            List<String> selfCareTips = parseStringArray(parsed, "selfCareTips");
+
+            String emergencyWarning = null;
+            if (parsed.has("emergencyWarning") && !parsed.get("emergencyWarning").isNull()) {
+                String val = parsed.get("emergencyWarning").asText();
+                if (!val.isBlank()) {
+                    emergencyWarning = val;
+                }
             }
 
             return SymptomCheckResponse.builder()
-                .conditions(conditions)
+                .conditions(conditions.isEmpty() ? List.of("General consultation recommended") : conditions)
                 .specialty(parsed.path("specialty").asText("General Practitioner"))
                 .urgency(parsed.path("urgency").asText("low"))
+                .summary(nullIfBlank(parsed.path("summary").asText()))
+                .possibleCauses(possibleCauses)
+                .selfCareTips(selfCareTips)
+                .whenToSeekCare(nullIfBlank(parsed.path("whenToSeekCare").asText()))
+                .emergencyWarning(emergencyWarning)
                 .build();
 
         } catch (Exception e) {
             log.error("Failed to parse Groq response: {}", e.getMessage());
             throw new RuntimeException("Failed to parse AI response", e);
         }
+    }
+
+    private List<String> parseStringArray(JsonNode root, String field) {
+        List<String> list = new ArrayList<>();
+        if (root.has(field) && root.get(field).isArray()) {
+            root.get(field).forEach(n -> list.add(n.asText()));
+        }
+        return list;
+    }
+
+    private static String nullIfBlank(String s) {
+        return s == null || s.isBlank() ? null : s;
     }
 }

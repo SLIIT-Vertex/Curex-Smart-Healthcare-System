@@ -1,4 +1,5 @@
 import api from './axiosInstance'
+import api from './axiosInstance'
 import type {
   AppointmentRecord,
   BookAppointmentPayload,
@@ -141,6 +142,7 @@ export async function bookAppointment(
   payload: BookAppointmentPayload
 ): Promise<AppointmentRecord> {
   const { data } = await api.post<AppointmentRecord>(
+  const { data } = await api.post<AppointmentRecord>(
     '/api/appointments',
     payload
   )
@@ -151,6 +153,7 @@ export async function getAppointmentsByDoctor(
   doctorId: string
 ): Promise<AppointmentRecord[]> {
   const { data } = await api.get<AppointmentRecord[]>(
+  const { data } = await api.get<AppointmentRecord[]>(
     `/api/appointments/doctor/${doctorId}`
   )
   return data
@@ -160,6 +163,7 @@ export async function getAppointmentsByPatient(
   patientId: string
 ): Promise<AppointmentRecord[]> {
   const { data } = await api.get<AppointmentRecord[]>(
+  const { data } = await api.get<AppointmentRecord[]>(
     `/api/appointments/patient/${patientId}`
   )
   return data
@@ -168,6 +172,7 @@ export async function getAppointmentsByPatient(
 export async function getAppointmentById(
   appointmentId: string
 ): Promise<AppointmentRecord> {
+  const { data } = await api.get<AppointmentRecord>(
   const { data } = await api.get<AppointmentRecord>(
     `/api/appointments/${appointmentId}`
   )

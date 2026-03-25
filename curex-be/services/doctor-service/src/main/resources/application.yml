@@ -38,10 +38,12 @@ spring:
         max-attempts: 3
         multiplier: 2
 
-# Appointment service URL for Feign (prescription validation)
+# Downstream / cross-service URLs for Feign
 services:
   appointment:
     url: ${SERVICES_APPOINTMENT_URL:http://localhost:8088}
+  user:
+    url: ${SERVICES_USER_URL:http://localhost:8081}
 
 management:
   endpoints:

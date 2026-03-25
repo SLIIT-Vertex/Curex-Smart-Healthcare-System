@@ -17,8 +17,11 @@ public class PrescriptionResponse {
     private String id;
     private String doctorId;
     private String doctorName;
+    private String doctorSpecialty;
     private String patientId;
+    private String patientName;
     private String appointmentId;
+    private String diagnosis;
     private String medicines;
     private String instructions;
     private LocalDate validFrom;

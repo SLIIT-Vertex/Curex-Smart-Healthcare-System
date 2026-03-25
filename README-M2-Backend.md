@@ -45,7 +45,7 @@ This document covers the backend services developed for **Member 2 (M2)** in the
 - **Database**: PostgreSQL (curex_patients, curex_doctors)
 - **Message Broker**: RabbitMQ (doctor-service for prescription events)
 - **AI**: Groq Cloud API (llama-3.1-8b-instant), OpenAI-compatible
-- **Feign**: Patient → Doctor (prescriptions); Doctor → Appointment (validation)
+- **Feign**: Patient → Doctor (prescriptions); Doctor → Appointment (validation); Doctor → User (approved doctors for booking)
 
 ## Quick Start
 
@@ -131,6 +131,16 @@ All endpoints are reached via the API Gateway at `http://localhost:8080`. Auth: 
 | GET | `/api/doctors/{id}/availability` | Get availability slots | Yes |
 | PATCH | `/api/doctors/{id}/availability/{slotId}/book` | Mark slot as booked | Yes (M4 Feign) |
 
+#### Appointment-service integration (bookable doctors)
+
+**Appointment-service** should load the doctor picker / bookable list from doctor-service **directly** (same base URL as the existing `DoctorClient`, e.g. `http://doctor-service:8084` in Docker — **not** via `/api/doctors/**` on the gateway):
+
+| Method | Path on doctor-service | Description |
+|--------|-------------------------|-------------|
+| GET | `/internal/doctors/approved-for-booking` | Returns doctor profiles whose **user account is `APPROVED`** in user-service (admin-approved). Response: JSON array of bookable doctor DTOs (`userId`, `id` doctor profile id, name, email, `specialization`, `consultationFee`, etc.). |
+
+The Feign client in appointment-service should call this path (see `DoctorClient#getApprovedDoctorsForBooking()`). This route is `permitAll` on doctor-service and is intended for **internal network** calls only.
+
 ### Prescription Service (`/api/prescriptions/**`)
 
 | Method | Endpoint | Description | Auth |
@@ -161,8 +171,9 @@ All endpoints are reached via the API Gateway at `http://localhost:8080`. Auth: 
 | `RABBITMQ_HOST` | Doctor | RabbitMQ host | `localhost` |
 | `RABBITMQ_USERNAME` | Doctor | RabbitMQ username | `guest` |
 | `RABBITMQ_PASSWORD` | Doctor | RabbitMQ password | `guest` |
-| `SERVICES_DOCTOR_URL` | Patient | Doctor service URL for Feign | `http://localhost:8084` |
+| `SERVICES_DOCTOR_URL` | Patient, Appointment | Doctor service URL for Feign | `http://localhost:8084` |
 | `SERVICES_APPOINTMENT_URL` | Doctor | Appointment service URL for Feign | `http://localhost:8088` |
+| `SERVICES_USER_URL` | Doctor | User service URL (approved doctors lookup) | `http://localhost:8081` |
 | `GROQ_API_KEY` | AI Symptom | Groq Cloud API key ([console.groq.com](https://console.groq.com)); empty = rule-based fallback | — |
 | `AI_PROVIDER` | AI Symptom | AI provider | `groq` |
 | `AI_MODEL` | AI Symptom | Model name | `llama-3.1-8b-instant` |
@@ -172,7 +183,7 @@ All endpoints are reached via the API Gateway at `http://localhost:8080`. Auth: 
 M2 services are defined in `docker-compose.yml`:
 
 - `patient-service` — depends on postgres, doctor-service
-- `doctor-service` — depends on postgres, rabbitmq
+- `doctor-service` — depends on postgres, rabbitmq, user-service (`SERVICES_USER_URL` for approved-doctor filter)
 - `ai-symptom-service` — stateless, optional `GROQ_API_KEY`
 
 ### Kubernetes

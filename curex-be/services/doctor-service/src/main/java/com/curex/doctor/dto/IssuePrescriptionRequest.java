@@ -27,6 +27,12 @@ public class IssuePrescriptionRequest {
     /** Optional: used for prescription.issued notification email */
     private String patientEmail;
 
+    /** Optional: patient name from appointment for display (used if provided) */
+    private String patientName;
+
+    /** Optional: diagnosis or clinical notes */
+    private String diagnosis;
+
     @NotNull(message = "Medicines are required")
     @NotBlank(message = "Medicines cannot be blank")
     private String medicines;
