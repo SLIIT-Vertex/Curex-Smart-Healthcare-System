@@ -8,11 +8,13 @@ import java.util.UUID;
 
 public interface ReportService {
 
-    Report uploadReport(String patientId, MultipartFile file);
+    Report uploadFile(String ownerId, String category, MultipartFile file);
 
-    Report getReport(UUID id);
+    Report getFile(UUID id);
 
-    List<Report> getReportsForPatient(String patientId);
+    List<Report> getFilesByOwner(String ownerId);
+    
+    List<Report> getFilesByOwnerAndCategory(String ownerId, String category);
 
-    void deleteReport(UUID id);
+    void deleteFile(UUID id);
 }

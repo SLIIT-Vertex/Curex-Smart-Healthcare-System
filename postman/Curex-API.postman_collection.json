@@ -671,76 +671,80 @@
       ]
     },
     {
-      "name": "Reports",
+      "name": "Files (Generic Storage)",
       "auth": {
         "type": "bearer",
         "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
       },
       "item": [
         {
-          "name": "Upload Report",
+          "name": "Upload File (Report/Image/Doc)",
           "request": {
             "method": "POST",
             "header": [],
             "body": {
               "mode": "formdata",
               "formdata": [
-                { "key": "patientId", "value": "{{userId}}", "type": "text" },
-                { "key": "file",      "type": "file",        "src": [] }
+                { "key": "ownerId",  "value": "{{userId}}", "type": "text" },
+                { "key": "category", "value": "REPORT",     "type": "text" },
+                { "key": "file",     "type": "file",        "src": [] }
               ]
             },
             "url": {
-              "raw": "{{baseUrl}}/api/reports/upload",
+              "raw": "{{baseUrl}}/api/files/upload",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "upload"]
+              "path": ["api", "files", "upload"]
             }
           }
         },
         {
-          "name": "Get Report Metadata",
+          "name": "Get File Metadata",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/reports/REPORT_ID_HERE",
+              "raw": "{{baseUrl}}/api/files/FILE_ID_HERE",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "REPORT_ID_HERE"]
+              "path": ["api", "files", "FILE_ID_HERE"]
             }
           }
         },
         {
-          "name": "Download Report",
+          "name": "Download/Stream File",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/reports/REPORT_ID_HERE/download",
+              "raw": "{{baseUrl}}/api/files/FILE_ID_HERE/download",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "REPORT_ID_HERE", "download"]
+              "path": ["api", "files", "FILE_ID_HERE", "download"]
             }
           }
         },
         {
-          "name": "List Patient Reports",
+          "name": "List Files for Owner",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/reports/patient/{{userId}}",
+              "raw": "{{baseUrl}}/api/files/owner/{{userId}}?category=REPORT",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "patient", "{{userId}}"]
+              "path": ["api", "files", "owner", "{{userId}}"],
+              "query": [
+                { "key": "category", "value": "REPORT" }
+              ]
             }
           }
         },
         {
-          "name": "Delete Report",
+          "name": "Delete File",
           "request": {
             "method": "DELETE",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/reports/REPORT_ID_HERE",
+              "raw": "{{baseUrl}}/api/files/FILE_ID_HERE",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "REPORT_ID_HERE"]
+              "path": ["api", "files", "FILE_ID_HERE"]
             }
           }
         }
