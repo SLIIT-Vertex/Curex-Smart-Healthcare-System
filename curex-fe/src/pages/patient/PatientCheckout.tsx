@@ -4,10 +4,10 @@ import { ArrowLeft, CreditCard, ShieldCheck } from 'lucide-react'
 import { getAppointmentsByPatient } from '../../services/appointmentService'
 import { createCheckoutSession } from '../../services/paymentService'
 import type { AppointmentRecord } from '../../types/appointment.ts'
-
-const DEFAULT_PATIENT_ID = 'pat-001'
+import { useAuth } from '../../store/hooks'
 
 export function PatientCheckout() {
+  const { user } = useAuth()
   const { appointmentId } = useParams<{ appointmentId: string }>()
   const navigate = useNavigate()
   const [appointment, setAppointment] = useState<AppointmentRecord | null>(null)
@@ -17,10 +17,10 @@ export function PatientCheckout() {
 
   useEffect(() => {
     async function loadAppointment() {
-      if (!appointmentId) return
+      if (!appointmentId || !user?.id) return
       try {
         setLoading(true)
-        const apps = await getAppointmentsByPatient(DEFAULT_PATIENT_ID)
+        const apps = await getAppointmentsByPatient(user.id)
         const found = apps.find(a => a.id === appointmentId)
         if (found) {
           setAppointment(found)
@@ -34,10 +34,10 @@ export function PatientCheckout() {
       }
     }
     loadAppointment()
-  }, [appointmentId])
+  }, [appointmentId, user?.id])
 
   const handlePayment = async () => {
-    if (!appointment || !appointmentId) return
+    if (!appointment || !appointmentId || !user?.id) return
     try {
       setProcessing(true)
       setError(null)
@@ -46,7 +46,7 @@ export function PatientCheckout() {
       const cancelUrl = `${window.location.origin}/patient/checkout/${appointmentId}?payment=cancelled`
 
       const session = await createCheckoutSession(appointmentId, {
-        patientId: DEFAULT_PATIENT_ID,
+        patientId: user.id,
         amount: 50.00, // Fixed demo amount
         currency: 'usd',
         successUrl,
