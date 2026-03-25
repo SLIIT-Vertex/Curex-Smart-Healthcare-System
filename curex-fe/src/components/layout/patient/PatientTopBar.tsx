@@ -1,11 +1,18 @@
 import { Link } from 'react-router-dom'
 import { Menu, Search, Bell, Calendar } from 'lucide-react'
+import { useAuth } from '../../../store/hooks'
 
 interface PatientTopBarProps {
   onMenuClick?: () => void
 }
 
 export function PatientTopBar({ onMenuClick }: PatientTopBarProps) {
+  const { user } = useAuth()
+
+  const initials = user
+    ? `${user.firstName?.[0] ?? ''}${user.lastName?.[0] ?? ''}`.toUpperCase()
+    : 'PT'
+
   return (
     <header
       className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-text-secondary/10 bg-surface px-4 shadow-sm lg:px-6"
@@ -47,7 +54,7 @@ export function PatientTopBar({ onMenuClick }: PatientTopBarProps) {
         </div>
       </div>
 
-      {/* Right side: notifications + avatar — TODO: from auth or patient profile */}
+      {/* Right side: notifications + avatar */}
       <div className="flex flex-1 items-center justify-end gap-2 lg:flex-initial">
         <button
           type="button"
@@ -57,12 +64,21 @@ export function PatientTopBar({ onMenuClick }: PatientTopBarProps) {
           <Bell className="h-5 w-5" strokeWidth={1.5} />
         </button>
 
-        <div
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-light/20 text-sm font-semibold text-primary"
-          aria-hidden="true"
+        <Link
+          to="/patient/profile"
+          className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition-all duration-200 hover:bg-primary-light/5"
+          aria-label="Go to profile"
         >
-          ET
-        </div>
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-light/20 text-sm font-semibold text-primary">
+            {initials}
+          </div>
+          <div className="hidden flex-col sm:flex">
+            <span className="text-sm font-medium text-primary leading-tight">
+              {user ? `${user.firstName} ${user.lastName}` : 'Patient'}
+            </span>
+            <span className="text-xs text-text-secondary">Patient</span>
+          </div>
+        </Link>
       </div>
     </header>
   )

@@ -1,5 +1,16 @@
 import { useState } from 'react'
-import { Pencil, Check, ShieldCheck, ShieldAlert } from 'lucide-react'
+import {
+  Pencil,
+  Check,
+  ShieldCheck,
+  ShieldAlert,
+  Stethoscope,
+  BookOpen,
+  Phone,
+  Building2,
+  User,
+} from 'lucide-react'
+import { useAuth } from '../../store/hooks'
 import type { Doctor } from '../../types/doctor'
 import '../../styles/pages/DoctorDashboard.css'
 
@@ -23,6 +34,7 @@ const MOCK_DOCTOR: Doctor = {
 }
 
 export function DoctorProfile() {
+  const { user } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
   const [profile, setProfile] = useState<Doctor>(MOCK_DOCTOR)
   const [draft, setDraft] = useState<Doctor>(MOCK_DOCTOR)
@@ -69,17 +81,24 @@ export function DoctorProfile() {
   }
 
   const display = isEditing ? draft : profile
-  const initials = profile.name
-    .split(' ')
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase()
+  const initials = user
+    ? `${user.firstName?.[0] ?? ''}${user.lastName?.[0] ?? ''}`.toUpperCase()
+    : profile.name
+        .split(' ')
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase()
 
   return (
     <div className="space-y-6 lg:space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="section-heading">Profile</h1>
+        <div>
+          <h1 className="section-heading">Profile</h1>
+          <p className="mt-1 text-sm text-text-secondary">
+            Manage your professional profile and credentials
+          </p>
+        </div>
         {!isEditing ? (
           <button type="button" onClick={handleEdit} className="btn-secondary">
             <Pencil className="mr-2 h-4 w-4" strokeWidth={1.5} />
@@ -91,11 +110,19 @@ export function DoctorProfile() {
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         {/* Left: Avatar + quick stats */}
         <div
-          className="rounded-2xl bg-surface p-6"
+          className="overflow-hidden rounded-2xl bg-surface"
           style={{ boxShadow: 'var(--shadow-card)' }}
         >
-          <div className="flex flex-col items-center text-center">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-primary-light/20 text-2xl font-bold text-primary">
+          {/* Gradient accent header */}
+          <div
+            className="h-24"
+            style={{
+              background:
+                'linear-gradient(135deg, #1C274C 0%, #3A4F8A 60%, #7DD3FC 100%)',
+            }}
+          />
+          <div className="flex flex-col items-center px-6 pb-6 -mt-12">
+            <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-surface bg-primary-light/20 text-2xl font-bold text-primary shadow-md">
               {profile.avatarUrl ? (
                 <img
                   src={profile.avatarUrl}
@@ -136,37 +163,51 @@ export function DoctorProfile() {
         </div>
 
         {/* Right: Form fields */}
-        <div
-          className="space-y-6 rounded-2xl bg-surface p-6"
-          style={{ boxShadow: 'var(--shadow-card)' }}
-        >
+        <div className="space-y-6">
           {/* About / Bio */}
-          <div>
-            <label className="block text-sm font-medium text-primary">
-              About
-            </label>
+          <div
+            className="rounded-2xl bg-surface p-6"
+            style={{ boxShadow: 'var(--shadow-card)' }}
+          >
+            <div className="flex items-center gap-2 mb-5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-light/10">
+                <User className="h-4 w-4 text-primary-light" strokeWidth={1.5} />
+              </div>
+              <h3 className="text-sm font-semibold text-primary">About</h3>
+            </div>
             {isEditing ? (
               <textarea
                 value={draft.bio ?? ''}
                 onChange={(e) => updateDraft('bio', e.target.value)}
                 rows={4}
                 placeholder="Tell patients about your background and approach..."
-                className={`mt-1.5 ${INPUT_CLASS} resize-y`}
+                className={`${INPUT_CLASS} resize-y`}
               />
             ) : (
-              <p className="mt-1.5 text-sm text-text-secondary">
+              <p className="text-sm text-text-secondary leading-relaxed">
                 {display.bio || 'No bio added yet.'}
               </p>
             )}
           </div>
 
           {/* Qualifications */}
-          <div>
-            <label className="block text-sm font-medium text-primary">
-              Qualifications
-            </label>
+          <div
+            className="rounded-2xl bg-surface p-6"
+            style={{ boxShadow: 'var(--shadow-card)' }}
+          >
+            <div className="flex items-center gap-2 mb-5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-violet/15">
+                <BookOpen
+                  className="h-4 w-4 text-accent-violet"
+                  strokeWidth={1.5}
+                />
+              </div>
+              <h3 className="text-sm font-semibold text-primary">
+                Qualifications
+              </h3>
+            </div>
             {isEditing ? (
-              <div className="mt-2 space-y-2">
+              <div className="space-y-2">
                 {(draft.qualifications ?? []).map((q, i) => (
                   <div key={i} className="flex gap-2">
                     <input
@@ -194,92 +235,143 @@ export function DoctorProfile() {
                 </button>
               </div>
             ) : (
-              <ul className="mt-1.5 list-inside list-disc text-sm text-text-secondary">
+              <div className="flex flex-wrap gap-2">
                 {(display.qualifications ?? []).length > 0 ? (
                   (display.qualifications ?? []).map((q, i) => (
-                    <li key={i}>{q}</li>
+                    <span
+                      key={i}
+                      className="rounded-full border border-text-secondary/15 bg-background px-3 py-1 text-xs font-medium text-primary"
+                    >
+                      {q}
+                    </span>
                   ))
                 ) : (
-                  <li>No qualifications listed.</li>
+                  <p className="text-sm text-text-secondary">
+                    No qualifications listed.
+                  </p>
                 )}
-              </ul>
+              </div>
             )}
           </div>
 
-          {/* Contact info */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-primary">
-                Phone
-              </label>
-              {isEditing ? (
-                <input
-                  type="tel"
-                  value={draft.phone ?? ''}
-                  onChange={(e) => updateDraft('phone', e.target.value)}
-                  placeholder="+94 77 123 4567"
-                  className={`mt-1.5 ${INPUT_CLASS}`}
+          {/* Contact & Hospital */}
+          <div
+            className="rounded-2xl bg-surface p-6"
+            style={{ boxShadow: 'var(--shadow-card)' }}
+          >
+            <div className="flex items-center gap-2 mb-5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-sky/15">
+                <Stethoscope
+                  className="h-4 w-4 text-accent-sky"
+                  strokeWidth={1.5}
                 />
-              ) : (
-                <p className="mt-1.5 text-sm text-text-secondary">
-                  {display.phone || '—'}
-                </p>
-              )}
+              </div>
+              <h3 className="text-sm font-semibold text-primary">
+                Contact & Practice
+              </h3>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-primary">
-                Hospital affiliation
-              </label>
-              {isEditing ? (
-                <input
-                  type="text"
-                  value={draft.hospitalAffiliation ?? ''}
-                  onChange={(e) =>
-                    updateDraft('hospitalAffiliation', e.target.value)
-                  }
-                  placeholder="Hospital name"
-                  className={`mt-1.5 ${INPUT_CLASS}`}
-                />
-              ) : (
-                <p className="mt-1.5 text-sm text-text-secondary">
-                  {display.hospitalAffiliation || '—'}
-                </p>
-              )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
+                  Phone
+                </label>
+                {isEditing ? (
+                  <input
+                    type="tel"
+                    value={draft.phone ?? ''}
+                    onChange={(e) => updateDraft('phone', e.target.value)}
+                    placeholder="+94 77 123 4567"
+                    className={`mt-1.5 ${INPUT_CLASS}`}
+                  />
+                ) : (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <Phone
+                      className="h-4 w-4 text-text-secondary"
+                      strokeWidth={1.5}
+                    />
+                    <p className="text-sm font-medium text-primary">
+                      {display.phone || '—'}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
+                  Hospital affiliation
+                </label>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    value={draft.hospitalAffiliation ?? ''}
+                    onChange={(e) =>
+                      updateDraft('hospitalAffiliation', e.target.value)
+                    }
+                    placeholder="Hospital name"
+                    className={`mt-1.5 ${INPUT_CLASS}`}
+                  />
+                ) : (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <Building2
+                      className="h-4 w-4 text-text-secondary"
+                      strokeWidth={1.5}
+                    />
+                    <p className="text-sm font-medium text-primary">
+                      {display.hospitalAffiliation || '—'}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Edit mode: name, email, specialty (read-only email often) */}
+          {/* Edit mode: name, email, specialty */}
           {isEditing && (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-sm font-medium text-primary">
-                  Full name
-                </label>
-                <input
-                  type="text"
-                  value={draft.name}
-                  onChange={(e) => updateDraft('name', e.target.value)}
-                  className={`mt-1.5 ${INPUT_CLASS}`}
-                />
+            <div
+              className="rounded-2xl bg-surface p-6"
+              style={{ boxShadow: 'var(--shadow-card)' }}
+            >
+              <div className="flex items-center gap-2 mb-5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-peach/15">
+                  <Pencil
+                    className="h-4 w-4 text-accent-peach"
+                    strokeWidth={1.5}
+                  />
+                </div>
+                <h3 className="text-sm font-semibold text-primary">
+                  Basic Information
+                </h3>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-primary">
-                  Specialty
-                </label>
-                <input
-                  type="text"
-                  value={draft.specialty}
-                  onChange={(e) => updateDraft('specialty', e.target.value)}
-                  placeholder="e.g. Cardiologist"
-                  className={`mt-1.5 ${INPUT_CLASS}`}
-                />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
+                    Full name
+                  </label>
+                  <input
+                    type="text"
+                    value={draft.name}
+                    onChange={(e) => updateDraft('name', e.target.value)}
+                    className={`mt-1.5 ${INPUT_CLASS}`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
+                    Specialty
+                  </label>
+                  <input
+                    type="text"
+                    value={draft.specialty}
+                    onChange={(e) => updateDraft('specialty', e.target.value)}
+                    placeholder="e.g. Cardiologist"
+                    className={`mt-1.5 ${INPUT_CLASS}`}
+                  />
+                </div>
               </div>
             </div>
           )}
 
           {/* Save / Cancel */}
           {isEditing && (
-            <div className="flex flex-wrap gap-3 border-t border-text-secondary/10 pt-6">
+            <div className="flex flex-wrap gap-3">
               <button type="button" onClick={handleSave} className="btn-primary">
                 <Check className="mr-2 h-4 w-4" strokeWidth={1.5} />
                 Save

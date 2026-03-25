@@ -20,6 +20,7 @@ import { HomePage } from './pages/HomePage'
 import { AdminDashboard } from './pages/admin/AdminDashboard'
 import { AdminUsers } from './pages/admin/AdminUsers'
 import { AdminDoctorApproval } from './pages/admin/AdminDoctorApproval'
+import { AdminProfile } from './pages/admin/AdminProfile'
 
 // Doctor
 import { DoctorDashboard } from './pages/doctor/DoctorDashboard'
@@ -74,6 +75,7 @@ function App() {
             <Route path="dashboard" element={<AdminDashboard />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="doctor-approval" element={<AdminDoctorApproval />} />
+            <Route path="profile" element={<AdminProfile />} />
           </Route>
         </Route>
 

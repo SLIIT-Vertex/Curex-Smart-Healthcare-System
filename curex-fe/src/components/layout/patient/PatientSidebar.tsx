@@ -1,7 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
-  User,
   ClipboardList,
   Brain,
   CalendarDays,
@@ -11,13 +10,12 @@ import {
   LogOut,
   CreditCard,
 } from 'lucide-react'
-import { useAuth, useAuthActions } from '../../../store/hooks'
+import { useAuthActions } from '../../../store/hooks'
 
 const LOGO_SRC = '/logo.svg'
 
 const navLinks = [
   { to: '/patient/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/patient/profile', icon: User, label: 'Profile' },
   { to: '/patient/prescriptions', icon: ClipboardList, label: 'Prescriptions' },
   { to: '/patient/appointments', icon: CalendarDays, label: 'Appointments' },
   { to: '/patient/telemedicine', icon: Video, label: 'Telemedicine' },
@@ -36,7 +34,6 @@ interface PatientSidebarProps {
 }
 
 export function PatientSidebar({ isOpen = true, onClose }: PatientSidebarProps) {
-  const { user } = useAuth()
   const { logout } = useAuthActions()
 
   return (
@@ -93,16 +90,16 @@ export function PatientSidebar({ isOpen = true, onClose }: PatientSidebarProps) 
                 <Icon className="h-5 w-5 shrink-0" strokeWidth={1.5} />
                 {label}
               </NavLink>
-            ))}
+            ))}           
+          </nav>
 
-            <div className="my-2 border-t border-text-secondary/10" />
-
+          <div className="shrink-0 border-t border-text-secondary/10 p-4">
             <span
-              className="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-text-secondary"
-              title="Coming soon"
-            >
-              <Settings className="h-5 w-5 shrink-0" strokeWidth={1.5} />
-              Settings
+                className="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-text-secondary"
+                title="Coming soon"
+              >
+                <Settings className="h-5 w-5 shrink-0" strokeWidth={1.5} />
+                Settings
             </span>
             <button
               type="button"
@@ -112,16 +109,6 @@ export function PatientSidebar({ isOpen = true, onClose }: PatientSidebarProps) 
               <LogOut className="h-5 w-5 shrink-0" strokeWidth={1.5} />
               Sign out
             </button>
-          </nav>
-
-          {/* Bottom profile card */}
-          <div className="shrink-0 border-t border-text-secondary/10 p-4">
-            <div className="rounded-xl bg-background px-4 py-3">
-              <p className="text-sm font-semibold text-primary">
-                {user ? `${user.firstName} ${user.lastName}` : 'Patient'}
-              </p>
-              <p className="text-xs text-text-secondary">Patient</p>
-            </div>
           </div>
         </div>
       </aside>

@@ -1,5 +1,16 @@
 import { useState, useEffect } from 'react'
-import { Pencil, Check } from 'lucide-react'
+import {
+  Pencil,
+  Check,
+  User,
+  Heart,
+  AlertTriangle,
+  Phone,
+  Calendar,
+  Droplets,
+  MapPin,
+} from 'lucide-react'
+import { useAuth } from '../../store/hooks'
 import { getProfile, updateProfile } from '../../services/patientService'
 import type {
   PatientProfile,
@@ -25,6 +36,7 @@ const EMPTY_EMERGENCY_CONTACT: EmergencyContact = {
 }
 
 export function PatientProfile() {
+  const { user } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
   const [profile, setProfile] = useState<PatientProfile | null>(null)
   const [draft, setDraft] = useState<PatientProfile | null>(null)
@@ -155,12 +167,14 @@ export function PatientProfile() {
   }
 
   const display = isEditing ? draft : profile
-  const initials = profile.name
-    .split(' ')
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase()
+  const initials = user
+    ? `${user.firstName?.[0] ?? ''}${user.lastName?.[0] ?? ''}`.toUpperCase()
+    : profile.name
+        .split(' ')
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase()
 
   const medicalHistory = display.medicalHistory ?? EMPTY_MEDICAL_HISTORY
   const emergencyContact = display.emergencyContact ?? EMPTY_EMERGENCY_CONTACT
@@ -170,7 +184,12 @@ export function PatientProfile() {
   return (
     <div className="space-y-6 lg:space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="section-heading">Profile</h1>
+        <div>
+          <h1 className="section-heading">Profile</h1>
+          <p className="mt-1 text-sm text-text-secondary">
+            Manage your personal and medical information
+          </p>
+        </div>
         {!isEditing ? (
           <button type="button" onClick={handleEdit} className="btn-secondary">
             <Pencil className="mr-2 h-4 w-4" strokeWidth={1.5} />
@@ -181,9 +200,20 @@ export function PatientProfile() {
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         {/* Left: Avatar + quick info */}
-        <div className="patient-card p-6">
-          <div className="flex flex-col items-center text-center">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-primary-light/20 text-2xl font-bold text-primary">
+        <div
+          className="overflow-hidden rounded-2xl bg-surface"
+          style={{ boxShadow: 'var(--shadow-card)' }}
+        >
+          {/* Gradient accent header */}
+          <div
+            className="h-24"
+            style={{
+              background:
+                'linear-gradient(135deg, #1C274C 0%, #3A4F8A 60%, #6EE7B7 100%)',
+            }}
+          />
+          <div className="flex flex-col items-center px-6 pb-6 -mt-12">
+            <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-surface bg-primary-light/20 text-2xl font-bold text-primary shadow-md">
               {profile.avatarUrl ? (
                 <img
                   src={profile.avatarUrl}
@@ -204,16 +234,27 @@ export function PatientProfile() {
           </div>
         </div>
 
-        {/* Right: Form fields */}
-        <div className="patient-card space-y-6 p-6">
+        {/* Right: Form sections */}
+        <div className="space-y-6">
           {/* Personal Details */}
-          <div>
-            <h3 className="text-sm font-semibold text-primary">
-              Personal Details
-            </h3>
-            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <div
+            className="rounded-2xl bg-surface p-6"
+            style={{ boxShadow: 'var(--shadow-card)' }}
+          >
+            <div className="flex items-center gap-2 mb-5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-light/10">
+                <User
+                  className="h-4 w-4 text-primary-light"
+                  strokeWidth={1.5}
+                />
+              </div>
+              <h3 className="text-sm font-semibold text-primary">
+                Personal Details
+              </h3>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-text-secondary">
+                <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
                   Date of birth
                 </label>
                 {isEditing ? (
@@ -226,13 +267,19 @@ export function PatientProfile() {
                     className={`mt-1.5 ${INPUT_CLASS}`}
                   />
                 ) : (
-                  <p className="mt-1.5 text-sm text-primary">
-                    {display.dateOfBirth || '—'}
-                  </p>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <Calendar
+                      className="h-4 w-4 text-text-secondary"
+                      strokeWidth={1.5}
+                    />
+                    <p className="text-sm font-medium text-primary">
+                      {display.dateOfBirth || '—'}
+                    </p>
+                  </div>
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-text-secondary">
+                <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
                   Gender
                 </label>
                 {isEditing ? (
@@ -256,7 +303,7 @@ export function PatientProfile() {
                     <option value="OTHER">Other</option>
                   </select>
                 ) : (
-                  <p className="mt-1.5 text-sm text-primary">
+                  <p className="mt-1.5 text-sm font-medium text-primary">
                     {display.gender === 'FEMALE'
                       ? 'Female'
                       : display.gender === 'MALE'
@@ -268,7 +315,7 @@ export function PatientProfile() {
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-text-secondary">
+                <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
                   Blood type
                 </label>
                 {isEditing ? (
@@ -282,13 +329,19 @@ export function PatientProfile() {
                     className={`mt-1.5 ${INPUT_CLASS}`}
                   />
                 ) : (
-                  <p className="mt-1.5 text-sm text-primary">
-                    {display.bloodType || '—'}
-                  </p>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <Droplets
+                      className="h-4 w-4 text-text-secondary"
+                      strokeWidth={1.5}
+                    />
+                    <p className="text-sm font-medium text-primary">
+                      {display.bloodType || '—'}
+                    </p>
+                  </div>
                 )}
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-text-secondary">
+                <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
                   Address
                 </label>
                 {isEditing ? (
@@ -302,21 +355,38 @@ export function PatientProfile() {
                     className={`mt-1.5 ${INPUT_CLASS}`}
                   />
                 ) : (
-                  <p className="mt-1.5 text-sm text-primary">
-                    {display.address || '—'}
-                  </p>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <MapPin
+                      className="h-4 w-4 text-text-secondary"
+                      strokeWidth={1.5}
+                    />
+                    <p className="text-sm font-medium text-primary">
+                      {display.address || '—'}
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
           </div>
 
           {/* Medical History */}
-          <div>
-            <h3 className="text-sm font-semibold text-primary">
-              Medical History
-            </h3>
+          <div
+            className="rounded-2xl bg-surface p-6"
+            style={{ boxShadow: 'var(--shadow-card)' }}
+          >
+            <div className="flex items-center gap-2 mb-5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-peach/15">
+                <Heart
+                  className="h-4 w-4 text-accent-peach"
+                  strokeWidth={1.5}
+                />
+              </div>
+              <h3 className="text-sm font-semibold text-primary">
+                Medical History
+              </h3>
+            </div>
             {isEditing ? (
-              <div className="mt-3 space-y-4">
+              <div className="space-y-4">
                 <EditableList
                   label="Known conditions"
                   items={draftHistory.conditions}
@@ -343,32 +413,46 @@ export function PatientProfile() {
                 />
               </div>
             ) : (
-              <div className="mt-3 space-y-3">
-                <ReadOnlyList
+              <div className="space-y-4">
+                <ReadOnlyBadgeList
                   label="Known conditions"
                   items={medicalHistory.conditions}
+                  color="bg-error/10 border-error/20 text-primary"
                 />
-                <ReadOnlyList
+                <ReadOnlyBadgeList
                   label="Allergies"
                   items={medicalHistory.allergies}
+                  color="bg-accent-peach/10 border-accent-peach/30 text-primary"
                 />
-                <ReadOnlyList
+                <ReadOnlyBadgeList
                   label="Past surgeries"
                   items={medicalHistory.pastSurgeries}
+                  color="bg-accent-sky/10 border-accent-sky/30 text-primary"
                 />
               </div>
             )}
           </div>
 
           {/* Emergency Contact */}
-          <div>
-            <h3 className="text-sm font-semibold text-primary">
-              Emergency Contact
-            </h3>
+          <div
+            className="rounded-2xl bg-surface p-6"
+            style={{ boxShadow: 'var(--shadow-card)' }}
+          >
+            <div className="flex items-center gap-2 mb-5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-error/10">
+                <AlertTriangle
+                  className="h-4 w-4 text-error"
+                  strokeWidth={1.5}
+                />
+              </div>
+              <h3 className="text-sm font-semibold text-primary">
+                Emergency Contact
+              </h3>
+            </div>
             {isEditing ? (
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-text-secondary">
+                  <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
                     Name
                   </label>
                   <input
@@ -382,7 +466,7 @@ export function PatientProfile() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-text-secondary">
+                  <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
                     Relationship
                   </label>
                   <input
@@ -396,7 +480,7 @@ export function PatientProfile() {
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-text-secondary">
+                  <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
                     Phone
                   </label>
                   <input
@@ -411,24 +495,32 @@ export function PatientProfile() {
                 </div>
               </div>
             ) : (
-              <div className="mt-3 text-sm text-primary">
+              <div className="text-sm text-primary">
                 {emergencyContact.name || emergencyContact.phone ? (
-                  <>
-                    <p>
-                      {emergencyContact.name}
-                      {emergencyContact.relationship && (
-                        <span className="text-text-secondary">
-                          {' '}
-                          · {emergencyContact.relationship}
-                        </span>
-                      )}
-                    </p>
-                    {emergencyContact.phone && (
-                      <p className="mt-1 text-text-secondary">
-                        {emergencyContact.phone}
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-background">
+                      <Phone
+                        className="h-4 w-4 text-text-secondary"
+                        strokeWidth={1.5}
+                      />
+                    </div>
+                    <div>
+                      <p className="font-medium">
+                        {emergencyContact.name}
+                        {emergencyContact.relationship && (
+                          <span className="text-text-secondary">
+                            {' '}
+                            · {emergencyContact.relationship}
+                          </span>
+                        )}
                       </p>
-                    )}
-                  </>
+                      {emergencyContact.phone && (
+                        <p className="mt-0.5 text-text-secondary">
+                          {emergencyContact.phone}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 ) : (
                   <p className="text-text-secondary">
                     No emergency contact listed.
@@ -438,51 +530,67 @@ export function PatientProfile() {
             )}
           </div>
 
-          {/* Edit mode: name, email (in edit) */}
+          {/* Edit mode: name, email */}
           {isEditing && (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-sm font-medium text-primary">
-                  Full name
-                </label>
-                <input
-                  type="text"
-                  value={draft.name}
-                  onChange={(e) => updateDraft('name', e.target.value)}
-                  className={`mt-1.5 ${INPUT_CLASS}`}
-                />
+            <div
+              className="rounded-2xl bg-surface p-6"
+              style={{ boxShadow: 'var(--shadow-card)' }}
+            >
+              <div className="flex items-center gap-2 mb-5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-violet/15">
+                  <Pencil
+                    className="h-4 w-4 text-accent-violet"
+                    strokeWidth={1.5}
+                  />
+                </div>
+                <h3 className="text-sm font-semibold text-primary">
+                  Basic Information
+                </h3>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-primary">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={draft.email}
-                  onChange={(e) => updateDraft('email', e.target.value)}
-                  className={`mt-1.5 ${INPUT_CLASS}`}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-primary">
-                  Phone
-                </label>
-                <input
-                  type="tel"
-                  value={draft.phone ?? ''}
-                  onChange={(e) =>
-                    updateDraft('phone', e.target.value || undefined)
-                  }
-                  placeholder="+94 77 456 7890"
-                  className={`mt-1.5 ${INPUT_CLASS}`}
-                />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
+                    Full name
+                  </label>
+                  <input
+                    type="text"
+                    value={draft.name}
+                    onChange={(e) => updateDraft('name', e.target.value)}
+                    className={`mt-1.5 ${INPUT_CLASS}`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={draft.email}
+                    onChange={(e) => updateDraft('email', e.target.value)}
+                    className={`mt-1.5 ${INPUT_CLASS}`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
+                    Phone
+                  </label>
+                  <input
+                    type="tel"
+                    value={draft.phone ?? ''}
+                    onChange={(e) =>
+                      updateDraft('phone', e.target.value || undefined)
+                    }
+                    placeholder="+94 77 456 7890"
+                    className={`mt-1.5 ${INPUT_CLASS}`}
+                  />
+                </div>
               </div>
             </div>
           )}
 
           {/* Save / Cancel */}
           {isEditing && (
-            <div className="patient-section-divider flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={handleSave}
@@ -527,7 +635,7 @@ function EditableList({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-text-secondary">
+      <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
         {label}
       </label>
       <div className="mt-2 space-y-2">
@@ -561,25 +669,34 @@ function EditableList({
   )
 }
 
-function ReadOnlyList({
+function ReadOnlyBadgeList({
   label,
   items,
+  color,
 }: {
   label: string
   items: string[]
+  color: string
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-text-secondary">
+      <label className="block text-xs font-medium uppercase tracking-wider text-text-secondary">
         {label}
       </label>
-      <ul className="mt-1.5 list-inside list-disc text-sm text-primary">
+      <div className="mt-2 flex flex-wrap gap-2">
         {items.length > 0 ? (
-          items.map((item, i) => <li key={i}>{item}</li>)
+          items.map((item, i) => (
+            <span
+              key={i}
+              className={`rounded-full border px-3 py-1 text-xs font-medium ${color}`}
+            >
+              {item}
+            </span>
+          ))
         ) : (
-          <li className="text-text-secondary">None</li>
+          <span className="text-sm text-text-secondary">None</span>
         )}
-      </ul>
+      </div>
     </div>
   )
 }
