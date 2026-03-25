@@ -28,14 +28,25 @@ public class RegisterRequest {
     @NotBlank(message = "Last name is required")
     private String lastName;
 
+    @NotBlank(message = "Phone number is required")
     private String phoneNumber;
 
     @NotNull(message = "Role is required")
     private User.Role role;
 
-    /** Medical licence number for doctors (optional at registration time). */
-    private String medicalLicenseNumber;
+    /**
+     * Token returned by {@code POST /api/auth/otp/verify}.
+     * Must be valid and match the supplied {@code phoneNumber}.
+     * This enforces that the phone number has been verified before account creation.
+     */
+    @NotBlank(message = "Phone verification is required. Please complete OTP verification.")
+    private String phoneVerificationToken;
 
-    /** Specialty for doctors (optional at registration time). */
-    private String specialty;
+    /**
+     * Token returned by {@code POST /api/auth/otp/verify}.
+     * Must be valid and match the supplied {@code email}.
+     * This enforces that the email address has been verified before account creation.
+     */
+    @NotBlank(message = "Email verification is required. Please complete OTP verification.")
+    private String emailVerificationToken;
 }

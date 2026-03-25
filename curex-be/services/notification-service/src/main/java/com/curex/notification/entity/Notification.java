@@ -249,6 +249,7 @@ public class Notification {
     public enum NotificationType {
         WELCOME,
         EMAIL_VERIFICATION,
+        OTP_VERIFICATION,
         PASSWORD_RESET,
         APPOINTMENT_CONFIRMATION,
         APPOINTMENT_REMINDER,

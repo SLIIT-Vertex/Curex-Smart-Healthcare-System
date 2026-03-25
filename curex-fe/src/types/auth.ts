@@ -32,10 +32,47 @@ export interface RegisterRequest {
   password: string
   firstName: string
   lastName: string
-  phoneNumber?: string
+  phoneNumber: string
+  phoneVerificationToken: string
+  emailVerificationToken: string
   role: Role
-  medicalLicenseNumber?: string
+}
+
+/** Sent to PUT /api/users/me/profile immediately after registration. All fields optional. */
+export interface UpdateProfileRequest {
+  // Common
+  dob?: string          // ISO-8601 "YYYY-MM-DD"
+  gender?: string
+  address?: string
+  // Doctor-specific
   specialty?: string
+  medicalLicenseNumber?: string
+  yearsOfExperience?: number
+  certifications?: string
+  // Patient-specific
+  bloodGroup?: string
+  allergies?: string
+  chronicConditions?: string
+  emergencyContactName?: string
+  emergencyContactPhone?: string
+}
+
+export interface SendOtpRequest {
+  phoneNumber: string
+  email: string
+}
+
+export interface VerifyOtpRequest {
+  phoneNumber: string
+  otpCode: string
+  email: string
+  emailOtpCode: string
+}
+
+export interface VerifyOtpResponse {
+  verificationToken: string
+  emailVerificationToken: string
+  message: string
 }
 
 export interface UserResponse {
@@ -52,6 +89,19 @@ export interface UserResponse {
   approvalDate?: string
   createdAt: string
   updatedAt: string
+  // Profile fields
+  dob?: string
+  gender?: string
+  address?: string
+  specialty?: string
+  medicalLicenseNumber?: string
+  yearsOfExperience?: number
+  certifications?: string
+  bloodGroup?: string
+  allergies?: string
+  chronicConditions?: string
+  emergencyContactName?: string
+  emergencyContactPhone?: string
 }
 
 export interface UsersPage {

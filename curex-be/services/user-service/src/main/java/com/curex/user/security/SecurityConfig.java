@@ -51,6 +51,8 @@ public class SecurityConfig {
                     "/api/auth/refresh",
                     "/api/auth/validate",
                     "/api/auth/health",
+                    "/api/auth/otp/send",
+                    "/api/auth/otp/verify",
                     "/api/admin/health",
                     "/api/internal/**",
                     "/actuator/health",

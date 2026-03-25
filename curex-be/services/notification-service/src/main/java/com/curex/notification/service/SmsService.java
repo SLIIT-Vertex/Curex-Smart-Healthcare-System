@@ -141,6 +141,8 @@ public class SmsService {
                     "Welcome to Curex Healthcare! " + base;
             case EMAIL_VERIFICATION ->
                     "Curex: Verify your email. " + base;
+            case OTP_VERIFICATION ->
+                    base;
             case PASSWORD_RESET ->
                     "Curex: Password reset request. " + base;
             case DOCTOR_APPROVAL ->

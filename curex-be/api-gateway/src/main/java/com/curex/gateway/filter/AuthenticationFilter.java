@@ -58,6 +58,8 @@ public class AuthenticationFilter implements GlobalFilter, Ordered {
             "/api/auth/refresh",
             "/api/auth/validate",
             "/api/auth/health",
+            "/api/auth/otp/send",
+            "/api/auth/otp/verify",
             "/api/admin/health",
             "/api/ai/health",
             "/api/payments/webhook",

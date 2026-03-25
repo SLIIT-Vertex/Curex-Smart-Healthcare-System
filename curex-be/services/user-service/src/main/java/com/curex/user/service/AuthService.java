@@ -8,6 +8,7 @@ import com.curex.user.exception.AccountNotActiveException;
 import com.curex.user.exception.AdminRegistrationForbiddenException;
 import com.curex.user.exception.EmailAlreadyExistsException;
 import com.curex.user.exception.InvalidCredentialsException;
+import com.curex.user.exception.PhoneVerificationRequiredException;
 import com.curex.user.exception.UserNotFoundException;
 import com.curex.user.repository.UserRepository;
 import com.curex.user.security.JwtTokenUtil;
@@ -39,12 +40,23 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final UserDetailsService userDetailsService;
     private final RabbitTemplate rabbitTemplate;
+    private final OtpService otpService;
 
     public AuthResponse register(RegisterRequest request) {
         // ADMIN accounts must be seeded via database or created by an existing admin.
         // Self-registration as ADMIN is forbidden to prevent privilege escalation.
         if (request.getRole() == User.Role.ADMIN) {
             throw new AdminRegistrationForbiddenException();
+        }
+
+        // Enforce phone verification before account creation.
+        if (!otpService.isPhoneVerified(request.getPhoneNumber(), request.getPhoneVerificationToken())) {
+            throw new PhoneVerificationRequiredException();
+        }
+
+        // Enforce email verification before account creation.
+        if (!otpService.isEmailVerified(request.getEmail(), request.getEmailVerificationToken())) {
+            throw new PhoneVerificationRequiredException();
         }
 
         if (userRepository.existsByEmail(request.getEmail())) {
@@ -61,15 +73,19 @@ public class AuthService {
         user.setAccountStatus(request.getRole() == User.Role.DOCTOR
                 ? User.AccountStatus.PENDING
                 : User.AccountStatus.APPROVED);
-        user.setEmailVerified(false);
+        user.setEmailVerified(true);
 
         User savedUser = userRepository.save(user);
         log.info("User registered: {} role={}", savedUser.getEmail(), savedUser.getRole());
 
+        // Invalidate the verification token so it cannot be reused.
+        otpService.consumePhoneVerificationToken(request.getPhoneVerificationToken());
+        otpService.consumeEmailVerificationToken(request.getEmailVerificationToken());
+
         publishRegistrationEvent(savedUser);
 
         UserDetails userDetails = userDetailsService.loadUserByUsername(savedUser.getEmail());
-        String accessToken = jwtTokenUtil.generateToken(userDetails);
+        String accessToken  = jwtTokenUtil.generateToken(userDetails);
         String refreshToken = jwtTokenUtil.generateRefreshToken(userDetails);
 
         return new AuthResponse(accessToken, refreshToken, jwtTokenUtil.getExpirationTime(),
@@ -98,7 +114,7 @@ public class AuthService {
 
             log.info("User logged in: {}", user.getEmail());
 
-            String accessToken = jwtTokenUtil.generateToken(userDetails);
+            String accessToken  = jwtTokenUtil.generateToken(userDetails);
             String refreshToken = jwtTokenUtil.generateRefreshToken(userDetails);
 
             return new AuthResponse(accessToken, refreshToken, jwtTokenUtil.getExpirationTime(),
@@ -114,7 +130,7 @@ public class AuthService {
             throw new InvalidCredentialsException();
         }
 
-        String email = jwtTokenUtil.extractEmail(refreshToken);
+        String email        = jwtTokenUtil.extractEmail(refreshToken);
         UserDetails userDetails = userDetailsService.loadUserByUsername(email);
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UserNotFoundException(email));
@@ -127,6 +143,15 @@ public class AuthService {
 
     public boolean validateToken(String token) {
         return jwtTokenUtil.validateToken(token);
+    }
+
+    /**
+     * Returns {@code true} when an account with the given email already exists.
+     * Used by the OTP send endpoint to fail fast before dispatching verification codes.
+     */
+    @Transactional(readOnly = true)
+    public boolean emailExists(String email) {
+        return userRepository.existsByEmail(email);
     }
 
     @Transactional(readOnly = true)
@@ -144,11 +169,11 @@ public class AuthService {
     private void publishRegistrationEvent(User user) {
         try {
             Map<String, Object> event = new HashMap<>();
-            event.put("userId", user.getId());
-            event.put("email", user.getEmail());
-            event.put("firstName", user.getFirstName());
-            event.put("lastName", user.getLastName());
-            event.put("role", user.getRole().name());
+            event.put("userId",      user.getId());
+            event.put("email",       user.getEmail());
+            event.put("firstName",   user.getFirstName());
+            event.put("lastName",    user.getLastName());
+            event.put("role",        user.getRole().name());
             event.put("phoneNumber", user.getPhoneNumber());
 
             rabbitTemplate.convertAndSend("user.exchange", "user.registration", event);
