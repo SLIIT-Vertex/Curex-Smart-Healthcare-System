@@ -77,6 +77,38 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    @Transactional
+    public PaymentResponse confirmPayment(UUID paymentId) {
+        Payment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found: " + paymentId));
+
+        if (payment.getStatus() != PaymentStatus.SUCCESS) {
+            payment.setStatus(PaymentStatus.SUCCESS);
+            if (!StringUtils.hasText(payment.getPaymentMethod())) {
+                payment.setPaymentMethod("MANUAL_TEST");
+            }
+            if (!StringUtils.hasText(payment.getStripePaymentIntentId())) {
+                payment.setStripePaymentIntentId("manual-" + payment.getId());
+            }
+
+            Payment saved = paymentRepository.save(payment);
+            PaymentConfirmedEvent confirmedEvent = PaymentConfirmedEvent.builder()
+                    .paymentId(saved.getId())
+                    .appointmentId(saved.getAppointmentId())
+                    .patientId(saved.getPatientId())
+                    .amount(saved.getAmount())
+                    .currency(saved.getCurrency())
+                    .status(saved.getStatus())
+                    .timestamp(saved.getUpdatedAt())
+                    .build();
+            paymentEventPublisher.publishPaymentConfirmed(confirmedEvent);
+            return toResponse(saved);
+        }
+
+        return toResponse(payment);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<PaymentResponse> getPaymentsForPatient(String patientId) {
         if (!StringUtils.hasText(patientId)) {
