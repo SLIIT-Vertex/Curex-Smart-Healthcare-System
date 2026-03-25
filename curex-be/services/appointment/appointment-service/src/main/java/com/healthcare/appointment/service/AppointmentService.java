@@ -50,19 +50,13 @@ public class AppointmentService {
         this.doctorClient = doctorClient;
     }
 
-    /**
-     * When true – skip Feign calls to doctor-service and trust the
-     * slot information provided in the request body (for isolated testing).
-     */
+    /** When true – skip Feign calls to doctor-service (isolated testing). */
     @Value("${appointment.stub-mode:true}")
     private boolean stubMode;
-
-    //  Book Appointment 
-
     @Transactional
     public AppointmentResponse bookAppointment(BookAppointmentRequest req) {
 
-        // 1. Conflict check: same doctor, same ±30-minute window
+        // 2. Conflict check: same doctor, same ±30-minute window
         LocalDateTime from = req.getAppointmentTime().minusMinutes(30);
         LocalDateTime to   = req.getAppointmentTime().plusMinutes(30);
         List<Appointment> conflicts = appointmentRepository
@@ -72,7 +66,7 @@ public class AppointmentService {
                     "Doctor already has an appointment in this time window.");
         }
 
-        // 2. Check slot availability via Feign (skipped in stub-mode)
+        // 3. Check slot availability via Feign (skipped in stub-mode)
         if (!stubMode && req.getSlotId() != null) {
             List<AvailabilitySlotDto> slots =
                     doctorClient.getAvailability(req.getDoctorId());
@@ -84,7 +78,7 @@ public class AppointmentService {
             doctorClient.markSlotBooked(req.getDoctorId(), req.getSlotId());
         }
 
-        // 3. Persist
+        // 4. Persist
         Appointment appt = Appointment.builder()
                 .patientId(req.getPatientId())
                 .patientName(req.getPatientName())
@@ -101,7 +95,7 @@ public class AppointmentService {
 
         Appointment saved = appointmentRepository.save(appt);
 
-        // 4. Publish event → Notification Service
+        // 5. Publish event → Notification Service
         publishAppointmentBooked(saved);
 
         log.info("Appointment booked: id={} patient={} doctor={}",

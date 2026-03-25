@@ -83,9 +83,9 @@ function App() {
             <Route path="profile" element={<DoctorProfile />} />
             <Route path="availability" element={<DoctorAvailability />} />
             <Route path="prescriptions" element={<DoctorPrescriptions />} />
+            <Route path="telemedicine" element={<DoctorTelemedicineCenter />} />
+            <Route path="telemedicine/:appointmentId" element={<DoctorTelemedicineCenter />} />
           </Route>
-          <Route path="telemedicine" element={<DoctorTelemedicineCenter />} />
-          <Route path="telemedicine/:appointmentId" element={<DoctorTelemedicineCenter />} />
         </Route>
 
         {/* ── Patient (PATIENT role only) ─────────────────────────────────────── */}
@@ -98,8 +98,8 @@ function App() {
             <Route path="symptom-checker" element={<PatientSymptomChecker />} />
             <Route path="appointments" element={<PatientAppointments />} />
             <Route path="telemedicine" element={<PatientTelemedicineCenter />} />
-          <Route path="telemedicine/:appointmentId" element={<PatientTelemedicineCenter />} />
-          <Route path="reports" element={<PatientReports />} />
+            <Route path="telemedicine/:appointmentId" element={<PatientTelemedicineCenter />} />
+            <Route path="reports" element={<PatientReports />} />
           </Route>
         </Route>
 

@@ -15,10 +15,9 @@ import type { AppointmentRecord } from '../../types/appointment'
 import type { TelemedicineSessionRecord } from '../../types/telemedicine'
 import '../../styles/pages/AppointmentFlow.css'
 import '../../styles/pages/DoctorDashboard.css'
+import { useAuth } from '../../store/hooks'
 
 type SlotState = 'unavailable' | 'available' | 'booked'
-
-const DOCTOR_ID = 'doc-001'
 
 function hydrateGridFromStorage(doctorId: string): Record<string, SlotState> {
   const storedSlots = getDoctorAvailability(doctorId)
@@ -190,12 +189,14 @@ function withDayPattern(
 }
 
 export function DoctorAvailability() {
+  const { user } = useAuth()
+  const doctorId = user?.id ?? ''
   const [activeTab, setActiveTab] = useState<'availability' | 'booked'>('availability')
   const [grid, setGrid] = useState<Record<string, SlotState>>(() =>
-    hydrateGridFromStorage(DOCTOR_ID)
+    hydrateGridFromStorage('')
   )
   const [savedGridSnapshot, setSavedGridSnapshot] = useState<Record<string, SlotState>>(() =>
-    hydrateGridFromStorage(DOCTOR_ID)
+    hydrateGridFromStorage('')
   )
   const [hasChanges, setHasChanges] = useState(false)
   const [bookedAppointments, setBookedAppointments] = useState<AppointmentRecord[]>([])
@@ -284,10 +285,22 @@ export function DoctorAvailability() {
   }, [])
 
   useEffect(() => {
+    if (!doctorId) {
+      return
+    }
+    const hydrated = hydrateGridFromStorage(doctorId)
+    setGrid(hydrated)
+    setSavedGridSnapshot(hydrated)
+  }, [doctorId])
+
+  useEffect(() => {
     async function loadBookedAppointments() {
+      if (!doctorId) {
+        return
+      }
       try {
         setLoadError(null)
-        const data = await getAppointmentsByDoctor(DOCTOR_ID)
+        const data = await getAppointmentsByDoctor(doctorId)
         setBookedAppointments(data)
       } catch {
         setLoadError('Could not load booked appointments. Showing local availability only.')
@@ -295,7 +308,7 @@ export function DoctorAvailability() {
     }
 
     loadBookedAppointments()
-  }, [])
+  }, [doctorId])
 
   useEffect(() => {
     let active = true
@@ -342,11 +355,14 @@ export function DoctorAvailability() {
   }, [bookedAppointments])
 
   const handleSave = () => {
+    if (!doctorId) {
+      return
+    }
     const availableSlotKeys = Object.entries(grid)
       .filter(([, state]) => state === 'available')
       .map(([key]) => key)
 
-    saveDoctorAvailability(DOCTOR_ID, availableSlotKeys)
+    saveDoctorAvailability(doctorId, availableSlotKeys)
     setSavedGridSnapshot({ ...grid })
     setHasChanges(false)
   }

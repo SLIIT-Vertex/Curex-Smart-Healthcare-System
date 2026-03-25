@@ -3,9 +3,9 @@ import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   bookAppointment,
-  getAppointmentsByDoctor,
   getAppointmentsByPatient,
   getDoctorDirectory,
+  getDoctorSlots,
 } from '../../services/appointmentService'
 import {
   createTelemedicineSession,
@@ -13,7 +13,6 @@ import {
 } from '../../services/telemedicineService'
 import {
   dateSlotKey,
-  getDoctorAvailability,
   getUpcomingDateKeys,
   parseDateSlotKey,
   toDateKey,
@@ -23,11 +22,8 @@ import {
   type DoctorDirectoryItem,
 } from '../../types/appointment'
 import type { TelemedicineSessionRecord } from '../../types/telemedicine'
+import { useAuth } from '../../store/hooks'
 import '../../styles/pages/AppointmentFlow.css'
-
-const DEFAULT_PATIENT_ID = 'pat-001'
-const DEFAULT_PATIENT_NAME = 'Test Patient'
-const DEFAULT_PATIENT_EMAIL = 'patient@test.com'
 
 function generateTimeSlots(): string[] {
   const slots: string[] = []
@@ -40,24 +36,6 @@ function generateTimeSlots(): string[] {
 }
 
 const TIME_SLOTS = generateTimeSlots()
-
-function slotKeyFromAppointment(appt: AppointmentRecord): string {
-  if (appt.slotId) {
-    const parsed = parseDateSlotKey(appt.slotId)
-    if (parsed) {
-      return appt.slotId
-    }
-  }
-
-  const date = new Date(appt.appointmentTime)
-  const dateKey = toDateKey(date)
-  const time = date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
-  return dateSlotKey(dateKey, time)
-}
 
 function dateLabel(dateKey: string): string {
   const date = new Date(`${dateKey}T00:00:00`)
@@ -180,10 +158,14 @@ function bookingStatusLabel(
 }
 
 export function PatientAppointments() {
+  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<'make' | 'bookings'>('make')
   const [search, setSearch] = useState('')
-  const [doctors] = useState<DoctorDirectoryItem[]>(() => getDoctorDirectory())
-  const [selectedDoctorId, setSelectedDoctorId] = useState('doc-001')
+  const [doctors, setDoctors] = useState<DoctorDirectoryItem[]>([])
+  const [doctorSlots, setDoctorSlots] = useState<Record<string, Array<{ day: string; startTime: string; endTime: string; booked: boolean }>>>({})
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null)
+  const [doctorsLoading, setDoctorsLoading] = useState(false)
+  const [slotsLoading, setSlotsLoading] = useState(false)
   const dateKeys = useMemo(() => getUpcomingDateKeys(30), [])
   const [selectedDateKey, setSelectedDateKey] = useState(dateKeys[0])
   const [makeDateStartIndex, setMakeDateStartIndex] = useState(0)
@@ -193,15 +175,9 @@ export function PatientAppointments() {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
   const [popupBooking, setPopupBooking] = useState<AppointmentRecord | null>(null)
 
-  const [patientId, setPatientId] = useState(DEFAULT_PATIENT_ID)
-  const [patientName, setPatientName] = useState(DEFAULT_PATIENT_NAME)
-  const [patientEmail, setPatientEmail] = useState(DEFAULT_PATIENT_EMAIL)
   const [notes, setNotes] = useState('')
   const [appointmentType, setAppointmentType] = useState<'IN_PERSON' | 'TELEMEDICINE'>('TELEMEDICINE')
 
-  const [doctorAppointments, setDoctorAppointments] = useState<AppointmentRecord[]>(
-    []
-  )
   const [myAppointments, setMyAppointments] = useState<AppointmentRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [booking, setBooking] = useState(false)
@@ -211,8 +187,56 @@ export function PatientAppointments() {
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const patientId = user?.id ?? ''
+  const patientName = user ? `${user.firstName} ${user.lastName}`.trim() : ''
+  const patientEmail = user?.email ?? ''
+
+  // Fetch doctors on component mount
+  useEffect(() => {
+    const fetchDoctors = async () => {
+      setDoctorsLoading(true)
+      try {
+        const fetchedDoctors = await getDoctorDirectory()
+        setDoctors(fetchedDoctors)
+        if (fetchedDoctors.length > 0 && !selectedDoctorId) {
+          setSelectedDoctorId(fetchedDoctors[0].id)
+        }
+      } catch (err) {
+        console.error('Failed to fetch doctors:', err)
+        setError('Failed to load doctors')
+      } finally {
+        setDoctorsLoading(false)
+      }
+    }
+    fetchDoctors()
+  }, [])
+
+  // Fetch slots when selected doctor changes
+  useEffect(() => {
+    if (!selectedDoctorId) return
+    
+    const fetchSlots = async () => {
+      setSlotsLoading(true)
+      try {
+        const slots = await getDoctorSlots(selectedDoctorId)
+        setDoctorSlots((prev) => ({
+          ...prev,
+          [selectedDoctorId]: slots,
+        }))
+      } catch (err) {
+        console.error('Failed to fetch slots:', err)
+      } finally {
+        setSlotsLoading(false)
+      }
+    }
+    fetchSlots()
+  }, [selectedDoctorId])
+
   const selectedDoctor = useMemo(
-    () => doctors.find((d) => d.id === selectedDoctorId) ?? doctors[0],
+    () => {
+      if (!selectedDoctorId) return doctors[0] ?? null
+      return doctors.find((d) => d.id === selectedDoctorId) ?? doctors[0] ?? null
+    },
     [doctors, selectedDoctorId]
   )
 
@@ -228,36 +252,33 @@ export function PatientAppointments() {
   }, [doctors, search])
 
   const availableSlotsForSelectedDoctor = useMemo(() => {
-    if (!selectedDoctor) {
+    if (!selectedDoctor || !selectedDoctorId) {
       return [] as Array<{ key: string; time: string; isBooked: boolean; isAvailable: boolean }>
     }
 
-    const rawSlots = getDoctorAvailability(selectedDoctor.id)
-    const availableForDate = new Set(
-      rawSlots
-        .map((slot) => parseDateSlotKey(slot))
-        .filter(
-          (
-            parsed
-          ): parsed is {
-            dateKey: string
-            time: string
-          } => Boolean(parsed)
-        )
-        .filter((parsed) => parsed.dateKey === selectedDateKey)
-        .map((parsed) => dateSlotKey(parsed.dateKey, parsed.time))
-    )
+    const slots = doctorSlots[selectedDoctorId] || []
+    
+    // Convert backend slots to date-time format for the selected date
+    const availableForDate = new Set<string>()
+    const bookedForDate = new Set<string>()
 
-    const bookedForDate = new Set(
-      doctorAppointments
-        .filter(
-          (appt) =>
-            appt.status !== 'CANCELLED' &&
-            appt.status !== 'COMPLETED'
-        )
-        .map(slotKeyFromAppointment)
-        .filter((slotKey) => slotKey.startsWith(`${selectedDateKey}_`))
-    )
+    // Parse the selected date
+    const selectedDate = new Date(`${selectedDateKey}T00:00:00`)
+    const selectedDayOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][selectedDate.getDay()]
+
+    // Filter slots that match the selected day
+    for (const slot of slots) {
+      if (slot.day === selectedDayOfWeek) {
+        const time = slot.startTime.substring(0, 5) // Get HH:mm format
+        const slotKey = dateSlotKey(selectedDateKey, time)
+        
+        if (slot.booked) {
+          bookedForDate.add(slotKey)
+        } else {
+          availableForDate.add(slotKey)
+        }
+      }
+    }
 
     const merged = new Set<string>([...availableForDate, ...bookedForDate])
 
@@ -285,7 +306,7 @@ export function PatientAppointments() {
         } => Boolean(slot)
       )
       .sort((a, b) => TIME_SLOTS.indexOf(a.time) - TIME_SLOTS.indexOf(b.time))
-  }, [selectedDoctor, doctorAppointments, selectedDateKey])
+  }, [selectedDoctor, selectedDoctorId, doctorSlots, selectedDateKey])
 
   const sortedMyAppointments = useMemo(() => {
     return [...myAppointments].sort(
@@ -348,18 +369,14 @@ export function PatientAppointments() {
 
   useEffect(() => {
     async function loadAppointments() {
-      if (!selectedDoctor) {
+      if (!patientId) {
         return
       }
 
       try {
         setLoading(true)
         setError(null)
-        const [doctorData, patientData] = await Promise.all([
-          getAppointmentsByDoctor(selectedDoctor.id),
-          getAppointmentsByPatient(patientId),
-        ])
-        setDoctorAppointments(doctorData)
+        const patientData = await getAppointmentsByPatient(patientId)
         setMyAppointments(patientData)
 
         if (patientData.length > 0) {
@@ -374,7 +391,7 @@ export function PatientAppointments() {
     }
 
     loadAppointments()
-  }, [selectedDoctor, patientId])
+  }, [patientId])
 
   useEffect(() => {
     let active = true
@@ -422,6 +439,11 @@ export function PatientAppointments() {
 
   const handleBook = async () => {
     if (!selectedDoctor || !selectedSlot) {
+      return
+    }
+
+    if (!patientId || !patientName || !patientEmail) {
+      setError('Please login as a patient to book appointments.')
       return
     }
 
@@ -475,13 +497,14 @@ export function PatientAppointments() {
       setSelectedSlot(null)
       setNotes('')
 
-      const [doctorData, patientData] = await Promise.all([
-        getAppointmentsByDoctor(selectedDoctor.id),
-        getAppointmentsByPatient(patientId),
-      ])
-
-      setDoctorAppointments(doctorData)
+      const patientData = await getAppointmentsByPatient(patientId)
       setMyAppointments(patientData)
+
+      const slots = await getDoctorSlots(selectedDoctor.id)
+      setDoctorSlots((prev) => ({
+        ...prev,
+        [selectedDoctor.id]: slots,
+      }))
     } catch (err: any) {
       const serverMessage = err?.response?.data?.message
       setError(serverMessage ?? 'Booking failed. Please try again.')
@@ -526,31 +549,7 @@ export function PatientAppointments() {
 
       {activeTab === 'make' && (
         <>
-          <div className="appointment-panel p-4 lg:p-5">
-            <h2 className="text-base font-semibold text-primary">Booking Identity (Demo)</h2>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-              <input
-                value={patientId}
-                onChange={(e) => setPatientId(e.target.value)}
-                className="patient-page-input"
-                placeholder="Patient ID"
-              />
-              <input
-                value={patientName}
-                onChange={(e) => setPatientName(e.target.value)}
-                className="patient-page-input"
-                placeholder="Patient name"
-              />
-              <input
-                value={patientEmail}
-                onChange={(e) => setPatientEmail(e.target.value)}
-                className="patient-page-input"
-                placeholder="Patient email"
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-6 xl:grid-cols-[340px_1fr]">
+            <div className="grid gap-6 xl:grid-cols-[340px_1fr]">
             <div className="appointment-panel p-4 lg:p-5">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
@@ -563,6 +562,18 @@ export function PatientAppointments() {
               </div>
 
               <div className="mt-4 space-y-2">
+                {doctorsLoading && (
+                  <p className="rounded-xl border border-text-secondary/15 bg-background/40 px-3 py-2 text-xs text-text-secondary">
+                    Loading doctors...
+                  </p>
+                )}
+
+                {!doctorsLoading && filteredDoctors.length === 0 && (
+                  <p className="rounded-xl border border-text-secondary/15 bg-background/40 px-3 py-2 text-xs text-text-secondary">
+                    No doctors found right now. You can still view your existing bookings.
+                  </p>
+                )}
+
                 {filteredDoctors.map((doctor) => (
                   <button
                     key={doctor.id}
@@ -589,11 +600,12 @@ export function PatientAppointments() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold text-primary">
-                    {selectedDoctor?.name}
+                    {selectedDoctor?.name ?? 'No doctor selected'}
                   </h2>
-                  <p className="text-sm text-text-secondary">{selectedDoctor?.specialty}</p>
+                  <p className="text-sm text-text-secondary">{selectedDoctor?.specialty ?? 'Select a doctor when available'}</p>
                 </div>
                 {loading && <span className="text-sm text-text-secondary">Loading appointments...</span>}
+                {slotsLoading && <span className="text-sm text-text-secondary">Loading slots...</span>}
               </div>
 
               <div className="mt-4">
@@ -638,7 +650,9 @@ export function PatientAppointments() {
               <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-4">
                 {availableSlotsForSelectedDoctor.length === 0 ? (
                   <div className="col-span-full rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-4 py-6 text-center text-sm text-text-secondary">
-                    No slots on {dateLabel(selectedDateKey)}.
+                    {selectedDoctor
+                      ? `No slots on ${dateLabel(selectedDateKey)}.`
+                      : 'Select a doctor to view slots.'}
                   </div>
                 ) : (
                   availableSlotsForSelectedDoctor.map((slot) => (
@@ -710,7 +724,7 @@ export function PatientAppointments() {
                 <button
                   type="button"
                   onClick={handleBook}
-                  disabled={!selectedSlot || booking}
+                  disabled={!selectedDoctor || !selectedSlot || booking}
                   className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {booking
