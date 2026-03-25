@@ -10,13 +10,17 @@ import com.healthcare.appointment.events.AppointmentCancelledEvent;
 import com.healthcare.appointment.events.PaymentConfirmedEvent;
 import com.healthcare.appointment.feign.DoctorClient;
 import com.healthcare.appointment.feign.dto.AvailabilitySlotDto;
+import com.healthcare.appointment.feign.dto.BookableDoctorDto;
 import com.healthcare.appointment.repository.AppointmentRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import feign.FeignException;
 
 import java.time.LocalDateTime;
 import java.time.DayOfWeek;
@@ -362,6 +366,49 @@ public class AppointmentService {
         } catch (Exception ex) {
             log.warn("Could not resolve doctor profile ID via approved-doctors list. Using provided doctor ID. reason={}", ex.getMessage());
             return doctorIdOrUserId;
+        }
+    }
+
+    /**
+     * JWT {@code userId} is the user-service account id; appointments and many APIs use the doctor <em>profile</em> id.
+     * Allows the path/reference to be either profile id or the same user id (legacy / doctor dashboard using user id).
+     */
+    public boolean isAuthenticatedDoctorFor(String jwtUserId, String doctorProfileIdOrUserId) {
+        if (jwtUserId == null || doctorProfileIdOrUserId == null || doctorProfileIdOrUserId.isBlank()) {
+            return false;
+        }
+        String ref = doctorProfileIdOrUserId.trim();
+        if (jwtUserId.equals(ref)) {
+            return true;
+        }
+        try {
+            BookableDoctorDto profile = doctorClient.getDoctorByUserId(jwtUserId);
+            return profile != null
+                    && profile.getId() != null
+                    && profile.getId().trim().equals(ref);
+        } catch (Exception ex) {
+            log.warn("Could not resolve doctor profile for user {}: {}", jwtUserId, ex.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * When the client passes the JWT user id as {@code /doctor/{id}}, translate to profile id for DB lookup.
+     */
+    public String resolveDoctorProfileIdForDoctorUser(String jwtUserId) {
+        try {
+            BookableDoctorDto profile = doctorClient.getDoctorByUserId(jwtUserId);
+            if (profile == null || profile.getId() == null || profile.getId().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor profile not found");
+            }
+            return profile.getId().trim();
+        } catch (ResponseStatusException e) {
+            throw e;
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor profile not found", e);
+        } catch (Exception ex) {
+            log.warn("resolveDoctorProfileIdForDoctorUser failed: {}", ex.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Unable to resolve doctor profile", ex);
         }
     }
 

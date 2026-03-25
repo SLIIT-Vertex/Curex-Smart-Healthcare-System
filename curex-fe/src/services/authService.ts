@@ -1,5 +1,5 @@
 import api from './axiosInstance'
-import type { AuthResponse, LoginRequest, RegisterRequest, UserInfo } from '../types/auth'
+import type { AuthResponse, LoginRequest, RegisterRequest, UserInfo } from '../types/auth.ts'
 
 const AUTH = '/api/auth'
 

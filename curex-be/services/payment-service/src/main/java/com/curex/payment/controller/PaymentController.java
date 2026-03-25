@@ -48,6 +48,12 @@ public class PaymentController {
         return ResponseEntity.ok(ApiResponse.of("Payment details", paymentService.getPayment(id)));
     }
 
+    @PostMapping("/payments/{id}/confirm")
+    public ResponseEntity<ApiResponse<PaymentResponse>> confirmPayment(@PathVariable UUID id) {
+        PaymentResponse payload = paymentService.confirmPayment(id);
+        return ResponseEntity.ok(ApiResponse.of("Payment confirmed", payload));
+    }
+
     @GetMapping("/payments/patients/{patientId}")
     public ResponseEntity<ApiResponse<List<PaymentResponse>>> listPayments(@PathVariable @NotBlank String patientId) {
         return ResponseEntity.ok(ApiResponse.of("Patient payments", paymentService.getPaymentsForPatient(patientId)));

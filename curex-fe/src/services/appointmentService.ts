@@ -4,7 +4,7 @@ import type {
   AppointmentRecord,
   BookAppointmentPayload,
   DoctorDirectoryItem,
-} from '../types/appointment'
+} from '../types/appointment.ts'
 
 export interface DoctorBackendResponse {
   id: string

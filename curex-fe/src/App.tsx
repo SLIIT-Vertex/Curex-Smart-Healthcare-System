@@ -33,6 +33,8 @@ import { PatientPrescriptions } from './pages/patient/PatientPrescriptions'
 import { PatientSymptomChecker } from './pages/patient/PatientSymptomChecker'
 import { PatientAppointments } from './pages/patient/PatientAppointments'
 import { PatientReports } from './pages/patient/PatientReports'
+import { PatientCheckout } from './pages/patient/PatientCheckout'
+import { PatientPayments } from './pages/patient/PatientPayments'
 import { PatientTelemedicineCenter } from './pages/patient/PatientTelemedicineCenter'
 
 function App() {
@@ -100,6 +102,8 @@ function App() {
             <Route path="telemedicine" element={<PatientTelemedicineCenter />} />
             <Route path="telemedicine/:appointmentId" element={<PatientTelemedicineCenter />} />
             <Route path="reports" element={<PatientReports />} />
+            <Route path="checkout/:appointmentId" element={<PatientCheckout />} />
+            <Route path="payments" element={<PatientPayments />} />
           </Route>
         </Route>
 
