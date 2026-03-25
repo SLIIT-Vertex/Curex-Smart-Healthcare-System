@@ -1,6 +1,7 @@
 export interface Report {
   id: string
-  patientId: string
+  ownerId: string
+  category: string
   originalFilename: string
   contentType: string
   fileSize: number

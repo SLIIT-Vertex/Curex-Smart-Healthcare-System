@@ -165,11 +165,11 @@ spring:
                 name: aiSymptomServiceCB
                 fallbackUri: forward:/fallback/service-unavailable
 
-        # Report Service
+        # File/Report Service
         - id: report-service
           uri: http://report-service:8086
           predicates:
-            - Path=/api/reports/**
+            - Path=/api/files/**
           filters:
             - name: CircuitBreaker
               args:

@@ -17,7 +17,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "reports")
+@Table(name = "reports") // Still in reports table for now
 @Getter
 @Setter
 @NoArgsConstructor
@@ -29,8 +29,11 @@ public class Report {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(name = "owner_id", nullable = false)
+    private String ownerId;
+
     @Column(nullable = false)
-    private String patientId;
+    private String category; // e.g. "PATIENT_REPORT", "PROFILE_IMAGE", "APPOINTMENT_DOC"
 
     @Column(nullable = false)
     private String originalFilename;

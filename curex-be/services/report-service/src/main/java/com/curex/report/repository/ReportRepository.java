@@ -8,5 +8,7 @@ import java.util.UUID;
 
 public interface ReportRepository extends JpaRepository<Report, UUID> {
 
-    List<Report> findByPatientIdOrderByUploadedAtDesc(String patientId);
+    List<Report> findByOwnerIdOrderByUploadedAtDesc(String ownerId);
+    
+    List<Report> findByOwnerIdAndCategoryOrderByUploadedAtDesc(String ownerId, String category);
 }

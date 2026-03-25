@@ -13,7 +13,8 @@ import java.util.UUID;
 public class ReportResponse {
 
     private final UUID id;
-    private final String patientId;
+    private final String ownerId;
+    private final String category;
     private final String originalFilename;
     private final String contentType;
     private final long fileSize;

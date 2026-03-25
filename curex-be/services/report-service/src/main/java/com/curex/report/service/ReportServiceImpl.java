@@ -31,9 +31,12 @@ public class ReportServiceImpl implements ReportService {
     private final CloudinaryService cloudinaryService;
 
     @Override
-    public Report uploadReport(String patientId, MultipartFile file) {
-        if (!StringUtils.hasText(patientId)) {
-            throw new InvalidFileException("patientId is required");
+    public Report uploadFile(String ownerId, String category, MultipartFile file) {
+        if (!StringUtils.hasText(ownerId)) {
+            throw new InvalidFileException("ownerId is required");
+        }
+        if (!StringUtils.hasText(category)) {
+            throw new InvalidFileException("category is required");
         }
         if (file == null || file.isEmpty()) {
             throw new InvalidFileException("file is required and must not be empty");
@@ -43,13 +46,15 @@ public class ReportServiceImpl implements ReportService {
         String extension = extractExtension(originalFilename);
         validateFileType(extension, file.getContentType());
 
-        // Upload to Cloudinary
-        Map<String, Object> uploadResult = cloudinaryService.upload(file, "curex/reports/" + patientId);
+        // Upload to Cloudinary using category as a subfolder
+        // Resulting path: curex/{category}/{ownerId}
+        Map<String, Object> uploadResult = cloudinaryService.upload(file, "curex/" + category.toLowerCase() + "/" + ownerId);
         String publicId = (String) uploadResult.get("public_id");
         String fileUrl = (String) uploadResult.get("secure_url");
 
         Report report = Report.builder()
-                .patientId(patientId)
+                .ownerId(ownerId)
+                .category(category.toUpperCase())
                 .originalFilename(originalFilename)
                 .publicId(publicId)
                 .fileUrl(fileUrl)
@@ -62,22 +67,30 @@ public class ReportServiceImpl implements ReportService {
     }
 
     @Override
-    public Report getReport(UUID id) {
+    public Report getFile(UUID id) {
         return reportRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Report not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("File not found: " + id));
     }
 
     @Override
-    public List<Report> getReportsForPatient(String patientId) {
-        if (!StringUtils.hasText(patientId)) {
-            throw new InvalidFileException("patientId is required");
+    public List<Report> getFilesByOwner(String ownerId) {
+        if (!StringUtils.hasText(ownerId)) {
+            throw new InvalidFileException("ownerId is required");
         }
-        return reportRepository.findByPatientIdOrderByUploadedAtDesc(patientId);
+        return reportRepository.findByOwnerIdOrderByUploadedAtDesc(ownerId);
     }
 
     @Override
-    public void deleteReport(UUID id) {
-        Report report = getReport(id);
+    public List<Report> getFilesByOwnerAndCategory(String ownerId, String category) {
+        if (!StringUtils.hasText(ownerId) || !StringUtils.hasText(category)) {
+            throw new InvalidFileException("ownerId and category are required");
+        }
+        return reportRepository.findByOwnerIdAndCategoryOrderByUploadedAtDesc(ownerId, category.toUpperCase());
+    }
+
+    @Override
+    public void deleteFile(UUID id) {
+        Report report = getFile(id);
         
         // Delete from Cloudinary
         cloudinaryService.delete(report.getPublicId());

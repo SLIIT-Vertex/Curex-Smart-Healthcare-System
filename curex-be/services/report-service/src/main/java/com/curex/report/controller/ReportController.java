@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/reports")
+@RequestMapping("/api/files")
 @RequiredArgsConstructor
 @Validated
 public class ReportController {
@@ -34,13 +34,15 @@ public class ReportController {
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ReportUploadResponse> upload(
-            @RequestParam("patientId") @NotBlank String patientId,
+            @RequestParam("ownerId") @NotBlank String ownerId,
+            @RequestParam(value = "category", defaultValue = "GENERAL") String category,
             @RequestPart("file") MultipartFile file) {
-        Report report = reportService.uploadReport(patientId, file);
+        Report report = reportService.uploadFile(ownerId, category, file);
 
         ReportUploadResponse payload = ReportUploadResponse.builder()
                 .id(report.getId())
-                .patientId(report.getPatientId())
+                .ownerId(report.getOwnerId())
+                .category(report.getCategory())
                 .originalFilename(report.getOriginalFilename())
                 .contentType(report.getContentType())
                 .fileSize(report.getFileSize())
@@ -52,11 +54,12 @@ public class ReportController {
 
     @GetMapping("/{id}")
     public ResponseEntity<ReportResponse> getMetadata(@PathVariable UUID id) {
-        Report report = reportService.getReport(id);
+        Report report = reportService.getFile(id);
 
         ReportResponse payload = ReportResponse.builder()
                 .id(report.getId())
-                .patientId(report.getPatientId())
+                .ownerId(report.getOwnerId())
+                .category(report.getCategory())
                 .originalFilename(report.getOriginalFilename())
                 .contentType(report.getContentType())
                 .fileSize(report.getFileSize())
@@ -69,7 +72,7 @@ public class ReportController {
 
     @GetMapping("/{id}/download")
     public ResponseEntity<Void> download(@PathVariable UUID id) {
-        Report report = reportService.getReport(id);
+        Report report = reportService.getFile(id);
         
         // Redirect to Cloudinary URL
         return ResponseEntity.status(302)
@@ -77,12 +80,23 @@ public class ReportController {
                 .build();
     }
 
-    @GetMapping("/patient/{patientId}")
-    public ResponseEntity<List<ReportResponse>> listByPatient(@PathVariable @NotBlank String patientId) {
-        List<ReportResponse> payload = reportService.getReportsForPatient(patientId).stream()
+    @GetMapping("/owner/{ownerId}")
+    public ResponseEntity<List<ReportResponse>> listByOwner(
+            @PathVariable @NotBlank String ownerId,
+            @RequestParam(value = "category", required = false) String category) {
+        
+        List<Report> reports;
+        if (category != null && !category.isBlank()) {
+            reports = reportService.getFilesByOwnerAndCategory(ownerId, category);
+        } else {
+            reports = reportService.getFilesByOwner(ownerId);
+        }
+
+        List<ReportResponse> payload = reports.stream()
                 .map(r -> ReportResponse.builder()
                         .id(r.getId())
-                        .patientId(r.getPatientId())
+                        .ownerId(r.getOwnerId())
+                        .category(r.getCategory())
                         .originalFilename(r.getOriginalFilename())
                         .contentType(r.getContentType())
                         .fileSize(r.getFileSize())
@@ -96,7 +110,7 @@ public class ReportController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiMessageResponse> delete(@PathVariable UUID id) {
-        reportService.deleteReport(id);
-        return ResponseEntity.ok(ApiMessageResponse.of("Deleted report: " + id));
+        reportService.deleteFile(id);
+        return ResponseEntity.ok(ApiMessageResponse.of("Deleted file: " + id));
     }
 }
