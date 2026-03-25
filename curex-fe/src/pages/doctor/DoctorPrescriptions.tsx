@@ -122,6 +122,36 @@ export function DoctorPrescriptions() {
       }))
   }, [appointmentsWithoutPrescription])
 
+  const noIssueReason = useMemo(() => {
+    if (loading) return null
+    if (appointments.length === 0) {
+      return 'You have no appointments yet. Prescriptions can only be issued after you have visits with patients.'
+    }
+    if (eligibleAppointments.length === 0) {
+      return 'None of your appointments are in session or completed yet. Start or finish a visit before issuing a prescription.'
+    }
+    if (appointmentsWithoutPrescription.length === 0) {
+      return 'Every in-session or completed visit already has a prescription linked.'
+    }
+    return null
+  }, [
+    loading,
+    appointments.length,
+    eligibleAppointments.length,
+    appointmentsWithoutPrescription.length,
+  ])
+
+  const openIssueModal = useCallback(() => {
+    if (appointmentsWithoutPrescription.length === 0) {
+      const msg =
+        noIssueReason ??
+        'No eligible appointments. Prescriptions require an appointment that is in session or completed, without an existing prescription for that visit.'
+      toast(msg, 'info')
+      return
+    }
+    setModalOpen(true)
+  }, [appointmentsWithoutPrescription.length, noIssueReason, toast])
+
   const fetchDoctorAndData = useCallback(async () => {
     if (!user?.id || user.role !== 'DOCTOR') return
     setLoading(true)
@@ -241,12 +271,11 @@ export function DoctorPrescriptions() {
         </div>
         <button
           type="button"
-          onClick={() => setModalOpen(true)}
+          onClick={openIssueModal}
           className="btn-primary shrink-0"
-          disabled={appointmentsWithoutPrescription.length === 0}
           title={
             appointmentsWithoutPrescription.length === 0
-              ? 'No IN_SESSION or COMPLETED appointments without prescriptions'
+              ? 'Tap for details on why issuing is unavailable'
               : undefined
           }
         >
@@ -254,6 +283,15 @@ export function DoctorPrescriptions() {
           Issue Prescription
         </button>
       </div>
+
+      {noIssueReason && (
+        <div
+          className="rounded-2xl border border-text-secondary/15 bg-background/80 px-4 py-3 text-sm text-text-secondary"
+          role="status"
+        >
+          {noIssueReason}
+        </div>
+      )}
 
       {/* Search / filter bar */}
       <div
