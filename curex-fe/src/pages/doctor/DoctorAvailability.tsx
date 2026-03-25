@@ -18,15 +18,12 @@ import '../../styles/pages/DoctorDashboard.css'
 import { useAuth } from '../../store/hooks'
 
 type SlotState = 'unavailable' | 'available' | 'booked'
-
 function hydrateGridFromStorage(doctorId: string): Record<string, SlotState> {
   const storedSlots = getDoctorAvailability(doctorId)
   const grid: Record<string, SlotState> = {}
-
   for (const key of storedSlots) {
     grid[key] = 'available'
   }
-
   return grid
 }
 
@@ -358,6 +355,7 @@ export function DoctorAvailability() {
     if (!doctorId) {
       return
     }
+
     const availableSlotKeys = Object.entries(grid)
       .filter(([, state]) => state === 'available')
       .map(([key]) => key)

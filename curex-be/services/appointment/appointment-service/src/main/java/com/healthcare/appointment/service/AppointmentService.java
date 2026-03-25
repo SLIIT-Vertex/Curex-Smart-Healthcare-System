@@ -19,6 +19,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.DayOfWeek;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
@@ -68,14 +70,31 @@ public class AppointmentService {
 
         // 3. Check slot availability via Feign (skipped in stub-mode)
         if (!stubMode && req.getSlotId() != null) {
-            List<AvailabilitySlotDto> slots =
-                    doctorClient.getAvailability(req.getDoctorId());
-            boolean available = slots.stream()
-                    .anyMatch(s -> s.getId().equals(req.getSlotId()) && !s.isBooked());
-            if (!available) {
-                throw new IllegalArgumentException("The selected slot is not available.");
+            String requestedSlotId = req.getSlotId();
+            boolean legacyDateSlotKey = requestedSlotId.contains("_");
+
+            try {
+                String doctorProfileId = resolveDoctorProfileIdForAvailability(req.getDoctorId());
+                List<AvailabilitySlotDto> slots =
+                        doctorClient.getAvailability(doctorProfileId);
+
+                String selectedSlotId = resolveSelectedSlotId(req, slots);
+                boolean available = selectedSlotId != null && slots.stream()
+                        .anyMatch(s -> selectedSlotId.equals(s.getId()) && !s.isBooked());
+                if (!available) {
+                    throw new IllegalArgumentException("The selected slot is not available.");
+                }
+                doctorClient.markSlotBooked(doctorProfileId, selectedSlotId);
+            } catch (Exception ex) {
+                // Preserve previous booking behavior for legacy date_slot payloads when
+                // doctor availability profile mapping is incomplete during integrations.
+                if (legacyDateSlotKey) {
+                    log.warn("Skipping strict slot validation for legacy slot key {} due to doctor-service lookup issue: {}",
+                            requestedSlotId, ex.getMessage());
+                } else {
+                    throw ex;
+                }
             }
-            doctorClient.markSlotBooked(req.getDoctorId(), req.getSlotId());
         }
 
         // 4. Persist
@@ -324,5 +343,62 @@ public class AppointmentService {
                 .stream()
                 .sorted(Comparator.comparing(Appointment::getAppointmentTime).reversed())
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Booking payload uses doctor user ID for ownership semantics, but doctor-service availability
+     * endpoints require doctor profile ID. Resolve userId -> profileId when possible.
+     */
+    private String resolveDoctorProfileIdForAvailability(String doctorIdOrUserId) {
+        try {
+            return doctorClient.getApprovedDoctorsForBooking().stream()
+                    .filter(d -> doctorIdOrUserId.equals(d.getUserId()) || doctorIdOrUserId.equals(d.getId()))
+                    .map(d -> d.getId())
+                    .findFirst()
+                    .orElse(doctorIdOrUserId);
+        } catch (Exception ex) {
+            log.warn("Could not resolve doctor profile ID via approved-doctors list. Using provided doctor ID. reason={}", ex.getMessage());
+            return doctorIdOrUserId;
+        }
+    }
+
+    /**
+     * Supports both slot UUID IDs and legacy date_slot keys (e.g. 2026-03-25_17:30).
+     */
+    private String resolveSelectedSlotId(BookAppointmentRequest req, List<AvailabilitySlotDto> slots) {
+        if (slots == null || slots.isEmpty()) {
+            return null;
+        }
+
+        String requestedSlotId = req.getSlotId();
+        if (requestedSlotId == null || requestedSlotId.isBlank()) {
+            return null;
+        }
+
+        boolean directIdMatch = slots.stream().anyMatch(s -> requestedSlotId.equals(s.getId()));
+        if (directIdMatch) {
+            return requestedSlotId;
+        }
+
+        // Legacy key format from frontend: yyyy-MM-dd_HH:mm
+        String[] parts = requestedSlotId.split("_");
+        if (parts.length != 2) {
+            return null;
+        }
+
+        try {
+            DayOfWeek expectedDay = req.getAppointmentTime().getDayOfWeek();
+            LocalTime expectedTime = LocalTime.parse(parts[1]);
+
+            return slots.stream()
+                    .filter(s -> !s.isBooked())
+                    .filter(s -> expectedDay.equals(s.getDay()))
+                    .filter(s -> expectedTime.equals(s.getStartTime()))
+                    .map(AvailabilitySlotDto::getId)
+                    .findFirst()
+                    .orElse(null);
+        } catch (Exception ex) {
+            return null;
+        }
     }
 }

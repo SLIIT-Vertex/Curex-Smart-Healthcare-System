@@ -1,5 +1,5 @@
 import api from './axiosInstance'
-import api from './axiosInstance'
+import { getDoctorAvailability, parseDateSlotKey } from './availabilityService'
 import type {
   AppointmentRecord,
   BookAppointmentPayload,
@@ -24,9 +24,19 @@ export interface UserDoctorResponse {
   firstName: string
   lastName: string
   email: string
+  role?: string
   specialization?: string
   phone?: string
   bio?: string
+}
+
+export interface BookableDoctorResponse {
+  userId: string
+  id: string
+  firstName: string
+  lastName: string
+  email?: string
+  specialization?: string
 }
 
 export interface AvailabilitySlotResponse {
@@ -38,76 +48,214 @@ export interface AvailabilitySlotResponse {
   booked: boolean
 }
 
-/** Fetch doctors from doctor-service, with fallback to user-service admin endpoint */
+const DAY_NAMES = [
+  'SUNDAY',
+  'MONDAY',
+  'TUESDAY',
+  'WEDNESDAY',
+  'THURSDAY',
+  'FRIDAY',
+  'SATURDAY',
+] as const
+
+function dayForDateKey(dateKey: string): string {
+  const d = new Date(`${dateKey}T00:00:00`)
+  return DAY_NAMES[d.getDay()]
+}
+
+function endTimeFromStart(startTime: string): string {
+  const [h, m] = startTime.split(':').map(Number)
+  const total = h * 60 + m + 30
+  const endHour = Math.floor(total / 60)
+  const endMinute = total % 60
+  return `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}:00`
+}
+
+function localSlotsFallback(doctorUserId: string): AvailabilitySlotResponse[] {
+  const slotKeys = getDoctorAvailability(doctorUserId)
+  return slotKeys
+    .map((key) => parseDateSlotKey(key))
+    .filter((parsed): parsed is { dateKey: string; time: string } => Boolean(parsed))
+    .map(({ dateKey, time }, index) => ({
+      id: `local-${doctorUserId}-${index}`,
+      doctorId: doctorUserId,
+      day: dayForDateKey(dateKey),
+      startTime: `${time}:00`,
+      endTime: endTimeFromStart(time),
+      booked: false,
+    }))
+}
+
+export interface DoctorProfileResponse {
+  id: string
+  email?: string
+  firstName?: string
+  lastName?: string
+  specialization?: string
+}
+
+const doctorProfileIdByUserId = new Map<string, string>()
+
+/** Fetch doctors approved for booking (doctor profile + user id) from doctor-service. */
 export async function getDoctorDirectory(specialty?: string): Promise<DoctorDirectoryItem[]> {
-  // First try the doctor-service API
   try {
-    console.log('Fetching doctors from /api/doctors/search...')
-    const params = specialty ? { specialty } : {}
-    const { data } = await api.get<DoctorBackendResponse[]>('/api/doctors/search', { params })
-    console.log('Doctors response from doctor-service:', data)
-    
+    // Preferred source: doctor-service returns profileId + userId together.
+    const { data } = await api.get<BookableDoctorResponse[]>('/api/doctors/bookable')
     if (Array.isArray(data) && data.length > 0) {
-      const doctors = data.map((doc) => ({
-        id: doc.id,
-        name: `Dr. ${doc.firstName} ${doc.lastName}`.trim(),
-        specialty: doc.specialization || 'General',
-        hospital: 'Curex Health Network',
-      }))
-      console.log(`Successfully fetched ${doctors.length} doctors from doctor-service`)
+      const doctors = data.map((doctor) => {
+        if (doctor.userId && doctor.id) {
+          doctorProfileIdByUserId.set(doctor.userId, doctor.id)
+        }
+        return {
+          // Keep doctor user ID for appointment ownership semantics.
+          id: doctor.userId,
+          name: `Dr. ${doctor.firstName} ${doctor.lastName}`.trim(),
+          specialty: doctor.specialization || 'General',
+          hospital: 'Curex Health Network',
+        }
+      })
+
+      if (specialty) {
+        const key = specialty.toLowerCase()
+        return doctors.filter((doctor) => doctor.specialty.toLowerCase().includes(key))
+      }
+
       return doctors
     }
-  } catch (error: any) {
-    console.warn('Failed to fetch doctors from doctor-service:', {
-      message: error?.message,
-      status: error?.response?.status,
-      url: error?.config?.url,
-    })
+  } catch {
+    // Fallback below handles recovery.
   }
 
-  // Fallback to user-service admin endpoint
   try {
-    console.log('Fallback: Fetching doctors from /api/admin/users/by-role/DOCTOR...')
-    const { data } = await api.get<UserDoctorResponse[]>('/api/admin/users/by-role/DOCTOR')
-    console.log('Doctors response from user-service:', data)
-    
-    if (Array.isArray(data) && data.length > 0) {
-      const doctors = data.map((user) => ({
+    // Fallback: merge approved doctors (user-service) with profiles (doctor-service search).
+    const [{ data: approvedUsers }, { data: doctorProfiles }] = await Promise.all([
+      api.get<UserDoctorResponse[]>('/api/users/doctors'),
+      api.get<DoctorProfileResponse[]>('/api/doctors/search'),
+    ])
+
+    if (!Array.isArray(approvedUsers) || approvedUsers.length === 0) {
+      return []
+    }
+
+    const profileByEmail = new Map<string, DoctorProfileResponse>()
+    if (Array.isArray(doctorProfiles)) {
+      for (const profile of doctorProfiles) {
+        if (profile.email) {
+          profileByEmail.set(profile.email.trim().toLowerCase(), profile)
+        }
+      }
+    }
+
+    const doctors = approvedUsers.map((user) => {
+      const profile = user.email
+        ? profileByEmail.get(user.email.trim().toLowerCase())
+        : undefined
+
+      if (profile?.id) {
+        doctorProfileIdByUserId.set(user.id, profile.id)
+      }
+
+      return {
         id: user.id,
         name: `Dr. ${user.firstName} ${user.lastName}`.trim(),
-        specialty: user.specialization || 'General',
+        specialty: profile?.specialization || user.specialization || 'General',
         hospital: 'Curex Health Network',
-      }))
-      console.log(`Successfully fetched ${doctors.length} doctors from user-service admin endpoint`)
-      return doctors
+      }
+    })
+
+    if (specialty) {
+      const key = specialty.toLowerCase()
+      return doctors.filter((doctor) => doctor.specialty.toLowerCase().includes(key))
     }
+
+    return doctors
   } catch (error: any) {
-    console.error('Failed to fetch doctors from user-service admin endpoint:', {
+    console.error('Failed to fetch doctor directory from both /api/doctors/bookable and fallback sources:', {
       message: error?.message,
       status: error?.response?.status,
       url: error?.config?.url,
       data: error?.response?.data,
     })
+    return []
+  }
+}
+
+async function resolveDoctorProfileId(doctorUserId: string): Promise<string | null> {
+  const cached = doctorProfileIdByUserId.get(doctorUserId)
+  if (cached) {
+    return cached
   }
 
-  // If both fail, return empty
-  console.error('Failed to fetch doctors from both doctor-service and user-service')
-  return []
+  try {
+    const { data } = await api.get<BookableDoctorResponse[]>('/api/doctors/bookable')
+    if (!Array.isArray(data)) {
+      throw new Error('Unexpected /api/doctors/bookable response')
+    }
+    const doctor = data.find((entry) => entry.userId === doctorUserId)
+    if (doctor?.id) {
+      doctorProfileIdByUserId.set(doctorUserId, doctor.id)
+      return doctor.id
+    }
+  } catch {
+    // Try next fallback.
+  }
+
+  try {
+    const [{ data: approvedUsers }, { data: doctorProfiles }] = await Promise.all([
+      api.get<UserDoctorResponse[]>('/api/users/doctors'),
+      api.get<DoctorProfileResponse[]>('/api/doctors/search'),
+    ])
+
+    if (!Array.isArray(approvedUsers) || !Array.isArray(doctorProfiles)) {
+      throw new Error('Unexpected fallback responses')
+    }
+
+    const user = approvedUsers.find((entry) => entry.id === doctorUserId)
+    if (user?.email) {
+      const profile = doctorProfiles.find(
+        (entry) =>
+          !!entry.email && entry.email.trim().toLowerCase() === user.email.trim().toLowerCase()
+      )
+      if (profile?.id) {
+        doctorProfileIdByUserId.set(doctorUserId, profile.id)
+        return profile.id
+      }
+    }
+  } catch {
+    // Try final fallback.
+  }
+
+  try {
+    const { data } = await api.get<DoctorProfileResponse>(
+      `/api/doctors/by-user/${doctorUserId}`
+    )
+    if (data?.id) {
+      doctorProfileIdByUserId.set(doctorUserId, data.id)
+      return data.id
+    }
+  } catch {
+    // No resolvable profile id.
+  }
+
+  return null
 }
 
 export async function getDoctorSlots(doctorId: string): Promise<AvailabilitySlotResponse[]> {
   try {
-    console.log(`Fetching slots for doctor ${doctorId} from /api/doctors/${doctorId}/availability`)
-    const { data } = await api.get<AvailabilitySlotResponse[]>(
-      `/api/doctors/${doctorId}/availability`
-    )
-    console.log(`Slots response for doctor ${doctorId}:`, data)
-    
-    if (!Array.isArray(data)) {
-      console.error('Unexpected response format from slots API:', data)
-      return []
+    const doctorProfileId = await resolveDoctorProfileId(doctorId)
+    if (!doctorProfileId) {
+      console.warn(`No doctor profile found for user ${doctorId}`)
+      return localSlotsFallback(doctorId)
     }
-    
+
+    const { data } = await api.get<AvailabilitySlotResponse[]>(
+      `/api/doctors/${doctorProfileId}/availability`
+    )
+
+    if (!Array.isArray(data)) {
+      return localSlotsFallback(doctorId)
+    }
+
     return data
   } catch (error: any) {
     console.error(`Failed to fetch slots for doctor ${doctorId}:`, {
@@ -115,7 +263,7 @@ export async function getDoctorSlots(doctorId: string): Promise<AvailabilitySlot
       status: error?.response?.status,
       data: error?.response?.data,
     })
-    return []
+    return localSlotsFallback(doctorId)
   }
 }
 
@@ -142,7 +290,6 @@ export async function bookAppointment(
   payload: BookAppointmentPayload
 ): Promise<AppointmentRecord> {
   const { data } = await api.post<AppointmentRecord>(
-  const { data } = await api.post<AppointmentRecord>(
     '/api/appointments',
     payload
   )
@@ -153,7 +300,6 @@ export async function getAppointmentsByDoctor(
   doctorId: string
 ): Promise<AppointmentRecord[]> {
   const { data } = await api.get<AppointmentRecord[]>(
-  const { data } = await api.get<AppointmentRecord[]>(
     `/api/appointments/doctor/${doctorId}`
   )
   return data
@@ -163,7 +309,6 @@ export async function getAppointmentsByPatient(
   patientId: string
 ): Promise<AppointmentRecord[]> {
   const { data } = await api.get<AppointmentRecord[]>(
-  const { data } = await api.get<AppointmentRecord[]>(
     `/api/appointments/patient/${patientId}`
   )
   return data
@@ -172,7 +317,6 @@ export async function getAppointmentsByPatient(
 export async function getAppointmentById(
   appointmentId: string
 ): Promise<AppointmentRecord> {
-  const { data } = await api.get<AppointmentRecord>(
   const { data } = await api.get<AppointmentRecord>(
     `/api/appointments/${appointmentId}`
   )
