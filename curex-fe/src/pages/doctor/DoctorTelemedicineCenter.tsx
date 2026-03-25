@@ -10,8 +10,7 @@ import {
 import type { AppointmentRecord } from '../../types/appointment'
 import type { TelemedicineSessionRecord } from '../../types/telemedicine'
 import telemedImage from '../../assets/telemed/telemed.png'
-
-const DEFAULT_DOCTOR_ID = 'doc-001'
+import { useAuth } from '../../store/hooks'
 
 function canJoin(
   appointment: AppointmentRecord | null,
@@ -79,6 +78,7 @@ function queueStatus(
 }
 
 export function DoctorTelemedicineCenter() {
+  const { user } = useAuth()
   const { appointmentId } = useParams<{ appointmentId?: string }>()
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
   const [activeTab, setActiveTab] = useState<'queue' | 'meeting'>(
@@ -152,7 +152,13 @@ export function DoctorTelemedicineCenter() {
       setLoading(true)
       setError(null)
 
-      const appts = await getAppointmentsByDoctor(DEFAULT_DOCTOR_ID)
+      if (!user?.id) {
+        setError('Please login as a doctor to access telemedicine.')
+        setLoading(false)
+        return
+      }
+
+      const appts = await getAppointmentsByDoctor(user.id)
       setAppointments(appts)
 
       const tele = appts.filter((appt) => appt.type === 'TELEMEDICINE')
@@ -267,16 +273,15 @@ export function DoctorTelemedicineCenter() {
         </div>
       </div>
 
-      {loading ? (
+      {loading && (
         <div className="appointment-panel p-5 text-sm text-text-secondary">Loading telemedicine data...</div>
-      ) : error ? (
+      )}
+
+      {error && (
         <div className="appointment-panel border border-error/30 bg-error/10 p-5 text-sm text-primary">{error}</div>
-      ) : teleAppointments.length === 0 ? (
-        <div className="appointment-panel p-6 text-sm text-text-secondary">
-          No telemedicine appointments available yet.
-        </div>
-      ) : (
-        <div className="space-y-4">
+      )}
+
+      <div className="space-y-4">
           {systemNotice && (
             <div className="appointment-panel border border-accent-sky/40 bg-accent-sky/20 px-4 py-3 text-sm text-primary">
               <div className="flex items-center justify-between gap-3">
@@ -333,6 +338,14 @@ export function DoctorTelemedicineCenter() {
                     </tr>
                   </thead>
                   <tbody>
+                    {activeTeleAppointments.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-5 text-center text-text-secondary">
+                          No telemedicine appointments available yet.
+                        </td>
+                      </tr>
+                    )}
+
                     {activeTeleAppointments.map((appt) => {
                       const session = sessions[appt.id] ?? null
                       const joinable = canJoin(appt, session)
@@ -407,7 +420,8 @@ export function DoctorTelemedicineCenter() {
             </div>
           )}
 
-          {activeTab === 'meeting' && meetingAppointment && (
+          {activeTab === 'meeting' && (
+            meetingAppointment ? (
             <div className="grid gap-4 xl:grid-cols-[320px_1.7fr]">
               <aside className="appointment-panel p-4">
                 <div className="flex items-start justify-between gap-2">
@@ -482,9 +496,14 @@ export function DoctorTelemedicineCenter() {
                 )}
               </section>
             </div>
+            ) : (
+              <div className="appointment-panel p-6 text-sm text-text-secondary">
+                No meeting selected. Open one from the Video Queue when appointments are available.
+              </div>
+            )
           )}
         </div>
-      )}
+
 
       {confirmEndOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">

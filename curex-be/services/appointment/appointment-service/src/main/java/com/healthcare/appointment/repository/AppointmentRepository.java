@@ -32,14 +32,14 @@ public interface AppointmentRepository extends JpaRepository<Appointment, String
 
     List<Appointment> findByStatus(AppointmentStatus status);
 
-    // Check for slot conflicts (same doctor, overlapping time window ±30 min)
-    @Query("SELECT a FROM Appointment a WHERE a.doctorId = :doctorId " +
-           "AND a.status NOT IN ('CANCELLED', 'COMPLETED') " +
-           "AND a.appointmentTime BETWEEN :from AND :to")
-    List<Appointment> findConflictingAppointments(
-            @Param("doctorId") String doctorId,
-            @Param("from") LocalDateTime from,
-            @Param("to") LocalDateTime to);
+    // Exact slot conflict check (same doctor, same appointment time, active statuses)
+    @Query("SELECT COUNT(a) > 0 FROM Appointment a " +
+            "WHERE LOWER(TRIM(a.doctorId)) = LOWER(TRIM(:doctorId)) " +
+            "AND a.status NOT IN ('CANCELLED', 'COMPLETED') " +
+            "AND a.appointmentTime = :appointmentTime")
+    boolean existsActiveConflictAtExactTime(
+             @Param("doctorId") String doctorId,
+             @Param("appointmentTime") LocalDateTime appointmentTime);
 
     // Search by specialty (stored denormalised)
     @Query("SELECT DISTINCT a.doctorId FROM Appointment a WHERE a.doctorSpecialty = :specialty")

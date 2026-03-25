@@ -53,6 +53,11 @@ public class DoctorController {
         return ResponseEntity.ok(doctorService.searchBySpecialty(specialty));
     }
 
+    @GetMapping("/bookable")
+    public ResponseEntity<List<BookableDoctorResponse>> listBookable() {
+        return ResponseEntity.ok(doctorService.listApprovedForBooking());
+    }
+
     @PostMapping("/{id}/availability")
     public ResponseEntity<List<AvailabilitySlotResponse>> addAvailability(@PathVariable String id,
                                                                           @Valid @RequestBody CreateAvailabilityBulkRequest request) {

@@ -19,7 +19,7 @@ public interface DoctorClient {
     /**
      * Internal route — only admin-approved doctors (user account APPROVED) with a doctor profile.
      */
-    @GetMapping("/internal/doctors/approved-for-booking")
+    @GetMapping("/doctors/bookable")
     List<BookableDoctorDto> getApprovedDoctorsForBooking();
 
     @GetMapping("/doctors/{id}/availability")
