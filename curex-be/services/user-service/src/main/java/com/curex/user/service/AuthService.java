@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 
 @Slf4j
 @Service
@@ -75,14 +76,21 @@ public class AuthService {
                 : User.AccountStatus.APPROVED);
         user.setEmailVerified(true);
 
+        applyProfileFields(user, request);
+
         User savedUser = userRepository.save(user);
         log.info("User registered: {} role={}", savedUser.getEmail(), savedUser.getRole());
 
-        // Invalidate the verification token so it cannot be reused.
+        // Invalidate the verification tokens so they cannot be reused.
         otpService.consumePhoneVerificationToken(request.getPhoneVerificationToken());
         otpService.consumeEmailVerificationToken(request.getEmailVerificationToken());
 
         publishRegistrationEvent(savedUser);
+
+        // Doctors require admin approval before they can log in — do not issue tokens.
+        if (request.getRole() == User.Role.DOCTOR) {
+            return new AuthResponse(null, null, null, new AuthResponse.UserInfo(savedUser));
+        }
 
         UserDetails userDetails = userDetailsService.loadUserByUsername(savedUser.getEmail());
         String accessToken  = jwtTokenUtil.generateToken(userDetails);
@@ -164,6 +172,35 @@ public class AuthService {
     public User getUserById(String userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException(userId));
+    }
+
+    /**
+     * Copies optional profile fields from the registration payload onto the new user entity.
+     * Role-specific fields are naturally skipped because the frontend sends them as null
+     * for the wrong role — no explicit role guard needed.
+     */
+    private void applyProfileFields(User user, RegisterRequest r) {
+        // Common
+        set(r.getProfileImageUrl(), user::setProfileImageUrl);
+        set(r.getDob(),             user::setDob);
+        set(r.getGender(),          user::setGender);
+        set(r.getAddress(),         user::setAddress);
+        // Doctor-specific
+        set(r.getSpecialty(),            user::setSpecialty);
+        set(r.getMedicalLicenseNumber(), user::setMedicalLicenseNumber);
+        set(r.getYearsOfExperience(),    user::setYearsOfExperience);
+        set(r.getCertifications(),       user::setCertifications);
+        set(r.getProofDocumentUrls(),    user::setProofDocumentUrls);
+        // Patient-specific
+        set(r.getBloodGroup(),            user::setBloodGroup);
+        set(r.getAllergies(),              user::setAllergies);
+        set(r.getChronicConditions(),     user::setChronicConditions);
+        set(r.getEmergencyContactName(),  user::setEmergencyContactName);
+        set(r.getEmergencyContactPhone(), user::setEmergencyContactPhone);
+    }
+
+    private static <T> void set(T value, Consumer<T> setter) {
+        if (value != null) setter.accept(value);
     }
 
     private void publishRegistrationEvent(User user) {

@@ -47,6 +47,9 @@ public class User {
     @Column(name = "phone_number")
     private String phoneNumber;
 
+    @Column(name = "profile_image_url", length = 500)
+    private String profileImageUrl;
+
     // ── Profile fields (populated via PUT /api/users/me/profile after registration) ──
 
     @Column(name = "date_of_birth")
@@ -57,6 +60,9 @@ public class User {
 
     @Column(name = "address", length = 500)
     private String address;
+
+    @Column(name = "bio", length = 2000)
+    private String bio;
 
     // Doctor-specific profile fields
     @Column(name = "specialty", length = 100)
@@ -70,6 +76,9 @@ public class User {
 
     @Column(name = "certifications", length = 1000)
     private String certifications;
+
+    @Column(name = "proof_document_urls", length = 2000)
+    private String proofDocumentUrls;
 
     // Patient-specific profile fields
     @Column(name = "blood_group", length = 10)

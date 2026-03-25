@@ -33,21 +33,23 @@ public class AuthResponse {
         private String firstName;
         private String lastName;
         private String phoneNumber;
+        private String profileImageUrl;
         private User.Role role;
         private User.AccountStatus accountStatus;
         private Boolean emailVerified;
         private LocalDateTime createdAt;
 
         public UserInfo(User user) {
-            this.id = user.getId();
-            this.email = user.getEmail();
-            this.firstName = user.getFirstName();
-            this.lastName = user.getLastName();
-            this.phoneNumber = user.getPhoneNumber();
-            this.role = user.getRole();
-            this.accountStatus = user.getAccountStatus();
-            this.emailVerified = user.getEmailVerified();
-            this.createdAt = user.getCreatedAt();
+            this.id              = user.getId();
+            this.email           = user.getEmail();
+            this.firstName       = user.getFirstName();
+            this.lastName        = user.getLastName();
+            this.phoneNumber     = user.getPhoneNumber();
+            this.profileImageUrl = user.getProfileImageUrl();
+            this.role            = user.getRole();
+            this.accountStatus   = user.getAccountStatus();
+            this.emailVerified   = user.getEmailVerified();
+            this.createdAt       = user.getCreatedAt();
         }
     }
 }

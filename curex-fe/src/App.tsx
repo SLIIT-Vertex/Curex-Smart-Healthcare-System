@@ -25,6 +25,7 @@ import { AdminProfile } from './pages/admin/AdminProfile'
 // Doctor
 import { DoctorDashboard } from './pages/doctor/DoctorDashboard'
 import { DoctorProfile } from './pages/doctor/DoctorProfile'
+import { DoctorPendingPage } from './pages/doctor/DoctorPendingPage'
 import { DoctorAvailability } from './pages/doctor/DoctorAvailability'
 import { DoctorPrescriptions } from './pages/doctor/DoctorPrescriptions'
 import { DoctorTelemedicineCenter } from './pages/doctor/DoctorTelemedicineCenter'
@@ -81,6 +82,7 @@ function App() {
 
         {/* ── Doctor (DOCTOR role only) ───────────────────────────────────────── */}
         <Route element={<ProtectedRoute allowedRoles={['DOCTOR']} />}>
+          <Route path="/doctor/pending" element={<DoctorPendingPage />} />
           <Route path="/doctor" element={<DoctorLayout />}>
             <Route index element={<Navigate to="/doctor/dashboard" replace />} />
             <Route path="dashboard" element={<DoctorDashboard />} />

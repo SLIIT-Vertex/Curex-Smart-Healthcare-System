@@ -2,12 +2,11 @@ import { useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Phone, Mail, CheckCircle2, ArrowRight, ArrowLeft, Loader2, ShieldCheck } from 'lucide-react'
 import { useAppDispatch, useAppSelector, useToast } from '../../../store/hooks'
-import { setField, setGlobalError, resetRegisterForm } from '../../../store/slices/registerSlice'
+import { setField, setGlobalError, resetRegisterForm, resetOtpState, setDoctorPending } from '../../../store/slices/registerSlice'
 import { setCredentials, setLoading } from '../../../store/slices/authSlice'
 import { useOtpVerification } from '../../../hooks/useOtpVerification'
 import { useRegisterNavigation } from '../../../hooks/useRegisterNavigation'
 import { authService } from '../../../services/authService'
-import type { UpdateProfileRequest } from '../../../types/auth'
 import { ROLE_HOME } from '../../auth/ProtectedRoute'
 import { OtpInput } from '../OtpInput'
 
@@ -47,8 +46,13 @@ export const VerifyStep = () => {
     dispatch(setGlobalError(null))
     dispatch(setLoading(true))
     try {
-      // Step 1 — create account with identity-only payload.
+      // Build the exp value before the call so the parseInt side-effect is clean.
+      const exp = parseInt(form.yearsOfExperience, 10)
+
+      // All profile data is included in the registration payload so that
+      // doctors (who receive no token) don't need a second authenticated call.
       const response = await authService.register({
+        // Required identity
         email:                   form.email.trim(),
         password:                form.password,
         firstName:               form.firstName.trim(),
@@ -57,47 +61,46 @@ export const VerifyStep = () => {
         phoneVerificationToken:  form.phoneVerificationToken,
         emailVerificationToken:  form.emailVerificationToken,
         role:                    form.role,
+        // Common profile
+        profileImageUrl: form.profileImageUrl || undefined,
+        dob:             form.dob             || undefined,
+        gender:          form.gender          || undefined,
+        address:         form.address         || undefined,
+        // Doctor-specific
+        ...(form.role === 'DOCTOR' && {
+          specialty:            form.specialty.trim()            || undefined,
+          medicalLicenseNumber: form.medicalLicenseNumber.trim() || undefined,
+          certifications:       form.certifications.trim()       || undefined,
+          proofDocumentUrls:    form.proofDocumentUrls.trim()    || undefined,
+          yearsOfExperience:    !isNaN(exp) && exp >= 0 ? exp : undefined,
+        }),
+        // Patient-specific (only when the user opted in)
+        ...(form.role === 'PATIENT' && form.fillHealthNow && {
+          bloodGroup:            form.bloodGroup            || undefined,
+          allergies:             form.allergies             || undefined,
+          chronicConditions:     form.chronicConditions     || undefined,
+          emergencyContactName:  form.emergencyContactName  || undefined,
+          emergencyContactPhone: form.emergencyContactPhone || undefined,
+        }),
       })
 
-      // Store JWT so the profile update call is automatically authenticated.
-      dispatch(setCredentials(response))
-
-      // Step 2 — persist supplementary profile data.
-      const profile: UpdateProfileRequest = {
-        dob:     form.dob     || undefined,
-        gender:  form.gender  || undefined,
-        address: form.address || undefined,
-      }
-
+      // Doctors receive no token — the backend keeps them unauthenticated until approved.
       if (form.role === 'DOCTOR') {
-        profile.specialty            = form.specialty.trim()            || undefined
-        profile.medicalLicenseNumber = form.medicalLicenseNumber.trim() || undefined
-        profile.certifications       = form.certifications.trim()       || undefined
-        const exp = parseInt(form.yearsOfExperience, 10)
-        if (!isNaN(exp) && exp >= 0) profile.yearsOfExperience = exp
+        toast('Account created! Your application is under review.', 'success')
+        dispatch(setDoctorPending(true))
+      } else {
+        // Patients are approved immediately — log them in and redirect.
+        dispatch(setCredentials(response))
+        toast('Account created! Welcome to Curex.', 'success')
+        navigate(ROLE_HOME[form.role], { replace: true })
+        dispatch(resetRegisterForm())
       }
-
-      if (form.role === 'PATIENT' && form.fillHealthNow) {
-        profile.bloodGroup            = form.bloodGroup            || undefined
-        profile.allergies             = form.allergies             || undefined
-        profile.chronicConditions     = form.chronicConditions     || undefined
-        profile.emergencyContactName  = form.emergencyContactName  || undefined
-        profile.emergencyContactPhone = form.emergencyContactPhone || undefined
-      }
-
-      const hasProfileData = Object.values(profile).some((v) => v !== undefined)
-      if (hasProfileData) {
-        await authService.updateProfile(profile)
-      }
-
-      dispatch(resetRegisterForm())
-      toast('Account created! Welcome to Curex.', 'success')
-      navigate(ROLE_HOME[form.role], { replace: true })
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data
           ?.message ?? 'Registration failed. Please try again.'
       dispatch(setGlobalError(msg))
+      dispatch(resetOtpState())
       toast(msg, 'error')
     } finally {
       dispatch(setLoading(false))

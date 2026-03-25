@@ -69,8 +69,10 @@ export function PatientTopBar({ onMenuClick }: PatientTopBarProps) {
           className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition-all duration-200 hover:bg-primary-light/5"
           aria-label="Go to profile"
         >
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-light/20 text-sm font-semibold text-primary">
-            {initials}
+          <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary-light/20 text-sm font-semibold text-primary">
+            {user?.profileImageUrl
+              ? <img src={user.profileImageUrl} alt="" className="h-full w-full object-cover" />
+              : initials}
           </div>
           <div className="hidden flex-col sm:flex">
             <span className="text-sm font-medium text-primary leading-tight">

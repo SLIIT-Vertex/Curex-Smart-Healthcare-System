@@ -4,7 +4,7 @@ import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
 
 /** Union of all field keys that can carry a validation error. */
 export type RegisterErrorKey =
-  | 'firstName' | 'lastName' | 'dob' | 'gender'
+  | 'firstName' | 'lastName' | 'dob' | 'gender' | 'profileImageUrl'
   | 'phone' | 'email'
   | 'phoneOtp' | 'emailOtp'
   | 'password' | 'confirmPassword'
@@ -34,6 +34,7 @@ export interface RegisterFormState {
   medicalLicenseNumber: string
   yearsOfExperience: string
   certifications: string
+  proofDocumentUrls: string  // comma-separated Cloudinary URLs
   // Step 4 — contact
   phone: string
   email: string
@@ -46,7 +47,8 @@ export interface RegisterFormState {
   phoneVerificationToken: string
   /** Token returned by POST /api/auth/otp/verify — proves email ownership. */
   emailVerificationToken: string
-  // Step 6 — security
+  // Step 5 — security (password + optional avatar)
+  profileImageUrl: string
   password: string
   confirmPassword: string
   // ── Wizard meta ─────────────────────────────────────────────────────────
@@ -63,6 +65,8 @@ export interface RegisterFormState {
   globalError: string | null
   /** Loading flag for async OTP send / verify calls. */
   otpLoading: boolean
+  /** True after a DOCTOR completes registration — shows the pending section inline. */
+  doctorPending: boolean
 }
 
 const initialState: RegisterFormState = {
@@ -72,7 +76,9 @@ const initialState: RegisterFormState = {
   bloodGroup: '', allergies: '', chronicConditions: '',
   emergencyContactName: '', emergencyContactPhone: '',
   specialty: '', medicalLicenseNumber: '', yearsOfExperience: '', certifications: '',
+  proofDocumentUrls: '',
   phone: '', email: '',
+  profileImageUrl: '',
   phoneOtp: '', emailOtp: '',
   phoneVerified: false, emailVerified: false,
   phoneVerificationToken: '',
@@ -80,6 +86,7 @@ const initialState: RegisterFormState = {
   password: '', confirmPassword: '',
   currentStep: 1,
   otpSent: false,
+  doctorPending: false,
   animDir: 'forward',
   animKey: 0,
   errors: {},
@@ -158,6 +165,10 @@ const registerSlice = createSlice({
       state.errors = {}
     },
 
+    setDoctorPending(state, action: PayloadAction<boolean>) {
+      state.doctorPending = action.payload
+    },
+
     resetRegisterForm() {
       return initialState
     },
@@ -177,6 +188,7 @@ export const {
   verifyPhone,
   verifyEmail,
   resetOtpState,
+  setDoctorPending,
   resetRegisterForm,
 } = registerSlice.actions
 

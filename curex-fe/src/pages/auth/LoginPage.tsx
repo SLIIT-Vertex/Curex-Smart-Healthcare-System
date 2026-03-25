@@ -83,7 +83,13 @@ export const LoginPage = () => {
       const response = await authService.login({ email: email.trim(), password })
       dispatch(setCredentials(response))
       toast('Welcome back!', 'success')
-      navigate(from ?? ROLE_HOME[response.user.role as Role], { replace: true })
+
+      // PENDING doctors should see the approval status page, not the dashboard.
+      const dest =
+        response.user.role === 'DOCTOR' && response.user.accountStatus === 'PENDING'
+          ? '/doctor/pending'
+          : from ?? ROLE_HOME[response.user.role as Role]
+      navigate(dest, { replace: true })
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data
@@ -232,9 +238,6 @@ export const LoginPage = () => {
                   </div>
                 </div>
 
-                {fieldError && (
-                  <p role="alert" className="rounded-xl bg-error/10 px-3 py-2.5 text-sm text-error">{fieldError}</p>
-                )}
 
                 <button
                   type="submit"

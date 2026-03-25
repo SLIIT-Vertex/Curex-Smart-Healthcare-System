@@ -17,6 +17,7 @@ public class UserResponse {
     private String firstName;
     private String lastName;
     private String phoneNumber;
+    private String profileImageUrl;
     private User.Role role;
     private User.AccountStatus accountStatus;
     private Boolean emailVerified;
@@ -32,12 +33,14 @@ public class UserResponse {
     private LocalDate dob;
     private String gender;
     private String address;
+    private String bio;
 
     // Doctor-specific
     private String specialty;
     private String medicalLicenseNumber;
     private Integer yearsOfExperience;
     private String certifications;
+    private String proofDocumentUrls;
 
     // Patient-specific
     private String bloodGroup;
@@ -52,6 +55,7 @@ public class UserResponse {
         this.firstName            = user.getFirstName();
         this.lastName             = user.getLastName();
         this.phoneNumber          = user.getPhoneNumber();
+        this.profileImageUrl      = user.getProfileImageUrl();
         this.role                 = user.getRole();
         this.accountStatus        = user.getAccountStatus();
         this.emailVerified        = user.getEmailVerified();
@@ -63,10 +67,12 @@ public class UserResponse {
         this.dob                  = user.getDob();
         this.gender               = user.getGender();
         this.address              = user.getAddress();
+        this.bio                  = user.getBio();
         this.specialty            = user.getSpecialty();
         this.medicalLicenseNumber = user.getMedicalLicenseNumber();
         this.yearsOfExperience    = user.getYearsOfExperience();
         this.certifications       = user.getCertifications();
+        this.proofDocumentUrls    = user.getProofDocumentUrls();
         this.bloodGroup           = user.getBloodGroup();
         this.allergies            = user.getAllergies();
         this.chronicConditions    = user.getChronicConditions();

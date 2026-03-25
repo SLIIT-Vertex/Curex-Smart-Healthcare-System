@@ -56,6 +56,7 @@ help:
 	@echo "  make docker-up          Start all services (docker-compose up)"
 	@echo "  make docker-down        Stop all services (docker-compose down)"
 	@echo "  make docker-logs        View logs (docker-compose logs -f)"
+	@echo "  make docker-clean-run   Clean and rebuild all services (docker-compose down -v && docker-compose up --build)"
 	@echo ""
 	@echo "See docs/DEVERLOPER_GUIDE.md for full documentation"
 
@@ -155,3 +156,6 @@ docker-down:
 
 docker-logs:
 	docker-compose logs -f
+
+docker-clean-run:
+	docker-compose down -v && docker-compose up --build

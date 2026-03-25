@@ -49,7 +49,21 @@ export const useRegisterNavigation = () => {
       if (!form.firstName.trim()) e.firstName = 'First name is required'
       if (!form.lastName.trim())  e.lastName  = 'Last name is required'
       if (!form.dob)              e.dob       = 'Date of birth is required'
+      else {
+        const dobDate = new Date(form.dob)
+        const now     = new Date()
+        if (dobDate > now) {
+          e.dob = 'Date of birth cannot be in the future'
+        } else if (form.role === 'DOCTOR') {
+          const minAge = 25
+          const age = now.getFullYear() - dobDate.getFullYear() -
+            (now < new Date(now.getFullYear(), dobDate.getMonth(), dobDate.getDate()) ? 1 : 0)
+          if (age < minAge) e.dob = `Doctors must be at least ${minAge} years old`
+        }
+      }
       if (!form.gender)           e.gender    = 'Please select a gender'
+      if (form.role === 'DOCTOR' && !form.profileImageUrl)
+        e.profileImageUrl = 'A profile headshot is required for doctor accounts'
     }
 
     if (step === 4) {

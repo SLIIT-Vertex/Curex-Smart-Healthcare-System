@@ -39,16 +39,24 @@ public class UserProfileService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UserNotFoundException(email));
 
+        // Basic identity fields
+        if (request.getFirstName() != null)      user.setFirstName(request.getFirstName());
+        if (request.getLastName() != null)       user.setLastName(request.getLastName());
+        if (request.getPhoneNumber() != null)    user.setPhoneNumber(request.getPhoneNumber());
+        if (request.getProfileImageUrl() != null) user.setProfileImageUrl(request.getProfileImageUrl());
+
         // Common profile fields
         if (request.getDob() != null)     user.setDob(request.getDob());
         if (request.getGender() != null)  user.setGender(request.getGender());
         if (request.getAddress() != null) user.setAddress(request.getAddress());
+        if (request.getBio() != null)     user.setBio(request.getBio());
 
         // Doctor-specific
         if (request.getSpecialty() != null)            user.setSpecialty(request.getSpecialty());
         if (request.getMedicalLicenseNumber() != null) user.setMedicalLicenseNumber(request.getMedicalLicenseNumber());
         if (request.getYearsOfExperience() != null)    user.setYearsOfExperience(request.getYearsOfExperience());
         if (request.getCertifications() != null)       user.setCertifications(request.getCertifications());
+        if (request.getProofDocumentUrls() != null)    user.setProofDocumentUrls(request.getProofDocumentUrls());
 
         // Patient-specific
         if (request.getBloodGroup() != null)           user.setBloodGroup(request.getBloodGroup());

@@ -19,6 +19,22 @@ import java.time.LocalDate;
 @NoArgsConstructor
 public class UpdateProfileRequest {
 
+    // ── Basic identity (all optional — null means no change) ─────────────────
+
+    @Size(max = 100, message = "First name must be at most 100 characters")
+    private String firstName;
+
+    @Size(max = 100, message = "Last name must be at most 100 characters")
+    private String lastName;
+
+    @Size(max = 30, message = "Phone number must be at most 30 characters")
+    private String phoneNumber;
+
+    @Size(max = 500, message = "Profile image URL must be at most 500 characters")
+    private String profileImageUrl;
+
+    // ── Common profile fields ─────────────────────────────────────────────────
+
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate dob;
 
@@ -27,6 +43,9 @@ public class UpdateProfileRequest {
 
     @Size(max = 500, message = "Address must be at most 500 characters")
     private String address;
+
+    @Size(max = 2000, message = "Bio must be at most 2000 characters")
+    private String bio;
 
     // ── Doctor-specific ──────────────────────────────────────────────────────
 
@@ -41,6 +60,9 @@ public class UpdateProfileRequest {
 
     @Size(max = 1000, message = "Certifications must be at most 1000 characters")
     private String certifications;
+
+    @Size(max = 2000, message = "Proof document URLs must be at most 2000 characters")
+    private String proofDocumentUrls;
 
     // ── Patient-specific ─────────────────────────────────────────────────────
 

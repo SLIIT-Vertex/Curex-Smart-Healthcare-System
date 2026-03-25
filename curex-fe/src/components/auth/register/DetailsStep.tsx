@@ -1,7 +1,8 @@
 import { useCallback, type ChangeEvent } from 'react'
-import { Heart, Award, MapPin, Upload } from 'lucide-react'
+import { Heart, Award, Upload, FileText, X, Loader2 } from 'lucide-react'
 import { useAppDispatch, useAppSelector } from '../../../store/hooks'
 import { setField } from '../../../store/slices/registerSlice'
+import { useDocumentUpload } from '../../../hooks/useDocumentUpload'
 import { Field } from '../Field'
 import { NavButtons } from './NavButtons'
 
@@ -26,6 +27,21 @@ export const DetailsStep = () => {
   const toggleFillHealth = useCallback(() => {
     dispatch(setField({ key: 'fillHealthNow', value: !form.fillHealthNow }))
   }, [dispatch, form.fillHealthNow])
+
+  const handleDocsChanged = useCallback((urlsCsv: string) => {
+    dispatch(setField({ key: 'proofDocumentUrls', value: urlsCsv }))
+  }, [dispatch])
+
+  const {
+    docs,
+    fileInputRef,
+    openPicker,
+    handleFileChange,
+    removeDoc,
+    uploading,
+    accept,
+    maxFiles,
+  } = useDocumentUpload(form.proofDocumentUrls, handleDocsChanged)
 
   if (form.role === 'PATIENT') {
     return (
@@ -203,19 +219,83 @@ export const DetailsStep = () => {
         />
       </Field>
 
+      {/* ── Proof document upload (Cloudinary) ── */}
       <div>
         <p className="text-sm font-semibold text-primary mb-2 flex items-center gap-1.5">
           <Upload className="h-4 w-4" strokeWidth={1.5} />
           Upload proof documents
           <span className="font-normal text-text-secondary text-xs">(optional)</span>
         </p>
-        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-text-secondary/20 bg-surface px-4 py-8 text-center hover:border-primary-light/40 hover:bg-primary-light/3 transition-colors cursor-pointer">
-          <Upload className="h-8 w-8 text-text-secondary/40" strokeWidth={1} />
-          <p className="text-sm text-text-secondary">
-            Drop files here, or <span className="text-primary-light font-medium">browse</span>
-          </p>
-          <p className="text-xs text-text-secondary/60">PDF, JPG, PNG — up to 5 MB each</p>
-        </div>
+
+        {/* Uploaded files list */}
+        {docs.length > 0 && (
+          <div className="mb-3 flex flex-col gap-2">
+            {docs.map((doc, i) => (
+              <div
+                key={doc.url}
+                className="flex items-center gap-3 rounded-lg border border-text-secondary/15 bg-surface px-3 py-2"
+              >
+                <FileText className="h-4 w-4 shrink-0 text-primary-light" strokeWidth={1.5} />
+                <a
+                  href={doc.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 truncate text-sm text-primary hover:text-primary-light transition-colors"
+                  title={doc.name}
+                >
+                  {doc.name}
+                </a>
+                <button
+                  type="button"
+                  onClick={() => removeDoc(i)}
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-text-secondary hover:bg-error/10 hover:text-error transition-colors"
+                  title="Remove"
+                >
+                  <X className="h-3.5 w-3.5" strokeWidth={2} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Hidden file input — driven by ref so display:none never blocks the picker */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={accept}
+          multiple
+          className="hidden"
+          onChange={handleFileChange}
+          data-testid="register-doc-upload-input"
+        />
+
+        {/* Drop zone — calls openPicker() via ref on click */}
+        {docs.length < maxFiles && (
+          <button
+            type="button"
+            onClick={openPicker}
+            disabled={uploading}
+            className="w-full flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-text-secondary/20 bg-surface px-4 py-8 text-center hover:border-primary-light/40 hover:bg-primary-light/[0.03] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            data-testid="register-doc-upload-button"
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="h-8 w-8 text-primary-light animate-spin" strokeWidth={1} />
+                <p className="text-sm text-primary-light font-medium">Uploading…</p>
+              </>
+            ) : (
+              <>
+                <Upload className="h-8 w-8 text-text-secondary/40" strokeWidth={1} />
+                <p className="text-sm text-text-secondary">
+                  Click to browse, or <span className="text-primary-light font-medium">choose files</span>
+                </p>
+                <p className="text-xs text-text-secondary/60">
+                  PDF, JPG, PNG — up to 5 MB each · {maxFiles - docs.length} remaining
+                </p>
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       <NavButtons />

@@ -8,6 +8,7 @@ export interface UserInfo {
   firstName: string
   lastName: string
   phoneNumber?: string
+  profileImageUrl?: string
   role: Role
   accountStatus: AccountStatus
   emailVerified: boolean
@@ -15,10 +16,11 @@ export interface UserInfo {
 }
 
 export interface AuthResponse {
-  accessToken: string
-  refreshToken: string
+  /** Null for DOCTOR registrations — doctors must be approved before they can log in. */
+  accessToken: string | null
+  refreshToken: string | null
   tokenType: string
-  expiresIn: number
+  expiresIn: number | null
   user: UserInfo
 }
 
@@ -28,6 +30,7 @@ export interface LoginRequest {
 }
 
 export interface RegisterRequest {
+  // Required identity
   email: string
   password: string
   firstName: string
@@ -36,11 +39,8 @@ export interface RegisterRequest {
   phoneVerificationToken: string
   emailVerificationToken: string
   role: Role
-}
-
-/** Sent to PUT /api/users/me/profile immediately after registration. All fields optional. */
-export interface UpdateProfileRequest {
-  // Common
+  // Optional profile fields — all roles
+  profileImageUrl?: string
   dob?: string          // ISO-8601 "YYYY-MM-DD"
   gender?: string
   address?: string
@@ -49,6 +49,33 @@ export interface UpdateProfileRequest {
   medicalLicenseNumber?: string
   yearsOfExperience?: number
   certifications?: string
+  proofDocumentUrls?: string
+  // Patient-specific
+  bloodGroup?: string
+  allergies?: string
+  chronicConditions?: string
+  emergencyContactName?: string
+  emergencyContactPhone?: string
+}
+
+/** Sent to PUT /api/users/me/profile. All fields optional — null means no change. */
+export interface UpdateProfileRequest {
+  // Identity
+  firstName?: string
+  lastName?: string
+  phoneNumber?: string
+  profileImageUrl?: string
+  // Common profile
+  dob?: string          // ISO-8601 "YYYY-MM-DD"
+  gender?: string
+  address?: string
+  bio?: string
+  // Doctor-specific
+  specialty?: string
+  medicalLicenseNumber?: string
+  yearsOfExperience?: number
+  certifications?: string
+  proofDocumentUrls?: string  // comma-separated Cloudinary URLs
   // Patient-specific
   bloodGroup?: string
   allergies?: string
@@ -81,6 +108,7 @@ export interface UserResponse {
   firstName: string
   lastName: string
   phoneNumber?: string
+  profileImageUrl?: string
   role: Role
   accountStatus: AccountStatus
   emailVerified: boolean
@@ -89,14 +117,18 @@ export interface UserResponse {
   approvalDate?: string
   createdAt: string
   updatedAt: string
-  // Profile fields
+  // Common profile fields
   dob?: string
   gender?: string
   address?: string
+  bio?: string
+  // Doctor-specific
   specialty?: string
   medicalLicenseNumber?: string
   yearsOfExperience?: number
   certifications?: string
+  proofDocumentUrls?: string
+  // Patient-specific
   bloodGroup?: string
   allergies?: string
   chronicConditions?: string
