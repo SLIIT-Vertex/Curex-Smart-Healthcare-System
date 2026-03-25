@@ -32,10 +32,15 @@ export interface PatientPrescription {
   id: string
   doctorId: string
   doctorName?: string
+  doctorSpecialty?: string
   patientId: string
-  appointmentId: string
+  patientName?: string
+  appointmentId?: string
+  diagnosis?: string
   medicines: string
-  instructions: string
+  instructions?: string
+  validFrom?: string
+  validTo?: string
   issuedAt: string
   status?: 'ACTIVE' | 'COMPLETED' | 'CANCELLED'
 }
@@ -65,6 +70,11 @@ export interface SymptomCheckResponse {
   conditions: string[]
   specialty: string
   urgency: 'low' | 'medium' | 'high'
+  summary?: string
+  possibleCauses?: string[]
+  selfCareTips?: string[]
+  whenToSeekCare?: string
+  emergencyWarning?: string | null
 }
 
 export interface PatientDashboardData {

@@ -76,9 +76,20 @@ const MOCK_PRESCRIPTIONS: PatientPrescription[] = [
 
 /*  API functions  */
 
+export async function getPatientByUserId(
+  userId: string
+): Promise<{ id: string; name: string; email: string }> {
+  const { data } = await api.get<PatientProfile>(
+    `/api/patients/by-user/${userId}`
+  )
+  return { id: data.id, name: data.name, email: data.email }
+}
+
 export async function getProfile(patientId: string): Promise<PatientProfile> {
   try {
-    const { data } = await api.get<PatientProfile>(`/patients/${patientId}`)
+    const { data } = await api.get<PatientProfile>(
+      `/api/patients/${patientId}`
+    )
     return data
   } catch (err) {
     if (USE_MOCK_ON_ERROR) {
@@ -94,7 +105,7 @@ export async function updateProfile(
 ): Promise<PatientProfile> {
   try {
     const { data: updated } = await api.put<PatientProfile>(
-      `/patients/${patientId}`,
+      `/api/patients/${patientId}`,
       data
     )
     return updated
@@ -111,7 +122,7 @@ export async function getMedicalHistory(
 ): Promise<MedicalHistory> {
   try {
     const { data } = await api.get<MedicalHistory>(
-      `/patients/${patientId}/history`
+      `/api/patients/${patientId}/history`
     )
     return data
   } catch (err) {
@@ -127,7 +138,7 @@ export async function getPrescriptions(
 ): Promise<PatientPrescription[]> {
   try {
     const { data } = await api.get<PatientPrescription[]>(
-      `/patients/${patientId}/prescriptions`
+      `/api/patients/${patientId}/prescriptions`
     )
     return data
   } catch (err) {
