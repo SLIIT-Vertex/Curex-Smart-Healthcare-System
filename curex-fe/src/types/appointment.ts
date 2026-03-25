@@ -29,6 +29,7 @@ export const DAY_LABELS: Record<DayOfWeek, string> = {
 
 export interface DoctorDirectoryItem {
   id: string
+  profileId?: string
   name: string
   specialty: string
   hospital?: string

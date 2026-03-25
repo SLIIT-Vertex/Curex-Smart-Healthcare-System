@@ -4,9 +4,10 @@ import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   bookAppointment,
-  getAppointmentsByDoctor,
   getAppointmentsByPatient,
+  getDoctorAppointments,
   getDoctorDirectory,
+  getDoctorSlots,
 } from '../../services/appointmentService'
 import {
   createTelemedicineSession,
@@ -14,7 +15,6 @@ import {
 } from '../../services/telemedicineService'
 import {
   dateSlotKey,
-  getDoctorAvailability,
   getUpcomingDateKeys,
   parseDateSlotKey,
   toDateKey,
@@ -22,13 +22,10 @@ import {
 import {
   type AppointmentRecord,
   type DoctorDirectoryItem,
-} from '../../types/appointment.ts'
-import type { TelemedicineSessionRecord } from '../../types/telemedicine.ts'
+} from '../../types/appointment'
+import type { TelemedicineSessionRecord } from '../../types/telemedicine'
+import { useAuth, useToast } from '../../store/hooks'
 import '../../styles/pages/AppointmentFlow.css'
-
-const DEFAULT_PATIENT_ID = 'pat-001'
-const DEFAULT_PATIENT_NAME = 'Test Patient'
-const DEFAULT_PATIENT_EMAIL = 'patient@test.com'
 
 function generateTimeSlots(): string[] {
   const slots: string[] = []
@@ -41,24 +38,6 @@ function generateTimeSlots(): string[] {
 }
 
 const TIME_SLOTS = generateTimeSlots()
-
-function slotKeyFromAppointment(appt: AppointmentRecord): string {
-  if (appt.slotId) {
-    const parsed = parseDateSlotKey(appt.slotId)
-    if (parsed) {
-      return appt.slotId
-    }
-  }
-
-  const date = new Date(appt.appointmentTime)
-  const dateKey = toDateKey(date)
-  const time = date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
-  return dateSlotKey(dateKey, time)
-}
 
 function dateLabel(dateKey: string): string {
   const date = new Date(`${dateKey}T00:00:00`)
@@ -180,30 +159,62 @@ function bookingStatusLabel(
   return String(appt.status).toUpperCase()
 }
 
+function doctorInitials(doctor: DoctorDirectoryItem | null): string {
+  if (!doctor) {
+    return 'DR'
+  }
+  const base = doctor.name.replace(/^Dr\.\s*/i, '').trim()
+  const parts = base.split(/\s+/).filter(Boolean)
+  const first = parts[0]?.[0] ?? 'D'
+  const second = parts[1]?.[0] ?? 'R'
+  return `${first}${second}`.toUpperCase()
+}
+
+function appointmentDateTimeKey(appointmentTime: string): { dateKey: string; time: string } | null {
+  const match = String(appointmentTime).match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/)
+  if (match) {
+    return { dateKey: match[1], time: match[2] }
+  }
+
+  const parsed = new Date(appointmentTime)
+  if (Number.isNaN(parsed.getTime())) {
+    return null
+  }
+
+  return {
+    dateKey: toDateKey(parsed),
+    time: `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`,
+  }
+}
+
 export function PatientAppointments() {
+  const { user } = useAuth()
+  const { toast } = useToast()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<'make' | 'bookings'>('make')
   const [search, setSearch] = useState('')
-  const [doctors] = useState<DoctorDirectoryItem[]>(() => getDoctorDirectory())
-  const [selectedDoctorId, setSelectedDoctorId] = useState('doc-001')
+  const [selectedSpecialty, setSelectedSpecialty] = useState<string>('ALL')
+  const [doctors, setDoctors] = useState<DoctorDirectoryItem[]>([])
+  const [doctorSlots, setDoctorSlots] = useState<Record<string, Array<{ day: string; startTime: string; endTime: string; booked: boolean }>>>({})
+  const [doctorAppointmentsById, setDoctorAppointmentsById] = useState<Record<string, AppointmentRecord[]>>({})
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null)
+  const [doctorsLoading, setDoctorsLoading] = useState(false)
+  const [slotsLoading, setSlotsLoading] = useState(false)
   const dateKeys = useMemo(() => getUpcomingDateKeys(30), [])
   const [selectedDateKey, setSelectedDateKey] = useState(dateKeys[0])
   const [makeDateStartIndex, setMakeDateStartIndex] = useState(0)
   const [selectedBookingDate, setSelectedBookingDate] = useState(dateKeys[0])
   const [bookingMonth, setBookingMonth] = useState(() => monthStart(new Date()))
   const [showBookingMonthPicker, setShowBookingMonthPicker] = useState(false)
+  const [showBookingCalendar, setShowBookingCalendar] = useState(true)
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
+  const [doctorCardStartIndex, setDoctorCardStartIndex] = useState(0)
+  const [slotStartIndex, setSlotStartIndex] = useState(0)
   const [popupBooking, setPopupBooking] = useState<AppointmentRecord | null>(null)
 
-  const [patientId, setPatientId] = useState(DEFAULT_PATIENT_ID)
-  const [patientName, setPatientName] = useState(DEFAULT_PATIENT_NAME)
-  const [patientEmail, setPatientEmail] = useState(DEFAULT_PATIENT_EMAIL)
   const [notes, setNotes] = useState('')
   const [appointmentType, setAppointmentType] = useState<'IN_PERSON' | 'TELEMEDICINE'>('TELEMEDICINE')
 
-  const [doctorAppointments, setDoctorAppointments] = useState<AppointmentRecord[]>(
-    []
-  )
   const [myAppointments, setMyAppointments] = useState<AppointmentRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [booking, setBooking] = useState(false)
@@ -211,55 +222,161 @@ export function PatientAppointments() {
     Record<string, TelemedicineSessionRecord | null>
   >({})
   const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+
+  const patientId = user?.id ?? ''
+  const patientName = user ? `${user.firstName} ${user.lastName}`.trim() : ''
+  const patientEmail = user?.email ?? ''
+
+  // Fetch doctors on component mount
+  useEffect(() => {
+    const fetchDoctors = async () => {
+      setDoctorsLoading(true)
+      try {
+        const fetchedDoctors = await getDoctorDirectory()
+        setDoctors(fetchedDoctors)
+      } catch (err) {
+        console.error('Failed to fetch doctors:', err)
+        toast('Failed to load doctors.', 'error')
+      } finally {
+        setDoctorsLoading(false)
+      }
+    }
+    fetchDoctors()
+  }, [])
+
+  // Fetch slots when selected doctor changes
+  useEffect(() => {
+    if (!selectedDoctorId) return
+    
+    const fetchSlots = async () => {
+      setSlotsLoading(true)
+      try {
+        const slots = await getDoctorSlots(selectedDoctorId)
+        setDoctorSlots((prev) => ({
+          ...prev,
+          [selectedDoctorId]: slots,
+        }))
+      } catch (err) {
+        console.error('Failed to fetch slots:', err)
+        toast('Failed to load available slots for this doctor.', 'error')
+      } finally {
+        setSlotsLoading(false)
+      }
+    }
+    fetchSlots()
+  }, [selectedDoctorId])
+
+  useEffect(() => {
+    if (!selectedDoctorId) return
+
+    const fetchDoctorAppointments = async () => {
+      try {
+        const selected = doctors.find((d) => d.id === selectedDoctorId)
+        const idsToCheck = [selectedDoctorId, selected?.profileId]
+          .filter((id): id is string => Boolean(id))
+
+        const settled = await Promise.allSettled(idsToCheck.map((id) => getDoctorAppointments(id)))
+        const merged = settled
+          .filter((result): result is PromiseFulfilledResult<AppointmentRecord[]> => result.status === 'fulfilled')
+          .flatMap((result) => result.value)
+          .flat()
+          .filter((appt, idx, arr) => arr.findIndex((x) => x.id === appt.id) === idx)
+
+        setDoctorAppointmentsById((prev) => ({
+          ...prev,
+          [selectedDoctorId]: merged,
+        }))
+      } catch (err) {
+        console.error('Failed to fetch doctor appointments:', err)
+      }
+    }
+
+    fetchDoctorAppointments()
+  }, [selectedDoctorId, doctors])
 
   const selectedDoctor = useMemo(
-    () => doctors.find((d) => d.id === selectedDoctorId) ?? doctors[0],
+    () => {
+      if (!selectedDoctorId) return null
+      return doctors.find((d) => d.id === selectedDoctorId) ?? null
+    },
     [doctors, selectedDoctorId]
   )
 
+  const specialtyOptions = useMemo(() => {
+    const all = doctors
+      .map((doctor) => doctor.specialty?.trim())
+      .filter((specialty): specialty is string => Boolean(specialty))
+    return ['ALL', ...Array.from(new Set(all)).sort((a, b) => a.localeCompare(b))]
+  }, [doctors])
+
   const filteredDoctors = useMemo(() => {
     const key = search.trim().toLowerCase()
-    if (!key) {
-      return doctors
-    }
+    return doctors.filter((doctor) => {
+      const matchesText =
+        !key || `${doctor.name} ${doctor.specialty}`.toLowerCase().includes(key)
+      const matchesSpecialty =
+        selectedSpecialty === 'ALL' || doctor.specialty === selectedSpecialty
+      return matchesText && matchesSpecialty
+    })
+  }, [doctors, search, selectedSpecialty])
 
-    return doctors.filter((doctor) =>
-      `${doctor.name} ${doctor.specialty}`.toLowerCase().includes(key)
-    )
-  }, [doctors, search])
+  const visibleDoctors = useMemo(() => {
+    return filteredDoctors.slice(doctorCardStartIndex, doctorCardStartIndex + 2)
+  }, [filteredDoctors, doctorCardStartIndex])
+
+  const canGoPrevDoctors = doctorCardStartIndex > 0
+  const canGoNextDoctors = doctorCardStartIndex + 2 < filteredDoctors.length
 
   const availableSlotsForSelectedDoctor = useMemo(() => {
-    if (!selectedDoctor) {
-      return [] as Array<{ key: string; time: string; isBooked: boolean; isAvailable: boolean }>
+    if (!selectedDoctor || !selectedDoctorId) {
+      return [] as Array<{ key: string; time: string; isBooked: boolean; isAvailable: boolean; isPast: boolean }>
     }
 
-    const rawSlots = getDoctorAvailability(selectedDoctor.id)
-    const availableForDate = new Set(
-      rawSlots
-        .map((slot) => parseDateSlotKey(slot))
-        .filter(
-          (
-            parsed
-          ): parsed is {
-            dateKey: string
-            time: string
-          } => Boolean(parsed)
-        )
-        .filter((parsed) => parsed.dateKey === selectedDateKey)
-        .map((parsed) => dateSlotKey(parsed.dateKey, parsed.time))
-    )
+    const slots = doctorSlots[selectedDoctorId] || []
+    const doctorAppointments = doctorAppointmentsById[selectedDoctorId] || []
+    
+    // Convert backend slots to date-time format for the selected date
+    const availableForDate = new Set<string>()
+    const bookedForDate = new Set<string>()
 
-    const bookedForDate = new Set(
-      doctorAppointments
-        .filter(
-          (appt) =>
-            appt.status !== 'CANCELLED' &&
-            appt.status !== 'COMPLETED'
-        )
-        .map(slotKeyFromAppointment)
-        .filter((slotKey) => slotKey.startsWith(`${selectedDateKey}_`))
-    )
+    // Parse the selected date
+    const selectedDate = new Date(`${selectedDateKey}T00:00:00`)
+    const selectedDayOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][selectedDate.getDay()]
+
+    // Filter slots that match the selected day
+    for (const slot of slots) {
+      if (slot.day === selectedDayOfWeek) {
+        const time = slot.startTime.substring(0, 5) // Get HH:mm format
+        const slotKey = dateSlotKey(selectedDateKey, time)
+        
+        if (slot.booked) {
+          bookedForDate.add(slotKey)
+        } else {
+          availableForDate.add(slotKey)
+        }
+      }
+    }
+
+    // Merge appointment records as booked markers so patients can always see booked slots.
+    for (const appt of doctorAppointments) {
+      const status = String(appt.status).toUpperCase()
+      if (status === 'CANCELLED' || status === 'COMPLETED') {
+        continue
+      }
+
+      const parsedSlot = appt.slotId ? parseDateSlotKey(appt.slotId) : null
+      if (parsedSlot && parsedSlot.dateKey === selectedDateKey) {
+        bookedForDate.add(appt.slotId as string)
+        continue
+      }
+
+      const appointmentKey = appointmentDateTimeKey(appt.appointmentTime)
+      if (!appointmentKey || appointmentKey.dateKey !== selectedDateKey) {
+        continue
+      }
+
+      bookedForDate.add(dateSlotKey(appointmentKey.dateKey, appointmentKey.time))
+    }
 
     const merged = new Set<string>([...availableForDate, ...bookedForDate])
 
@@ -274,6 +391,7 @@ export function PatientAppointments() {
           time: parsed.time,
           isBooked: bookedForDate.has(key),
           isAvailable: availableForDate.has(key),
+          isPast: new Date(`${parsed.dateKey}T${parsed.time}:00`).getTime() <= Date.now(),
         }
       })
       .filter(
@@ -284,10 +402,18 @@ export function PatientAppointments() {
           time: string
           isBooked: boolean
           isAvailable: boolean
+          isPast: boolean
         } => Boolean(slot)
       )
       .sort((a, b) => TIME_SLOTS.indexOf(a.time) - TIME_SLOTS.indexOf(b.time))
-  }, [selectedDoctor, doctorAppointments, selectedDateKey])
+  }, [selectedDoctor, selectedDoctorId, doctorSlots, doctorAppointmentsById, selectedDateKey])
+
+  const visibleSlots = useMemo(() => {
+    return availableSlotsForSelectedDoctor.slice(slotStartIndex, slotStartIndex + 8)
+  }, [availableSlotsForSelectedDoctor, slotStartIndex])
+
+  const canGoPrevSlots = slotStartIndex > 0
+  const canGoNextSlots = slotStartIndex + 8 < availableSlotsForSelectedDoctor.length
 
   const sortedMyAppointments = useMemo(() => {
     return [...myAppointments].sort(
@@ -350,18 +476,13 @@ export function PatientAppointments() {
 
   useEffect(() => {
     async function loadAppointments() {
-      if (!selectedDoctor) {
+      if (!patientId) {
         return
       }
 
       try {
         setLoading(true)
-        setError(null)
-        const [doctorData, patientData] = await Promise.all([
-          getAppointmentsByDoctor(selectedDoctor.id),
-          getAppointmentsByPatient(patientId),
-        ])
-        setDoctorAppointments(doctorData)
+        const patientData = await getAppointmentsByPatient(patientId)
         setMyAppointments(patientData)
 
         if (patientData.length > 0) {
@@ -369,14 +490,14 @@ export function PatientAppointments() {
           setSelectedBookingDate(firstDate)
         }
       } catch {
-        setError('Could not fetch appointment data. Please ensure backend is running.')
+        toast('Could not fetch appointment data. Please ensure backend is running.', 'error')
       } finally {
         setLoading(false)
       }
     }
 
     loadAppointments()
-  }, [selectedDoctor, patientId])
+  }, [patientId])
 
   useEffect(() => {
     let active = true
@@ -422,20 +543,43 @@ export function PatientAppointments() {
     }
   }, [myAppointments])
 
+  useEffect(() => {
+    setDoctorCardStartIndex((prev) => {
+      if (filteredDoctors.length <= 2) {
+        return 0
+      }
+      return Math.min(prev, Math.max(filteredDoctors.length - 2, 0))
+    })
+  }, [filteredDoctors])
+
+  useEffect(() => {
+    setSlotStartIndex(0)
+  }, [selectedDoctorId, selectedDateKey])
+
   const handleBook = async () => {
     if (!selectedDoctor || !selectedSlot) {
       return
     }
 
+    if (!patientId || !patientName || !patientEmail) {
+      toast('Please login as a patient to book appointments.', 'error')
+      return
+    }
+
     const parsed = parseDateSlotKey(selectedSlot)
     if (!parsed) {
-      setError('Selected slot is invalid. Please re-select a slot.')
+      toast('Selected slot is invalid. Please re-select a slot.', 'error')
+      return
+    }
+
+    const selectedSlotTime = new Date(`${parsed.dateKey}T${parsed.time}:00`).getTime()
+    if (selectedSlotTime <= Date.now()) {
+      toast('Selected time has already passed. Please choose a future slot.', 'error')
       return
     }
 
     try {
       setBooking(true)
-      setError(null)
       setMessage(null)
 
       const appointmentTime = toAppointmentDateTime(parsed.dateKey, parsed.time)
@@ -474,22 +618,46 @@ export function PatientAppointments() {
       }
 
       setMessage(bookingMessage)
+      toast(bookingMessage, 'success')
       setSelectedSlot(null)
       setNotes('')
 
-      const [doctorData, patientData] = await Promise.all([
-        getAppointmentsByDoctor(selectedDoctor.id),
-        getAppointmentsByPatient(patientId),
-      ])
-
-      setDoctorAppointments(doctorData)
+      const patientData = await getAppointmentsByPatient(patientId)
       setMyAppointments(patientData)
+
+      const slots = await getDoctorSlots(selectedDoctor.id)
+      setDoctorSlots((prev) => ({
+        ...prev,
+        [selectedDoctor.id]: slots,
+      }))
+
+      const idsToCheck = [selectedDoctor.id, selectedDoctor.profileId]
+        .filter((id): id is string => Boolean(id))
+      const latestSettled = await Promise.allSettled(idsToCheck.map((id) => getDoctorAppointments(id)))
+      const mergedAppointments = latestSettled
+        .filter((result): result is PromiseFulfilledResult<AppointmentRecord[]> => result.status === 'fulfilled')
+        .flatMap((result) => result.value)
+        .filter((appt, idx, arr) => arr.findIndex((x) => x.id === appt.id) === idx)
+      setDoctorAppointmentsById((prev) => ({
+        ...prev,
+        [selectedDoctor.id]: mergedAppointments,
+      }))
     } catch (err: any) {
       const serverMessage = err?.response?.data?.message
-      setError(serverMessage ?? 'Booking failed. Please try again.')
+      toast(serverMessage ?? 'Booking failed. Please try again.', 'error')
     } finally {
       setBooking(false)
     }
+  }
+
+  const handleBookingCalendarDateClick = (dateKey: string) => {
+    const todayDateKey = toDateKey(new Date())
+    const isPastDate = dateKey < todayDateKey
+    if (isPastDate) {
+      toast('Previous dates cannot be selected.', 'error')
+      return
+    }
+    setSelectedBookingDate(dateKey)
   }
 
   return (
@@ -529,78 +697,117 @@ export function PatientAppointments() {
       {activeTab === 'make' && (
         <>
           <div className="appointment-panel p-4 lg:p-5">
-            <h2 className="text-base font-semibold text-primary">Booking Identity (Demo)</h2>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
               <input
-                value={patientId}
-                onChange={(e) => setPatientId(e.target.value)}
-                className="patient-page-input"
-                placeholder="Patient ID"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="patient-page-input pl-10"
+                placeholder="Search doctors by name or specialty"
               />
-              <input
-                value={patientName}
-                onChange={(e) => setPatientName(e.target.value)}
-                className="patient-page-input"
-                placeholder="Patient name"
-              />
-              <input
-                value={patientEmail}
-                onChange={(e) => setPatientEmail(e.target.value)}
-                className="patient-page-input"
-                placeholder="Patient email"
-              />
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {specialtyOptions.map((specialty) => (
+                <button
+                  key={specialty}
+                  type="button"
+                  onClick={() => setSelectedSpecialty(specialty)}
+                  className={`day-pill ${selectedSpecialty === specialty ? 'day-pill--active' : ''}`}
+                >
+                  {specialty === 'ALL' ? 'All Specialties' : specialty}
+                </button>
+              ))}
             </div>
           </div>
-
-          <div className="grid gap-6 xl:grid-cols-[340px_1fr]">
-            <div className="appointment-panel p-4 lg:p-5">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="patient-page-input pl-10"
-                  placeholder="Search doctor or specialty"
-                />
-              </div>
-
-              <div className="mt-4 space-y-2">
-                {filteredDoctors.map((doctor) => (
-                  <button
-                    key={doctor.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedDoctorId(doctor.id)
-                      setSelectedSlot(null)
-                    }}
-                    className={`doctor-list-item w-full text-left ${
-                      doctor.id === selectedDoctorId ? 'doctor-list-item--active' : ''
-                    }`}
-                  >
-                    <p className="font-medium text-primary">{doctor.name}</p>
-                    <p className="text-xs text-text-secondary">{doctor.specialty}</p>
-                    {doctor.hospital && (
-                      <p className="mt-0.5 text-xs text-text-secondary">{doctor.hospital}</p>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="appointment-panel p-4 lg:p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-primary">
-                    {selectedDoctor?.name}
-                  </h2>
-                  <p className="text-sm text-text-secondary">{selectedDoctor?.specialty}</p>
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="space-y-6">
+              <div className="appointment-panel p-4 lg:p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-lg font-semibold text-primary">Choose doctor</h2>
+                  {slotsLoading && <span className="text-xs text-text-secondary">Loading slots...</span>}
                 </div>
-                {loading && <span className="text-sm text-text-secondary">Loading appointments...</span>}
+
+                <div className="mt-4">
+                  {doctorsLoading && (
+                    <p className="rounded-xl border border-text-secondary/15 bg-background/40 px-3 py-2 text-xs text-text-secondary">
+                      Loading doctors...
+                    </p>
+                  )}
+
+                  {!doctorsLoading && filteredDoctors.length === 0 && (
+                    <p className="rounded-xl border border-text-secondary/15 bg-background/40 px-3 py-2 text-xs text-text-secondary">
+                      No doctors found right now. You can still view your existing bookings.
+                    </p>
+                  )}
+
+                  {!doctorsLoading && filteredDoctors.length > 0 && !selectedDoctorId && (
+                    <p className="rounded-xl border border-primary-light/20 bg-primary-light/10 px-3 py-2 text-xs text-primary">
+                      Select a doctor first to load availability.
+                    </p>
+                  )}
+
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDoctorCardStartIndex((v) => Math.max(0, v - 2))}
+                      disabled={!canGoPrevDoctors}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary disabled:opacity-40"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+
+                    <div className="grid flex-1 gap-3 sm:grid-cols-2">
+                      {visibleDoctors.map((doctor) => (
+                        <button
+                          key={doctor.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedDoctorId(doctor.id)
+                            setSelectedSlot(null)
+                          }}
+                          className={`doctor-card-horizontal text-left ${
+                            doctor.id === selectedDoctorId ? 'doctor-card-horizontal--active' : ''
+                          }`}
+                        >
+                          <div className="doctor-card-avatar">{doctor.name.replace(/^Dr\.\s*/i, '').charAt(0)}</div>
+                          <div>
+                            <p className="font-semibold text-primary">{doctor.name}</p>
+                            <p className="text-xs text-text-secondary">{doctor.specialty}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setDoctorCardStartIndex((v) => v + 2)}
+                      disabled={!canGoNextDoctors}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary disabled:opacity-40"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {filteredDoctors.length > 2 && (
+                    <p className="mt-2 text-xs text-text-secondary">
+                      Showing {doctorCardStartIndex + 1}-{Math.min(doctorCardStartIndex + 2, filteredDoctors.length)} of {filteredDoctors.length} doctors
+                    </p>
+                  )}
+                </div>
               </div>
 
-              <div className="mt-4">
-                <p className="text-sm font-medium text-primary">Choose date</p>
-                <div className="mt-2 flex items-center gap-2">
+              <div className="appointment-panel p-4 lg:p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-primary">Choose date and time</h2>
+                    <p className="text-sm text-text-secondary">
+                      {selectedDoctor?.name ?? 'Select a doctor to view available slots'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setMakeDateStartIndex((v) => Math.max(0, v - 7))}
@@ -635,109 +842,168 @@ export function PatientAppointments() {
                     <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
-              </div>
 
-              <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                {availableSlotsForSelectedDoctor.length === 0 ? (
-                  <div className="col-span-full rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-4 py-6 text-center text-sm text-text-secondary">
-                    No slots on {dateLabel(selectedDateKey)}.
-                  </div>
-                ) : (
-                  availableSlotsForSelectedDoctor.map((slot) => (
+                <div className="mt-4">
+                  {availableSlotsForSelectedDoctor.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-4 py-6 text-center text-sm text-text-secondary">
+                      {selectedDoctor
+                        ? `No slots on ${dateLabel(selectedDateKey)}.`
+                        : 'Select a doctor first to view available slots.'}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSlotStartIndex((v) => Math.max(0, v - 8))}
+                          disabled={!canGoPrevSlots}
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary disabled:opacity-40"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </button>
+
+                        <div className="grid flex-1 grid-cols-8 gap-2">
+                          {visibleSlots.map((slot) => (
+                            <button
+                              key={slot.key}
+                              type="button"
+                              onClick={() => {
+                                if (!slot.isBooked && slot.isAvailable && !slot.isPast) {
+                                  setSelectedSlot(slot.key)
+                                }
+                              }}
+                              disabled={slot.isBooked || !slot.isAvailable || slot.isPast}
+                              className={`slot-pill min-w-0 w-full ${
+                                selectedSlot === slot.key ? 'slot-pill--active' : ''
+                              } ${
+                                slot.isBooked
+                                  ? 'cursor-not-allowed border-accent-sky/40 bg-accent-sky/20 text-text-secondary'
+                                  : ''
+                              } ${
+                                !slot.isAvailable
+                                  ? 'cursor-not-allowed border-text-secondary/15 bg-background/40 text-text-secondary'
+                                  : ''
+                              } ${
+                                !slot.isBooked && slot.isPast
+                                  ? 'cursor-not-allowed border-text-secondary/20 bg-background/60 text-text-secondary/80'
+                                  : ''
+                              }`}
+                            >
+                              <div className="text-center">
+                                <div>{slot.time}</div>
+                                <div className="text-[10px] text-text-secondary">
+                                  {slot.isBooked
+                                    ? 'Booked'
+                                    : slot.isPast
+                                      ? 'Passed'
+                                      : slot.isAvailable
+                                        ? 'Available'
+                                        : 'Off'}
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setSlotStartIndex((v) => v + 8)}
+                          disabled={!canGoNextSlots}
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary disabled:opacity-40"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <p className="mt-2 text-xs text-text-secondary">
+                        Showing {slotStartIndex + 1}-{Math.min(slotStartIndex + 8, availableSlotsForSelectedDoctor.length)} of {availableSlotsForSelectedDoctor.length} slots
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                <div className="mt-5 space-y-3 rounded-xl border border-text-secondary/10 bg-background/50 p-4">
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Optional note for doctor"
+                    className="symptom-input min-h-[90px]"
+                  />
+
+                  <div className="grid gap-2 sm:grid-cols-2">
                     <button
-                      key={slot.key}
                       type="button"
-                      onClick={() => {
-                        if (!slot.isBooked && slot.isAvailable) {
-                          setSelectedSlot(slot.key)
-                        }
-                      }}
-                      disabled={slot.isBooked || !slot.isAvailable}
-                      className={`slot-pill ${
-                        selectedSlot === slot.key ? 'slot-pill--active' : ''
-                      } ${
-                        slot.isBooked
-                          ? 'cursor-not-allowed border-accent-sky/40 bg-accent-sky/20 text-text-secondary'
-                          : ''
-                      } ${
-                        !slot.isAvailable
-                          ? 'cursor-not-allowed border-text-secondary/15 bg-background/40 text-text-secondary'
-                          : ''
+                      onClick={() => setAppointmentType('IN_PERSON')}
+                      className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                        appointmentType === 'IN_PERSON'
+                          ? 'border-primary-light/40 bg-primary-light/10 text-primary'
+                          : 'border-text-secondary/20 text-text-secondary hover:text-primary'
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <span>{slot.time}</span>
-                        <span className="text-xs">
-                          {slot.isBooked ? 'Booked' : slot.isAvailable ? 'Available' : 'Off'}
-                        </span>
-                      </div>
+                      In-person
                     </button>
-                  ))
+                    <button
+                      type="button"
+                      onClick={() => setAppointmentType('TELEMEDICINE')}
+                      className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                        appointmentType === 'TELEMEDICINE'
+                          ? 'border-primary-light/40 bg-primary-light/10 text-primary'
+                          : 'border-text-secondary/20 text-text-secondary hover:text-primary'
+                      }`}
+                    >
+                      Telemedicine
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleBook}
+                    disabled={!selectedDoctor || !selectedSlot || booking}
+                    className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {booking
+                      ? 'Booking...'
+                      : appointmentType === 'TELEMEDICINE'
+                        ? 'Book and Create Video Session'
+                        : 'Book Selected Slot'}
+                  </button>
+                </div>
+
+                {message && (
+                  <div className="mt-4 rounded-xl border border-accent-mint/40 bg-accent-mint/20 px-4 py-3 text-sm text-primary">
+                    {message}
+                  </div>
                 )}
               </div>
+            </div>
 
-              <div className="mt-5 space-y-3 rounded-xl border border-text-secondary/10 bg-background/50 p-4">
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Optional note for doctor"
-                  className="symptom-input min-h-[90px]"
-                />
-
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => setAppointmentType('IN_PERSON')}
-                    className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
-                      appointmentType === 'IN_PERSON'
-                        ? 'border-primary-light/40 bg-primary-light/10 text-primary'
-                        : 'border-text-secondary/20 text-text-secondary hover:text-primary'
-                    }`}
-                  >
-                    In-person
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAppointmentType('TELEMEDICINE')}
-                    className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
-                      appointmentType === 'TELEMEDICINE'
-                        ? 'border-primary-light/40 bg-primary-light/10 text-primary'
-                        : 'border-text-secondary/20 text-text-secondary hover:text-primary'
-                    }`}
-                  >
-                    Telemedicine
-                  </button>
+            <div className="space-y-4">
+              <div className="appointment-panel bg-primary p-4 text-surface lg:p-5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-semibold text-surface">Doctor Profile</h3>
+                  {loading && <span className="text-xs text-surface/80">Loading...</span>}
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleBook}
-                  disabled={!selectedSlot || booking}
-                  className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {booking
-                    ? 'Booking...'
-                    : appointmentType === 'TELEMEDICINE'
-                      ? 'Book and Create Video Session'
-                      : 'Book Selected Slot'}
-                </button>
-
-                <p className="text-xs text-text-secondary">
-                  Booking remains PENDING until payment confirmation. Telemedicine links become joinable 1 hour before scheduled time.
-                </p>
+                <div className="mt-4 flex items-center gap-3">
+                  <div className="doctor-profile-avatar border-surface/35 bg-surface/15 text-surface">{doctorInitials(selectedDoctor)}</div>
+                  <div>
+                    <p className="font-semibold text-surface">{selectedDoctor?.name ?? 'No doctor selected'}</p>
+                    <p className="text-sm text-surface/80">{selectedDoctor?.specialty ?? 'Specialty'}</p>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  <button type="button" className="day-pill border-surface/30 bg-surface/10 text-surface hover:text-surface">Chat</button>
+                  <button type="button" className="day-pill border-surface/30 bg-surface/10 text-surface hover:text-surface">Call</button>
+                  <button type="button" className="day-pill border-surface/30 bg-surface/10 text-surface hover:text-surface">Info</button>
+                </div>
+                <div className="mt-4 rounded-xl border border-surface/20 bg-surface/10 p-3">
+                  <p className="text-xs uppercase tracking-wide text-surface/70">Biography</p>
+                  <p className="mt-2 text-sm text-surface">
+                    {selectedDoctor
+                      ? `${selectedDoctor.name} specializes in ${selectedDoctor.specialty}.`
+                      : 'Select a doctor to view profile details.'}
+                  </p>
+                </div>
               </div>
-
-              {message && (
-                <div className="mt-4 rounded-xl border border-accent-mint/40 bg-accent-mint/20 px-4 py-3 text-sm text-primary">
-                  {message}
-                </div>
-              )}
-
-              {error && (
-                <div className="mt-4 rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-primary">
-                  {error}
-                </div>
-              )}
             </div>
           </div>
         </>
@@ -750,13 +1016,17 @@ export function PatientAppointments() {
             Calendar view for patient ID: {patientId}. Dates with bookings are marked.
           </p>
 
-          {sortedMyAppointments.length === 0 ? (
-            <div className="mt-4 rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-4 py-6 text-center text-sm text-text-secondary">
-              No bookings yet.
-            </div>
-          ) : (
             <div className="mt-4 space-y-5">
-              <div className="rounded-2xl border border-text-secondary/15 bg-background/40 p-4">
+              <button
+                type="button"
+                onClick={() => setShowBookingCalendar((v) => !v)}
+                className="inline-flex items-center gap-2 rounded-xl border border-text-secondary/20 bg-surface px-3 py-2 text-sm font-medium text-primary"
+              >
+                {showBookingCalendar ? 'Hide Calendar' : 'Show Calendar'}
+              </button>
+
+              {showBookingCalendar && (
+              <div className="calendar-surface rounded-2xl border border-text-secondary/15 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <button
                     type="button"
@@ -847,7 +1117,7 @@ export function PatientAppointments() {
                     return (
                       <div
                         key={cell.dateKey}
-                        onClick={() => setSelectedBookingDate(cell.dateKey)}
+                        onClick={() => handleBookingCalendarDateClick(cell.dateKey)}
                         className={`min-h-24 rounded-lg border px-1 py-1 text-left text-xs transition ${
                           selected
                             ? 'border-primary-light/40 bg-primary-light/10 text-primary'
@@ -954,10 +1224,20 @@ export function PatientAppointments() {
                     )}
                   </div>
                 </div>
+
+                <p className="mt-3 text-xs text-text-secondary">
+                  Previous dates are view-only.
+                </p>
               </div>
+              )}
 
               <div className="overflow-x-auto rounded-2xl border border-text-secondary/15 bg-background/40 p-4">
                 <h3 className="mb-3 text-base font-semibold text-primary">All Bookings</h3>
+                {sortedMyAppointments.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-4 py-6 text-center text-sm text-text-secondary">
+                    No bookings yet.
+                  </div>
+                ) : (
                 <table className="w-full min-w-[52rem] text-left text-sm">
                   <thead>
                     <tr className="border-b border-text-secondary/20 text-text-secondary">
@@ -1016,9 +1296,9 @@ export function PatientAppointments() {
                     })}
                   </tbody>
                 </table>
+                )}
               </div>
             </div>
-          )}
         </div>
       )}
 

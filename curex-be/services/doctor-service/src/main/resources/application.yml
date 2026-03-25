@@ -45,6 +45,13 @@ services:
   user:
     url: ${SERVICES_USER_URL:http://localhost:8081}
 
+# Identity forwarded on Feign calls to appointment-service (mirrors API gateway headers).
+curex:
+  feign:
+    appointment-service:
+      user-id: ${CUREX_APPOINTMENT_FEIGN_USER_ID:doctor-service-internal}
+      user-role: ${CUREX_APPOINTMENT_FEIGN_USER_ROLE:ADMIN}
+
 management:
   endpoints:
     web:

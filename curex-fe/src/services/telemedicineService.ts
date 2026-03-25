@@ -1,25 +1,15 @@
-import axios from 'axios'
+import api from './axiosInstance'
 import type {
   CreateTelemedicineSessionPayload,
   EndTelemedicineSessionPayload,
   TelemedicineSessionRecord,
 } from '../types/telemedicine.ts'
 
-const TELEMEDICINE_BASE_URL =
-  import.meta.env.VITE_TELEMEDICINE_API_URL ?? 'http://localhost:8089'
-
-const telemedicineApi = axios.create({
-  baseURL: TELEMEDICINE_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
 export async function createTelemedicineSession(
   appointmentId: string,
   payload: CreateTelemedicineSessionPayload
 ): Promise<TelemedicineSessionRecord> {
-  const { data } = await telemedicineApi.post<TelemedicineSessionRecord>(
+  const { data } = await api.post<TelemedicineSessionRecord>(
     `/api/telemed/appointments/${appointmentId}/session`,
     payload
   )
@@ -30,7 +20,7 @@ export async function getTelemedicineSession(
   appointmentId: string
 ): Promise<TelemedicineSessionRecord | null> {
   try {
-    const { data } = await telemedicineApi.get<TelemedicineSessionRecord>(
+    const { data } = await api.get<TelemedicineSessionRecord>(
       `/api/telemed/appointments/${appointmentId}/session`
     )
     return data
@@ -46,7 +36,7 @@ export async function endTelemedicineSession(
   appointmentId: string,
   payload?: EndTelemedicineSessionPayload
 ): Promise<TelemedicineSessionRecord> {
-  const { data } = await telemedicineApi.post<TelemedicineSessionRecord>(
+  const { data } = await api.post<TelemedicineSessionRecord>(
     `/api/telemed/appointments/${appointmentId}/end`,
     payload ?? {}
   )
