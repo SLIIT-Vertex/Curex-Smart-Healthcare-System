@@ -26,8 +26,8 @@ WORKDIR /app
 
 COPY --from=build /app/target/report-service-1.0.0.jar app.jar
 
-# Create folder for file storage and set owner
-RUN mkdir -p uploads/reports && chown -R curex:curex uploads /app/app.jar
+# Set owner of the jar file
+RUN chown curex:curex /app/app.jar
 
 USER curex
 
