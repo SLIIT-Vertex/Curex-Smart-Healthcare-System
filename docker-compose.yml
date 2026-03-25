@@ -310,7 +310,9 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/curex_reports
       DB_USERNAME: ${DB_USERNAME:-curex_user}
       DB_PASSWORD: ${DB_PASSWORD:-curex_password}
-      UPLOAD_DIR: uploads/reports
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
     depends_on:
       postgres:
         condition: service_healthy

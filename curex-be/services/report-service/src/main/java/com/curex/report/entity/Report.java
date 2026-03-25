@@ -36,7 +36,10 @@ public class Report {
     private String originalFilename;
 
     @Column(nullable = false, unique = true)
-    private String storedFilename;
+    private String publicId;
+
+    @Column(nullable = false)
+    private String fileUrl;
 
     @Column(nullable = false)
     private String contentType;

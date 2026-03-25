@@ -1,28 +1,19 @@
 package com.curex.report.service;
 
-import com.curex.report.config.FileStorageProperties;
 import com.curex.report.entity.Report;
 import com.curex.report.exception.InvalidFileException;
 import com.curex.report.exception.ResourceNotFoundException;
 import com.curex.report.repository.ReportRepository;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.MalformedURLException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -37,23 +28,7 @@ public class ReportServiceImpl implements ReportService {
             "image/jpeg");
 
     private final ReportRepository reportRepository;
-    private final FileStorageProperties fileStorageProperties;
-
-    private Path uploadBasePath;
-
-    @PostConstruct
-    void initStorage() {
-        String configuredDir = fileStorageProperties.getUploadDir();
-        if (!StringUtils.hasText(configuredDir)) {
-            throw new IllegalStateException("file.upload-dir is not configured");
-        }
-        uploadBasePath = Paths.get(configuredDir).toAbsolutePath().normalize();
-        try {
-            Files.createDirectories(uploadBasePath);
-        } catch (IOException e) {
-            throw new IllegalStateException("Could not create upload directory: " + uploadBasePath, e);
-        }
-    }
+    private final CloudinaryService cloudinaryService;
 
     @Override
     public Report uploadReport(String patientId, MultipartFile file) {
@@ -68,19 +43,16 @@ public class ReportServiceImpl implements ReportService {
         String extension = extractExtension(originalFilename);
         validateFileType(extension, file.getContentType());
 
-        String storedFilename = UUID.randomUUID() + "." + extension;
-        Path targetPath = uploadBasePath.resolve(storedFilename).normalize();
-
-        try (InputStream inputStream = file.getInputStream()) {
-            Files.copy(inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to store file", e);
-        }
+        // Upload to Cloudinary
+        Map<String, Object> uploadResult = cloudinaryService.upload(file, "curex/reports/" + patientId);
+        String publicId = (String) uploadResult.get("public_id");
+        String fileUrl = (String) uploadResult.get("secure_url");
 
         Report report = Report.builder()
                 .patientId(patientId)
                 .originalFilename(originalFilename)
-                .storedFilename(storedFilename)
+                .publicId(publicId)
+                .fileUrl(fileUrl)
                 .contentType(normalizeContentType(file.getContentType(), extension))
                 .fileSize(file.getSize())
                 .uploadedAt(Instant.now())
@@ -96,24 +68,6 @@ public class ReportServiceImpl implements ReportService {
     }
 
     @Override
-    public Resource loadReportAsResource(UUID id) {
-        Report report = getReport(id);
-        Path filePath = uploadBasePath.resolve(report.getStoredFilename()).normalize();
-        if (!Files.exists(filePath)) {
-            throw new ResourceNotFoundException("Report file not found for id: " + id);
-        }
-        try {
-            Resource resource = new UrlResource(filePath.toUri());
-            if (!resource.exists()) {
-                throw new ResourceNotFoundException("Report file not found for id: " + id);
-            }
-            return resource;
-        } catch (MalformedURLException e) {
-            throw new IllegalStateException("Invalid file path", e);
-        }
-    }
-
-    @Override
     public List<Report> getReportsForPatient(String patientId) {
         if (!StringUtils.hasText(patientId)) {
             throw new InvalidFileException("patientId is required");
@@ -124,14 +78,11 @@ public class ReportServiceImpl implements ReportService {
     @Override
     public void deleteReport(UUID id) {
         Report report = getReport(id);
+        
+        // Delete from Cloudinary
+        cloudinaryService.delete(report.getPublicId());
+        
         reportRepository.delete(report);
-
-        Path filePath = uploadBasePath.resolve(report.getStoredFilename()).normalize();
-        try {
-            Files.deleteIfExists(filePath);
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to delete report file", e);
-        }
     }
 
     private void validateFileType(String extension, String contentType) {
