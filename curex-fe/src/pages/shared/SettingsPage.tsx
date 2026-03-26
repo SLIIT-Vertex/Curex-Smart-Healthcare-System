@@ -184,6 +184,26 @@ export function SettingsPage() {
     setNotifications((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const getStatusCode = (err: unknown): number | undefined => {
+    const maybe = err as { response?: { status?: number } };
+    return maybe.response?.status;
+  };
+
+  const finalizeDeletedSession = async () => {
+    toast("Your account has been deleted", "success");
+    logout();
+  };
+
+  const isAccountNoLongerAccessible = async (): Promise<boolean> => {
+    try {
+      await userService.getMyProfile();
+      return false;
+    } catch (profileErr) {
+      const status = getStatusCode(profileErr);
+      return status === 401 || status === 403 || status === 404;
+    }
+  };
+
   const onDeleteAccount = async () => {
     if (deleteConfirmation.trim().toUpperCase() !== "DELETE") {
       toast('Type "DELETE" to confirm account deletion', "error");
@@ -193,14 +213,16 @@ export function SettingsPage() {
     setDeletingAccount(true);
     try {
       await userService.deleteMyAccount();
-      try {
-        await authService.logout();
-      } catch {
-        // Local logout is enough if backend logout token revocation fails.
-      }
-      toast("Your account has been deleted", "success");
-      logout();
+      await finalizeDeletedSession();
     } catch (err) {
+      const status = getStatusCode(err);
+      if (status === 405 || status === 404) {
+        const accountGone = await isAccountNoLongerAccessible();
+        if (accountGone) {
+          await finalizeDeletedSession();
+          return;
+        }
+      }
       toast(getApiErrorMessage(err, "Failed to delete account"), "error");
     } finally {
       setDeletingAccount(false);

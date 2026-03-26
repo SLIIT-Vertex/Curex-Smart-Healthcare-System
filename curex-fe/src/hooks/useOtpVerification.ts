@@ -14,6 +14,16 @@ import {
 const extractApiError = (err: unknown): string | null =>
   (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? null
 
+const isLikelyNetworkError = (err: unknown): boolean => {
+  const maybe = err as { code?: string; response?: unknown; message?: string }
+  if (maybe?.response) return false
+  if (maybe?.code === 'ERR_NETWORK') return true
+  return (maybe?.message ?? '').toLowerCase().includes('network')
+}
+
+const isValidEmail = (value: string): boolean =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+
 /**
  * Encapsulates the OTP send and verify flows for the registration wizard.
  *
@@ -33,13 +43,36 @@ export const useOtpVerification = () => {
    * On success, marks the OTP as sent in Redux.
    */
   const sendOtp = useCallback(async () => {
+    const phone = form.phone.trim()
+    const email = form.email.trim()
+
+    if (!phone) {
+      dispatch(setErrors({ phone: 'Phone number is required' }))
+      toast('Phone number is required before sending OTP', 'error')
+      return
+    }
+
+    if (!email) {
+      dispatch(setErrors({ email: 'Email address is required' }))
+      toast('Email address is required before sending OTP', 'error')
+      return
+    }
+
+    if (!isValidEmail(email)) {
+      dispatch(setErrors({ email: 'Enter a valid email address' }))
+      toast('Enter a valid email address before sending OTP', 'error')
+      return
+    }
+
     dispatch(setOtpLoading(true))
     try {
-      await authService.sendOtp({ phoneNumber: form.phone, email: form.email })
+      await authService.sendOtp({ phoneNumber: phone, email })
       dispatch(markOtpSent())
-      toast(`OTP codes sent to ${form.phone} and ${form.email}`, 'success')
+      toast(`OTP codes sent to ${phone} and ${email}`, 'success')
     } catch (err) {
-      const msg = extractApiError(err) ?? 'Failed to send OTP. Please try again.'
+      const msg = isLikelyNetworkError(err)
+        ? 'Cannot reach API server (http://localhost:8080). Make sure docker compose services are running.'
+        : (extractApiError(err) ?? 'Failed to send OTP. Please try again.')
       toast(msg, 'error')
     } finally {
       dispatch(setOtpLoading(false))
