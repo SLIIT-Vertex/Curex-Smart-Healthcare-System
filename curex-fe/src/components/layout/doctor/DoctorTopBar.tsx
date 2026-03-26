@@ -1,22 +1,23 @@
-import { Link } from 'react-router-dom'
-import { Menu, Search, Bell } from 'lucide-react'
-import { useAuth } from '../../../store/hooks'
+import { Link } from "react-router-dom";
+import { Menu, Search } from "lucide-react";
+import { useAuth } from "../../../store/hooks";
+import { NotificationBell } from "../../ui/NotificationBell";
 
 interface DoctorTopBarProps {
-  onMenuClick?: () => void
+  onMenuClick?: () => void;
 }
 
 export function DoctorTopBar({ onMenuClick }: DoctorTopBarProps) {
-  const { user } = useAuth()
+  const { user } = useAuth();
 
   const initials = user
-    ? `${user.firstName?.[0] ?? ''}${user.lastName?.[0] ?? ''}`.toUpperCase()
-    : 'DR'
+    ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase()
+    : "DR";
 
   return (
     <header
-      className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-text-secondary/10 bg-surface px-4 shadow-sm lg:px-6"
-      style={{ boxShadow: 'var(--shadow-header)' }}
+      className="sticky top-0 z-120 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-text-secondary/10 bg-surface px-4 shadow-sm lg:px-6"
+      style={{ boxShadow: "var(--shadow-header)" }}
     >
       {/* Hamburger (mobile only) */}
       <button
@@ -46,13 +47,7 @@ export function DoctorTopBar({ onMenuClick }: DoctorTopBarProps) {
 
       {/* Right side: notifications + avatar */}
       <div className="flex flex-1 items-center justify-end gap-2 lg:flex-initial">
-        <button
-          type="button"
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-primary-light/10 hover:text-primary"
-          aria-label="Notifications"
-        >
-          <Bell className="h-5 w-5" strokeWidth={1.5} />
-        </button>
+        <NotificationBell buttonClassName="relative flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-primary-light/10 hover:text-primary" />
 
         <Link
           to="/doctor/profile"
@@ -60,18 +55,24 @@ export function DoctorTopBar({ onMenuClick }: DoctorTopBarProps) {
           aria-label="Go to profile"
         >
           <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary-light/20 text-sm font-semibold text-primary">
-            {user?.profileImageUrl
-              ? <img src={user.profileImageUrl} alt="" className="h-full w-full object-cover" />
-              : initials}
+            {user?.profileImageUrl ? (
+              <img
+                src={user.profileImageUrl}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              initials
+            )}
           </div>
           <div className="hidden flex-col sm:flex">
             <span className="text-sm font-medium text-primary leading-tight">
-              {user ? `${user.firstName} ${user.lastName}` : 'Doctor'}
+              {user ? `${user.firstName} ${user.lastName}` : "Doctor"}
             </span>
             <span className="text-xs text-text-secondary">Doctor</span>
           </div>
         </Link>
       </div>
     </header>
-  )
+  );
 }

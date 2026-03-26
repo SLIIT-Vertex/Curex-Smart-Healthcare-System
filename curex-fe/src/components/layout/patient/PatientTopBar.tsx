@@ -1,22 +1,23 @@
-import { Link } from 'react-router-dom'
-import { Menu, Search, Bell, Calendar } from 'lucide-react'
-import { useAuth } from '../../../store/hooks'
+import { Link } from "react-router-dom";
+import { Menu, Search, Calendar } from "lucide-react";
+import { useAuth } from "../../../store/hooks";
+import { NotificationBell } from "../../ui/NotificationBell";
 
 interface PatientTopBarProps {
-  onMenuClick?: () => void
+  onMenuClick?: () => void;
 }
 
 export function PatientTopBar({ onMenuClick }: PatientTopBarProps) {
-  const { user } = useAuth()
+  const { user } = useAuth();
 
   const initials = user
-    ? `${user.firstName?.[0] ?? ''}${user.lastName?.[0] ?? ''}`.toUpperCase()
-    : 'PT'
+    ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase()
+    : "PT";
 
   return (
     <header
-      className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-text-secondary/10 bg-surface px-4 shadow-sm lg:px-6"
-      style={{ boxShadow: 'var(--shadow-header)' }}
+      className="sticky top-0 z-120 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-text-secondary/10 bg-surface px-4 shadow-sm lg:px-6"
+      style={{ boxShadow: "var(--shadow-header)" }}
     >
       {/* Left: hamburger (mobile) + Make an Appointment */}
       <div className="flex flex-1 items-center gap-2 lg:flex-initial">
@@ -56,13 +57,7 @@ export function PatientTopBar({ onMenuClick }: PatientTopBarProps) {
 
       {/* Right side: notifications + avatar */}
       <div className="flex flex-1 items-center justify-end gap-2 lg:flex-initial">
-        <button
-          type="button"
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-primary-light/10 hover:text-primary"
-          aria-label="Notifications"
-        >
-          <Bell className="h-5 w-5" strokeWidth={1.5} />
-        </button>
+        <NotificationBell buttonClassName="relative flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-primary-light/10 hover:text-primary" />
 
         <Link
           to="/patient/profile"
@@ -70,18 +65,24 @@ export function PatientTopBar({ onMenuClick }: PatientTopBarProps) {
           aria-label="Go to profile"
         >
           <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary-light/20 text-sm font-semibold text-primary">
-            {user?.profileImageUrl
-              ? <img src={user.profileImageUrl} alt="" className="h-full w-full object-cover" />
-              : initials}
+            {user?.profileImageUrl ? (
+              <img
+                src={user.profileImageUrl}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              initials
+            )}
           </div>
           <div className="hidden flex-col sm:flex">
             <span className="text-sm font-medium text-primary leading-tight">
-              {user ? `${user.firstName} ${user.lastName}` : 'Patient'}
+              {user ? `${user.firstName} ${user.lastName}` : "Patient"}
             </span>
             <span className="text-xs text-text-secondary">Patient</span>
           </div>
         </Link>
       </div>
     </header>
-  )
+  );
 }
