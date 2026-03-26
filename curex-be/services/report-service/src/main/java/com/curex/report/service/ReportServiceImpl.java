@@ -5,6 +5,7 @@ import com.curex.report.exception.InvalidFileException;
 import com.curex.report.exception.ResourceNotFoundException;
 import com.curex.report.repository.ReportRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -19,6 +20,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ReportServiceImpl implements ReportService {
 
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of("pdf", "png", "jpg", "jpeg");
@@ -96,6 +98,25 @@ public class ReportServiceImpl implements ReportService {
         cloudinaryService.delete(report.getPublicId());
         
         reportRepository.delete(report);
+    }
+
+    @Override
+    public int purgeUserData(String ownerId) {
+        if (!StringUtils.hasText(ownerId)) {
+            throw new InvalidFileException("ownerId is required");
+        }
+
+        List<Report> reports = reportRepository.findByOwnerIdOrderByUploadedAtDesc(ownerId.trim());
+        for (Report report : reports) {
+            try {
+                cloudinaryService.delete(report.getPublicId());
+            } catch (Exception ex) {
+                log.warn("Failed to delete cloud asset {} for owner {}: {}", report.getPublicId(), ownerId, ex.getMessage());
+            }
+        }
+
+        reportRepository.deleteAll(reports);
+        return reports.size();
     }
 
     private void validateFileType(String extension, String contentType) {

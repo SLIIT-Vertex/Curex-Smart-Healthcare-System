@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -96,6 +97,14 @@ public class UserController {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         UserDetails userDetails = (UserDetails) auth.getPrincipal();
         return ResponseEntity.ok(userProfileService.updateNotificationPreferences(userDetails.getUsername(), request));
+    }
+
+    @DeleteMapping("/api/users/me/account")
+    public ResponseEntity<Map<String, String>> deleteMyAccount() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        UserDetails userDetails = (UserDetails) auth.getPrincipal();
+        userProfileService.deleteOwnAccount(userDetails.getUsername());
+        return ResponseEntity.ok(Map.of("message", "Account deleted successfully"));
     }
 
     // ── Approved-user endpoints ──────────────────────────────────────────────

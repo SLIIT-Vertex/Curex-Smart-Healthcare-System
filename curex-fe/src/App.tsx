@@ -39,8 +39,11 @@ import { PatientCheckout } from "./pages/patient/PatientCheckout";
 import { PatientPayments } from "./pages/patient/PatientPayments";
 import { PatientTelemedicineCenter } from "./pages/patient/PatientTelemedicineCenter";
 import { SettingsPage } from "./pages/shared/SettingsPage";
+import { useAuthSessionSync } from "./hooks/useAuthSessionSync";
 
 function App() {
+  useAuthSessionSync();
+
   return (
     <BrowserRouter>
       {/* Skip-to-content accessibility link */}

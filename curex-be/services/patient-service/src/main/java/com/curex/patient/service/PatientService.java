@@ -17,8 +17,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -139,6 +141,17 @@ public class PatientService {
                     patientId, e.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    @Transactional
+    public Map<String, Long> purgeUserData(String userId) {
+        String normalizedUserId = userId == null ? "" : userId.trim();
+        long deletedProfiles = patientRepository.deleteByUserId(normalizedUserId);
+
+        Map<String, Long> result = new LinkedHashMap<>();
+        result.put("deletedPatientProfiles", deletedProfiles);
+        result.put("totalDeleted", deletedProfiles);
+        return result;
     }
 
     private PatientResponse toPatientResponse(Patient patient) {

@@ -47,4 +47,10 @@ export const userService = {
       )
       .then((r) => r.data);
   },
+
+  deleteMyAccount(): Promise<{ message: string }> {
+    return api
+      .delete<{ message: string }>("/api/users/me/account")
+      .then((r) => r.data);
+  },
 };

@@ -12,4 +12,8 @@ public interface PrescriptionRepository extends JpaRepository<Prescription, Stri
     List<Prescription> findByDoctor_IdOrderByIssuedAtDesc(String doctorId);
 
     boolean existsByAppointmentId(String appointmentId);
+
+    long deleteByDoctor_Id(String doctorId);
+
+    long deleteByPatientId(String patientId);
 }

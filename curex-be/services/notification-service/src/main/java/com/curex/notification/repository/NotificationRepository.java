@@ -151,4 +151,6 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
            "COUNT(CASE WHEN n.status = 'PENDING' THEN 1 END) as pending " +
            "FROM Notification n WHERE n.createdAt >= :fromDate")
     Object[] getNotificationStatistics(@Param("fromDate") LocalDateTime fromDate);
+
+       long deleteByUserId(String userId);
 }

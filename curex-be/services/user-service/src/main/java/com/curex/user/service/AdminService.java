@@ -5,6 +5,7 @@ import com.curex.user.dto.UserApprovalRequest;
 import com.curex.user.dto.UserResponse;
 import com.curex.user.config.RabbitMQConfig;
 import com.curex.user.entity.User;
+import com.curex.user.exception.CurexUserException;
 import com.curex.user.exception.UserNotFoundException;
 import com.curex.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +14,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,12 +53,19 @@ public class AdminService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException(userId));
 
-        applyStatusAction(user, request.getAction());
+        applyAdminAction(user, request.getAction());
         stampApprovalAudit(user, adminId, request.getNotes());
         User saved = userRepository.save(user);
         publishStatusChangedEvent(saved, request.getAction().name(), adminId, request.getNotes());
 
-        log.info("Admin {} changed user {} status to {}", adminId, userId, user.getAccountStatus());
+        log.info(
+            "Admin {} applied action {} to user {} (role={}, status={})",
+            adminId,
+            request.getAction(),
+            userId,
+            saved.getRole(),
+            saved.getAccountStatus()
+        );
         return toUserResponse(saved);
     }
 
@@ -147,7 +156,7 @@ public class AdminService {
     public List<UserResponse> bulkUpdateUsers(List<String> userIds, UserApprovalRequest request, String adminId) {
         List<User> users = userRepository.findAllById(userIds);
         for (User user : users) {
-            applyStatusAction(user, request.getAction());
+            applyAdminAction(user, request.getAction());
             stampApprovalAudit(user, adminId, request.getNotes());
         }
         List<User> savedUsers = userRepository.saveAll(users);
@@ -160,13 +169,28 @@ public class AdminService {
 
     //  private helpers 
 
-    private void applyStatusAction(User user, UserApprovalRequest.ApprovalAction action) {
+    private void applyAdminAction(User user, UserApprovalRequest.ApprovalAction action) {
+        if (action == UserApprovalRequest.ApprovalAction.PROMOTE_TO_ADMIN) {
+            promoteToAdmin(user);
+            return;
+        }
+
         User.AccountStatus newStatus = switch (action) {
             case APPROVE, REACTIVATE -> User.AccountStatus.APPROVED;
             case REJECT -> User.AccountStatus.REJECTED;
             case SUSPEND -> User.AccountStatus.SUSPENDED;
+            case PROMOTE_TO_ADMIN -> User.AccountStatus.APPROVED;
         };
         user.setAccountStatus(newStatus);
+    }
+
+    private void promoteToAdmin(User user) {
+        if (user.getRole() == User.Role.ADMIN) {
+            throw new CurexUserException("User is already an admin", HttpStatus.BAD_REQUEST);
+        }
+
+        user.setRole(User.Role.ADMIN);
+        user.setAccountStatus(User.AccountStatus.APPROVED);
     }
 
     private void stampApprovalAudit(User user, String adminId, String notes) {

@@ -21,6 +21,8 @@ public interface PaymentService {
 
     List<PaymentResponse> getPaymentsForPatient(String patientId);
 
+    long purgeUserData(String userId);
+
     /**
      * Handle Stripe webhook (signature verified before processing).
      */

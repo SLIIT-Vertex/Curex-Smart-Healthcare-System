@@ -51,4 +51,8 @@ public interface AppointmentRepository extends JpaRepository<Appointment, String
     List<Appointment> findByTypeAndStatus(AppointmentType type, AppointmentStatus status);
 
     long countByStatus(AppointmentStatus status);
+
+        long deleteByPatientId(String patientId);
+
+        long deleteByDoctorId(String doctorId);
 }

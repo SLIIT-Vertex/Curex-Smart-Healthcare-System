@@ -19,6 +19,7 @@ public class UserApprovalRequest {
         APPROVE,
         REJECT,
         SUSPEND,
-        REACTIVATE
+        REACTIVATE,
+        PROMOTE_TO_ADMIN
     }
 }

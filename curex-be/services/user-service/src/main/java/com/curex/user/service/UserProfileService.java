@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserProfileService {
 
     private final UserRepository userRepository;
+    private final UserDataDeletionOrchestrator userDataDeletionOrchestrator;
 
     /**
      * Updates the profile of the currently authenticated user.
@@ -109,5 +110,14 @@ public class UserProfileService {
 
         User saved = userRepository.save(user);
         return new NotificationPreferencesResponse(saved);
+    }
+
+    public void deleteOwnAccount(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException(email));
+
+        userDataDeletionOrchestrator.purgeUserDataAcrossServices(user.getId());
+        userRepository.delete(user);
+        log.info("Deleted user account {} ({})", user.getId(), user.getEmail());
     }
 }

@@ -182,6 +182,14 @@ public class NotificationService {
         log.info("Cleaned up notifications older than {} days", daysOld);
     }
 
+    @Transactional
+    public long purgeUserData(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return 0;
+        }
+        return notificationRepository.deleteByUserId(userId.trim());
+    }
+
     //  private helpers 
 
     private boolean processNotification(Notification notification) {

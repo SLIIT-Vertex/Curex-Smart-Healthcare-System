@@ -148,7 +148,12 @@ interface ActionMenuProps {
   user: UserResponse;
   onAction: (
     userId: string,
-    action: "APPROVE" | "REJECT" | "SUSPEND" | "REACTIVATE",
+    action:
+      | "APPROVE"
+      | "REJECT"
+      | "SUSPEND"
+      | "REACTIVATE"
+      | "PROMOTE_TO_ADMIN",
   ) => void;
 }
 
@@ -207,7 +212,7 @@ function ActionMenu({ user, onAction }: ActionMenuProps) {
 
   const actions: {
     label: string;
-    value: "APPROVE" | "REJECT" | "SUSPEND" | "REACTIVATE";
+    value: "APPROVE" | "REJECT" | "SUSPEND" | "REACTIVATE" | "PROMOTE_TO_ADMIN";
     show: boolean;
   }[] = (
     [
@@ -234,6 +239,11 @@ function ActionMenu({ user, onAction }: ActionMenuProps) {
         show:
           user.accountStatus === "SUSPENDED" ||
           user.accountStatus === "REJECTED",
+      },
+      {
+        label: "Promote to Admin",
+        value: "PROMOTE_TO_ADMIN" as const,
+        show: user.role !== "ADMIN",
       },
     ] as const
   ).filter((a) => a.show);
@@ -281,6 +291,8 @@ function ActionMenu({ user, onAction }: ActionMenuProps) {
               >
                 {value === "APPROVE" || value === "REACTIVATE" ? (
                   <ShieldCheck className="h-3.5 w-3.5" strokeWidth={1.75} />
+                ) : value === "PROMOTE_TO_ADMIN" ? (
+                  <UserCheck className="h-3.5 w-3.5" strokeWidth={1.75} />
                 ) : (
                   <ShieldOff className="h-3.5 w-3.5" strokeWidth={1.75} />
                 )}
@@ -337,7 +349,12 @@ export function AdminUsers() {
 
   async function handleAction(
     userId: string,
-    action: "APPROVE" | "REJECT" | "SUSPEND" | "REACTIVATE",
+    action:
+      | "APPROVE"
+      | "REJECT"
+      | "SUSPEND"
+      | "REACTIVATE"
+      | "PROMOTE_TO_ADMIN",
   ) {
     setActionLoading(userId);
     try {
@@ -349,8 +366,14 @@ export function AdminUsers() {
             ? "User rejected."
             : action === "SUSPEND"
               ? "User suspended."
-              : "User reactivated.",
-        action === "APPROVE" || action === "REACTIVATE" ? "success" : "warning",
+              : action === "PROMOTE_TO_ADMIN"
+                ? "User promoted to admin."
+                : "User reactivated.",
+        action === "APPROVE" ||
+          action === "REACTIVATE" ||
+          action === "PROMOTE_TO_ADMIN"
+          ? "success"
+          : "warning",
       );
       fetchUsers();
     } catch {
@@ -554,6 +577,12 @@ export function AdminUsers() {
               icon: RotateCcw,
               variant: "neutral",
             },
+            {
+              label: "Promote to Admin",
+              value: "PROMOTE_TO_ADMIN",
+              icon: UserCheck,
+              variant: "success",
+            },
           ] as const;
 
           const filteredModalActions = modalActions.filter((a) => {
@@ -565,12 +594,14 @@ export function AdminUsers() {
             if (a.value === "SUSPEND") return s === "APPROVED";
             if (a.value === "REACTIVATE")
               return s === "SUSPENDED" || s === "REJECTED";
+            if (a.value === "PROMOTE_TO_ADMIN")
+              return selectedUser.role !== "ADMIN";
             return false;
           });
 
           return (
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-primary/25 px-4 backdrop-blur-md"
+              className="fixed inset-0 z-200 flex items-center justify-center bg-primary/25 px-4 backdrop-blur-md"
               onClick={() => setSelectedUser(null)}
               role="dialog"
               aria-modal="true"

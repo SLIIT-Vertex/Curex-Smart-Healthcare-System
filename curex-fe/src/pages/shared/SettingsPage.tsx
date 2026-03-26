@@ -6,20 +6,18 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { Link } from "react-router-dom";
 import {
+  AlertTriangle,
   Bell,
   KeyRound,
   Loader2,
   MonitorCog,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { authService } from "../../services/authService";
 import { getApiErrorMessage } from "../../services/axiosInstance";
 import { userService } from "../../services/userService";
-import { useAuth, useToast } from "../../store/hooks";
-import type { Role } from "../../types/auth";
+import { useAuth, useAuthActions, useToast } from "../../store/hooks";
 
 const INPUT =
   "w-full rounded-xl border border-text-secondary/20 bg-surface px-4 py-2.5 text-sm text-primary placeholder:text-text-secondary focus:border-primary-light focus:outline-none focus:ring-2 focus:ring-primary-light/20";
@@ -48,20 +46,17 @@ const DEFAULT_UI_PREFERENCES: UiPreferences = {
   timeFormat: "12",
 };
 
-function roleBasePath(role: Role | undefined): string {
-  if (role === "ADMIN") return "/admin";
-  if (role === "DOCTOR") return "/doctor";
-  return "/patient";
-}
-
 export function SettingsPage() {
   const { user } = useAuth();
+  const { logout } = useAuthActions();
   const { toast } = useToast();
 
   const [savingPassword, setSavingPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
 
   const [notifications, setNotifications] = useState<NotificationSettings>(
     DEFAULT_NOTIFICATION_SETTINGS,
@@ -70,7 +65,6 @@ export function SettingsPage() {
     DEFAULT_UI_PREFERENCES,
   );
 
-  const basePath = useMemo(() => roleBasePath(user?.role), [user?.role]);
   const settingsStorageKey = useMemo(
     () => `curex-notification-settings-${user?.id ?? "anonymous"}`,
     [user?.id],
@@ -190,6 +184,29 @@ export function SettingsPage() {
     setNotifications((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const onDeleteAccount = async () => {
+    if (deleteConfirmation.trim().toUpperCase() !== "DELETE") {
+      toast('Type "DELETE" to confirm account deletion', "error");
+      return;
+    }
+
+    setDeletingAccount(true);
+    try {
+      await userService.deleteMyAccount();
+      try {
+        await authService.logout();
+      } catch {
+        // Local logout is enough if backend logout token revocation fails.
+      }
+      toast("Your account has been deleted", "success");
+      logout();
+    } catch (err) {
+      toast(getApiErrorMessage(err, "Failed to delete account"), "error");
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   return (
     <div className="space-y-6 lg:space-y-8">
       <div>
@@ -269,8 +286,8 @@ export function SettingsPage() {
             title="Notification Preferences"
           />
           <p className="mt-2 text-sm text-text-secondary">
-            Saved instantly in your browser for now. This is ready to connect to
-            backend settings later.
+            Keep only the alerts that matter to you. Changes are saved
+            automatically.
           </p>
 
           <div className="mt-4 space-y-3">
@@ -352,24 +369,40 @@ export function SettingsPage() {
           style={{ boxShadow: "var(--shadow-card)" }}
         >
           <SectionTitle
-            icon={<Sparkles className="h-4 w-4 text-accent-mint" />}
-            title="Good Next Features"
+            icon={<AlertTriangle className="h-4 w-4 text-error" />}
+            title="Danger Zone"
           />
-          <ul className="mt-4 space-y-2 text-sm text-text-secondary">
-            <li>Two-factor authentication (OTP on login)</li>
-            <li>Session management (view and revoke active devices)</li>
-            <li>Privacy controls (hide profile fields per role)</li>
-            <li>Export account data and delete account request workflow</li>
-            <li>Channel-level notification routing (email, SMS, in-app)</li>
-          </ul>
+          <p className="mt-2 text-sm text-text-secondary">
+            Deleting your account is permanent. Your profile and related data in
+            connected services will be removed.
+          </p>
 
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Link to={`${basePath}/profile`} className="btn-secondary">
-              Open profile
-            </Link>
-            <Link to={basePath} className="btn-secondary">
-              Back to dashboard
-            </Link>
+          <div className="mt-4 rounded-xl border border-error/30 bg-error/5 p-4">
+            <label className="block text-sm">
+              <span className="font-medium text-primary">
+                Type DELETE to confirm
+              </span>
+              <input
+                type="text"
+                className={`${INPUT} mt-2`}
+                value={deleteConfirmation}
+                onChange={(e) => setDeleteConfirmation(e.target.value)}
+                placeholder="DELETE"
+                disabled={deletingAccount}
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={onDeleteAccount}
+              disabled={deletingAccount}
+              className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-error px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {deletingAccount ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              {deletingAccount ? "Deleting account..." : "Delete account"}
+            </button>
           </div>
         </section>
       </div>

@@ -43,6 +43,12 @@ interface AuthState {
   isLoading: boolean;
 }
 
+interface StorageAuthState {
+  user: UserInfo | null;
+  accessToken: string | null;
+  refreshToken: string | null;
+}
+
 const initialState: AuthState = {
   user: loadPersistedUser(),
   accessToken: localStorage.getItem(ACCESS_TOKEN_KEY),
@@ -68,6 +74,12 @@ const authSlice = createSlice({
         localStorage.setItem(USER_KEY, JSON.stringify(action.payload));
       }
     },
+    syncFromStorage(state, action: PayloadAction<StorageAuthState>) {
+      state.user = action.payload.user;
+      state.accessToken = action.payload.accessToken;
+      state.refreshToken = action.payload.refreshToken;
+      state.isLoading = false;
+    },
     clearCredentials(state) {
       state.user = null;
       state.accessToken = null;
@@ -81,7 +93,12 @@ const authSlice = createSlice({
   },
 });
 
-export const { setCredentials, updateUser, clearCredentials, setLoading } =
-  authSlice.actions;
+export const {
+  setCredentials,
+  updateUser,
+  syncFromStorage,
+  clearCredentials,
+  setLoading,
+} = authSlice.actions;
 export default authSlice.reducer;
-export { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY };
+export { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY };

@@ -1,6 +1,11 @@
 export type Role = "PATIENT" | "DOCTOR" | "ADMIN";
 export type AccountStatus = "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
-export type ApprovalAction = "APPROVE" | "REJECT" | "SUSPEND" | "REACTIVATE";
+export type ApprovalAction =
+  | "APPROVE"
+  | "REJECT"
+  | "SUSPEND"
+  | "REACTIVATE"
+  | "PROMOTE_TO_ADMIN";
 
 export interface UserInfo {
   id: string;
