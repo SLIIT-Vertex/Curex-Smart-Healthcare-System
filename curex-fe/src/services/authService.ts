@@ -50,19 +50,28 @@ export const authService = {
   sendForgotPasswordOtp(
     data: ForgotPasswordSendOtpRequest,
   ): Promise<{ message: string; expiresInMinutes: string }> {
-    return api.post(`${AUTH}/forgot-password/otp/send`, data).then((r) => r.data);
+    return api
+      .post(`${AUTH}/forgot-password/otp/send`, data)
+      .then((r) => r.data);
   },
 
   verifyForgotPasswordOtp(
     data: ForgotPasswordVerifyOtpRequest,
   ): Promise<ForgotPasswordVerifyOtpResponse> {
     return api
-      .post<ForgotPasswordVerifyOtpResponse>(`${AUTH}/forgot-password/otp/verify`, data)
+      .post<ForgotPasswordVerifyOtpResponse>(
+        `${AUTH}/forgot-password/otp/verify`,
+        data,
+      )
       .then((r) => r.data);
   },
 
-  resetForgotPassword(data: ForgotPasswordResetRequest): Promise<{ message: string }> {
-    return api.post<{ message: string }>(`${AUTH}/forgot-password/reset`, data).then((r) => r.data);
+  resetForgotPassword(
+    data: ForgotPasswordResetRequest,
+  ): Promise<{ message: string }> {
+    return api
+      .post<{ message: string }>(`${AUTH}/forgot-password/reset`, data)
+      .then((r) => r.data);
   },
 
   /**
