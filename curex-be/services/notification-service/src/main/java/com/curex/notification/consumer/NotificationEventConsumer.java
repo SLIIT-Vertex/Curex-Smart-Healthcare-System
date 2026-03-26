@@ -127,14 +127,27 @@ public class NotificationEventConsumer {
             String appointmentTime = (String) event.get("appointmentTime");
             String patientPhone    = (String) event.get("patientPhone");
 
-            notificationService.sendNotificationAsync(NotificationRequest.builder()
+                if (patientEmail != null && !patientEmail.isBlank()) {
+                notificationService.sendNotificationAsync(NotificationRequest.builder()
                     .userId(patientId)
                     .recipientEmail(patientEmail)
                     .type(Notification.NotificationType.APPOINTMENT_CONFIRMATION)
                     .channel(Notification.NotificationChannel.EMAIL)
                     .subject("Appointment Confirmation - Curex Healthcare")
                     .content(buildAppointmentConfirmationContent(patientName, doctorName,
-                            appointmentDate, appointmentTime))
+                        appointmentDate, appointmentTime))
+                    .build());
+                }
+
+                notificationService.sendNotificationAsync(NotificationRequest.builder()
+                    .userId(patientId)
+                    .type(Notification.NotificationType.APPOINTMENT_CONFIRMATION)
+                    .channel(Notification.NotificationChannel.IN_APP)
+                    .subject("Appointment Confirmed")
+                    .content(String.format("Appointment with Dr. %s confirmed for %s at %s.",
+                        HtmlUtils.htmlEscape(doctorName),
+                        HtmlUtils.htmlEscape(appointmentDate),
+                        HtmlUtils.htmlEscape(appointmentTime)))
                     .build());
 
             if (patientPhone != null && !patientPhone.isBlank()) {
@@ -202,16 +215,67 @@ public class NotificationEventConsumer {
             String amount        = (String) event.get("amount");
             String appointmentId = (String) event.get("appointmentId");
 
+            if (patientEmail != null && !patientEmail.isBlank()) {
+                notificationService.sendNotificationAsync(NotificationRequest.builder()
+                        .userId(patientId)
+                        .recipientEmail(patientEmail)
+                        .type(Notification.NotificationType.PAYMENT_CONFIRMATION)
+                        .channel(Notification.NotificationChannel.EMAIL)
+                        .subject("Payment Confirmation - Curex Healthcare")
+                        .content(buildPaymentConfirmationContent(patientName, amount, appointmentId))
+                        .build());
+            }
+
             notificationService.sendNotificationAsync(NotificationRequest.builder()
                     .userId(patientId)
-                    .recipientEmail(patientEmail)
                     .type(Notification.NotificationType.PAYMENT_CONFIRMATION)
-                    .channel(Notification.NotificationChannel.EMAIL)
-                    .subject("Payment Confirmation - Curex Healthcare")
-                    .content(buildPaymentConfirmationContent(patientName, amount, appointmentId))
+                    .channel(Notification.NotificationChannel.IN_APP)
+                    .subject("Payment Confirmed")
+                    .content(String.format("Payment of %s confirmed for appointment %s.",
+                            HtmlUtils.htmlEscape(amount),
+                            HtmlUtils.htmlEscape(appointmentId)))
                     .build());
         } catch (Exception e) {
             log.error("Failed to process payment.confirmation event: {}", e.getMessage(), e);
+        }
+    }
+
+    // ── Prescription issued ──────────────────────────────────────────────────
+
+    @RabbitListener(queues = "prescription.issued.queue")
+    public void handlePrescriptionIssued(Map<String, Object> event) {
+        try {
+            log.info("Received prescription.issued event");
+
+            String patientId      = (String) event.get("patientId");
+            String patientEmail   = (String) event.get("patientEmail");
+            String doctorName     = (String) event.get("doctorName");
+            String prescriptionId = (String) event.get("prescriptionId");
+
+            String content = String.format("A new prescription from Dr. %s is ready. Prescription ID: %s.",
+                    HtmlUtils.htmlEscape(doctorName),
+                    HtmlUtils.htmlEscape(prescriptionId));
+
+            if (patientEmail != null && !patientEmail.isBlank()) {
+                notificationService.sendNotificationAsync(NotificationRequest.builder()
+                        .userId(patientId)
+                        .recipientEmail(patientEmail)
+                        .type(Notification.NotificationType.PRESCRIPTION_READY)
+                        .channel(Notification.NotificationChannel.EMAIL)
+                        .subject("Prescription Ready - Curex Healthcare")
+                        .content("<p>" + content + "</p>")
+                        .build());
+            }
+
+            notificationService.sendNotificationAsync(NotificationRequest.builder()
+                    .userId(patientId)
+                    .type(Notification.NotificationType.PRESCRIPTION_READY)
+                    .channel(Notification.NotificationChannel.IN_APP)
+                    .subject("Prescription Ready")
+                    .content(content)
+                    .build());
+        } catch (Exception e) {
+            log.error("Failed to process prescription.issued event: {}", e.getMessage(), e);
         }
     }
 

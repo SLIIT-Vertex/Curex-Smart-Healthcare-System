@@ -6,6 +6,7 @@ import com.healthcare.appointment.entity.Appointment;
 import com.healthcare.appointment.entity.AppointmentStatus;
 
 import com.healthcare.appointment.events.AppointmentBookedEvent;
+import com.healthcare.appointment.events.AppointmentBookingNotificationEvent;
 import com.healthcare.appointment.events.AppointmentCancelledEvent;
 import com.healthcare.appointment.events.PaymentConfirmedEvent;
 import com.healthcare.appointment.feign.DoctorClient;
@@ -282,11 +283,28 @@ public class AppointmentService {
                     RabbitMQConfig.EXCHANGE,
                     RabbitMQConfig.APPOINTMENT_BOOKED_KEY,
                     event);
+
+            rabbitTemplate.convertAndSend(
+                    RabbitMQConfig.NOTIFICATION_APPOINTMENT_EXCHANGE,
+                    RabbitMQConfig.NOTIFICATION_APPOINTMENT_BOOKING_KEY,
+                    toAppointmentBookingNotificationEvent(appt));
         } catch (Exception e) {
             // RabbitMQ might not be running during isolated testing – log and continue
             log.warn("Could not publish AppointmentBookedEvent: {}", e.getMessage());
         }
     }
+
+            private AppointmentBookingNotificationEvent toAppointmentBookingNotificationEvent(Appointment appt) {
+            return AppointmentBookingNotificationEvent.builder()
+                .appointmentId(appt.getId())
+                .patientId(appt.getPatientId())
+                .patientEmail(appt.getPatientEmail())
+                .patientName(appt.getPatientName())
+                .doctorName(appt.getDoctorName())
+                .appointmentDate(appt.getAppointmentTime().toLocalDate().toString())
+                .appointmentTime(appt.getAppointmentTime().toLocalTime().toString())
+                .build();
+            }
 
     private void publishAppointmentCancelled(Appointment appt) {
         try {
