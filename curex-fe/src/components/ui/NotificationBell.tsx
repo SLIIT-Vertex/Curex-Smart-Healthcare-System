@@ -14,9 +14,16 @@ interface NotificationBellProps {
   buttonClassName: string;
 }
 
+function parseNotificationTime(value: string): Date {
+  // Backend may return ISO without timezone (LocalDateTime). Treat it as UTC.
+  const hasTimezone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(value);
+  const normalized = hasTimezone ? value : `${value}Z`;
+  return new Date(normalized);
+}
+
 function relativeTime(value: string): string {
   const now = Date.now();
-  const then = new Date(value).getTime();
+  const then = parseNotificationTime(value).getTime();
   const diffMs = Math.max(0, now - then);
   const diffMin = Math.floor(diffMs / 60000);
 
@@ -29,9 +36,18 @@ function relativeTime(value: string): string {
   const diffD = Math.floor(diffH / 24);
   if (diffD < 7) return `${diffD}d ago`;
 
-  return new Date(value).toLocaleDateString("en-GB", {
+  return parseNotificationTime(value).toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
+  });
+}
+
+function localDateTime(value: string): string {
+  return parseNotificationTime(value).toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -68,6 +84,8 @@ function NotificationRow({
             <span>{item.channel}</span>
             <span className="h-1 w-1 rounded-full bg-text-secondary/50" />
             <span>{relativeTime(item.createdAt)}</span>
+            <span className="h-1 w-1 rounded-full bg-text-secondary/50" />
+            <span>{localDateTime(item.createdAt)}</span>
           </div>
         </div>
 

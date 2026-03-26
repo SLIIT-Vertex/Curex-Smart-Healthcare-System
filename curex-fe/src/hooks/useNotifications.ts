@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth, useToast } from "../store/hooks";
 import { notificationService } from "../services/notificationService";
 import type {
+  NotificationChannel,
   NotificationItem,
   NotificationReadStatus,
 } from "../types/notification";
@@ -9,6 +10,7 @@ import type {
 export type NotificationFilter = "ALL" | NotificationReadStatus;
 
 const POLL_INTERVAL_MS = 30000;
+const BELL_CHANNEL: NotificationChannel = "IN_APP";
 
 export function useNotifications() {
   const { user } = useAuth();
@@ -35,16 +37,20 @@ export function useNotifications() {
 
       try {
         const readStatus = filter === "ALL" ? undefined : filter;
-        const [listResponse, unreadResponse] = await Promise.all([
-          notificationService.getUserNotifications(userId, {
-            size: 20,
-            readStatus,
-          }),
-          notificationService.getUnreadCount(userId),
-        ]);
+        const listResponse = await notificationService.getUserNotifications(userId, {
+          size: 20,
+          readStatus,
+          channel: BELL_CHANNEL,
+        });
 
-        setNotifications(listResponse.notifications);
-        setUnreadCount(unreadResponse.unreadCount);
+        const inAppNotifications = listResponse.notifications.filter(
+          (notification) => notification.channel === BELL_CHANNEL,
+        );
+
+        setNotifications(inAppNotifications);
+        setUnreadCount(
+          inAppNotifications.filter((notification) => notification.readStatus === "UNREAD").length,
+        );
       } catch {
         if (!silent) {
           toast("Failed to load notifications.", "error");
@@ -96,7 +102,7 @@ export function useNotifications() {
     if (!userId || unreadCount === 0) return;
 
     try {
-      await notificationService.markAllAsRead(userId);
+      await notificationService.markAllAsRead(userId, BELL_CHANNEL);
       setUnreadCount(0);
       setNotifications((prev) => {
         if (filter === "UNREAD") return [];
