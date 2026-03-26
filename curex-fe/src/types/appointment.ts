@@ -54,6 +54,7 @@ export interface AppointmentRecord {
   appointmentTime: string
   status: AppointmentStatus
   type: 'IN_PERSON' | 'TELEMEDICINE'
+  paymentId?: string
   sessionUrl?: string
   notes?: string
   cancellationReason?: string
