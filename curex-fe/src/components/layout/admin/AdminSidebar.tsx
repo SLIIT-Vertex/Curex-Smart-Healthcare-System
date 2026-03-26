@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
   Users,
@@ -6,24 +6,24 @@ import {
   Settings,
   LogOut,
   ShieldCheck,
-} from 'lucide-react'
-import { useAuthActions } from '../../../store/hooks'
+} from "lucide-react";
+import { useAuthActions } from "../../../store/hooks";
 
-const LOGO_SRC = '/logo.svg'
+const LOGO_SRC = "/logo.svg";
 
 const navLinks = [
-  { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/admin/users', icon: Users, label: 'Users' },
-  { to: '/admin/doctor-approval', icon: UserCheck, label: 'Doctor Approval' },
-] as const
+  { to: "/admin/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/admin/users", icon: Users, label: "Users" },
+  { to: "/admin/doctor-approval", icon: UserCheck, label: "Doctor Approval" },
+] as const;
 
 interface AdminSidebarProps {
-  isOpen?: boolean
-  onClose?: () => void
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 export function AdminSidebar({ isOpen = true, onClose }: AdminSidebarProps) {
-  const { logout } = useAuthActions()
+  const { logout } = useAuthActions();
 
   return (
     <>
@@ -40,16 +40,25 @@ export function AdminSidebar({ isOpen = true, onClose }: AdminSidebarProps) {
           fixed inset-y-0 left-0 z-50 w-60 transform border-r border-text-secondary/10
           bg-surface shadow-card transition-transform duration-200 ease-out
           lg:static lg:z-auto lg:h-dvh lg:translate-x-0 lg:shadow-none
-          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+          ${isOpen ? "translate-x-0" : "-translate-x-full"}
         `}
         aria-label="Admin navigation"
       >
         <div className="flex h-full min-h-0 flex-col">
           {/* Logo */}
           <div className="flex h-16 shrink-0 items-center gap-2.5 border-b border-text-secondary/10 px-5">
-            <img src={LOGO_SRC} alt="" width={32} height={32} className="h-8 w-8 shrink-0" decoding="async" />
+            <img
+              src={LOGO_SRC}
+              alt=""
+              width={32}
+              height={32}
+              className="h-8 w-8 shrink-0"
+              decoding="async"
+            />
             <div className="flex flex-col leading-tight">
-              <span className="text-base font-semibold tracking-tight text-primary">Curex</span>
+              <span className="text-base font-semibold tracking-tight text-primary">
+                Curex
+              </span>
               <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-widest text-primary-light">
                 <ShieldCheck className="h-2.5 w-2.5" strokeWidth={2} />
                 Admin Panel
@@ -58,7 +67,10 @@ export function AdminSidebar({ isOpen = true, onClose }: AdminSidebarProps) {
           </div>
 
           {/* Nav links */}
-          <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 py-4" aria-label="Admin">
+          <nav
+            className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 py-4"
+            aria-label="Admin"
+          >
             {navLinks.map(({ to, icon: Icon, label }) => (
               <NavLink
                 key={to}
@@ -67,8 +79,8 @@ export function AdminSidebar({ isOpen = true, onClose }: AdminSidebarProps) {
                 className={({ isActive }) =>
                   `sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                     isActive
-                      ? 'sidebar-link--active bg-primary-light/10 text-primary'
-                      : 'text-text-secondary hover:bg-primary-light/5 hover:text-primary'
+                      ? "sidebar-link--active bg-primary-light/10 text-primary"
+                      : "text-text-secondary hover:bg-primary-light/5 hover:text-primary"
                   }`
                 }
               >
@@ -80,18 +92,18 @@ export function AdminSidebar({ isOpen = true, onClose }: AdminSidebarProps) {
 
           <div className="shrink-0 border-t border-text-secondary/10 p-4">
             <NavLink
-                to="/admin/settings"
-                onClick={() => onClose?.()}
-                className={({ isActive }) =>
-                  `sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'sidebar-link--active bg-primary-light/10 text-primary'
-                      : 'text-text-secondary hover:bg-primary-light/5 hover:text-primary'
-                  }`
-                }
-              >
-                <Settings className="h-5 w-5 shrink-0" strokeWidth={1.5} />
-                Settings
+              to="/admin/settings"
+              onClick={() => onClose?.()}
+              className={({ isActive }) =>
+                `sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                  isActive
+                    ? "sidebar-link--active bg-primary-light/10 text-primary"
+                    : "text-text-secondary hover:bg-primary-light/5 hover:text-primary"
+                }`
+              }
+            >
+              <Settings className="h-5 w-5 shrink-0" strokeWidth={1.5} />
+              Settings
             </NavLink>
             <button
               type="button"
@@ -105,5 +117,5 @@ export function AdminSidebar({ isOpen = true, onClose }: AdminSidebarProps) {
         </div>
       </aside>
     </>
-  )
+  );
 }

@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router-dom";
 import {
   Bell,
@@ -331,13 +337,7 @@ export function SettingsPage() {
   );
 }
 
-function SectionTitle({
-  icon,
-  title,
-}: {
-  icon: ReactNode;
-  title: string;
-}) {
+function SectionTitle({ icon, title }: { icon: ReactNode; title: string }) {
   return (
     <div className="flex items-center gap-2">
       <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary-light/10">
@@ -348,13 +348,7 @@ function SectionTitle({
   );
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block text-sm">
       <span className="font-medium text-primary">{label}</span>
