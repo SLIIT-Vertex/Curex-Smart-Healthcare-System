@@ -1,6 +1,7 @@
 import api from './axiosInstance'
 import type {
   AuthResponse,
+  ChangePasswordRequest,
   LoginRequest,
   RegisterRequest,
   SendOtpRequest,
@@ -34,6 +35,10 @@ export const authService = {
 
   logout(): Promise<void> {
     return api.post(`${AUTH}/logout`).then(() => undefined)
+  },
+
+  changePassword(data: ChangePasswordRequest): Promise<{ message: string }> {
+    return api.post<{ message: string }>(`${AUTH}/change-password`, data).then((r) => r.data)
   },
 
   /**

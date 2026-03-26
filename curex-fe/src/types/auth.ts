@@ -29,6 +29,11 @@ export interface LoginRequest {
   password: string
 }
 
+export interface ChangePasswordRequest {
+  currentPassword: string
+  newPassword: string
+}
+
 export interface RegisterRequest {
   // Required identity
   email: string

@@ -38,6 +38,7 @@ import { PatientReports } from './pages/patient/PatientReports'
 import { PatientCheckout } from './pages/patient/PatientCheckout'
 import { PatientPayments } from './pages/patient/PatientPayments'
 import { PatientTelemedicineCenter } from './pages/patient/PatientTelemedicineCenter'
+import { SettingsPage } from './pages/shared/SettingsPage'
 
 function App() {
   return (
@@ -45,13 +46,12 @@ function App() {
       {/* Skip-to-content accessibility link */}
       <a
         href="#main"
-        className="fixed left-4 top-0 z-[100] -translate-y-full rounded-b-lg bg-primary px-4 py-2 text-sm font-medium text-surface no-underline shadow-md transition-transform focus:translate-y-0"
+        className="fixed left-4 top-0 z-100 -translate-y-full rounded-b-lg bg-primary px-4 py-2 text-sm font-medium text-surface no-underline shadow-md transition-transform focus:translate-y-0"
       >
         Skip to main content
       </a>
 
       <Routes>
-        {/* ── Public ─────────────────────────────────────────────────────────── */}
         <Route
           path="/"
           element={
@@ -77,6 +77,7 @@ function App() {
             <Route path="users" element={<AdminUsers />} />
             <Route path="doctor-approval" element={<AdminDoctorApproval />} />
             <Route path="profile" element={<AdminProfile />} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Route>
 
@@ -91,6 +92,7 @@ function App() {
             <Route path="prescriptions" element={<DoctorPrescriptions />} />
             <Route path="telemedicine" element={<DoctorTelemedicineCenter />} />
             <Route path="telemedicine/:appointmentId" element={<DoctorTelemedicineCenter />} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Route>
 
@@ -108,6 +110,7 @@ function App() {
             <Route path="reports" element={<PatientReports />} />
             <Route path="checkout/:appointmentId" element={<PatientCheckout />} />
             <Route path="payments" element={<PatientPayments />} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Route>
 

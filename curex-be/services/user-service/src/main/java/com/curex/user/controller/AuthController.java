@@ -1,6 +1,7 @@
 package com.curex.user.controller;
 
 import com.curex.user.dto.AuthResponse;
+import com.curex.user.dto.ChangePasswordRequest;
 import com.curex.user.dto.LoginRequest;
 import com.curex.user.dto.RegisterRequest;
 import com.curex.user.dto.SendOtpRequest;
@@ -66,6 +67,14 @@ public class AuthController {
     @PostMapping("/logout")
     public ResponseEntity<Map<String, String>> logout() {
         return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<Map<String, String>> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        UserDetails userDetails = (UserDetails) auth.getPrincipal();
+        authService.changePassword(userDetails.getUsername(), request);
+        return ResponseEntity.ok(Map.of("message", "Password updated successfully"));
     }
 
     @GetMapping("/health")

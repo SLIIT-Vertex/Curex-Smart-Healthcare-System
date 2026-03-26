@@ -1,6 +1,7 @@
 package com.curex.user.service;
 
 import com.curex.user.dto.AuthResponse;
+import com.curex.user.dto.ChangePasswordRequest;
 import com.curex.user.dto.LoginRequest;
 import com.curex.user.dto.RegisterRequest;
 import com.curex.user.entity.User;
@@ -8,6 +9,7 @@ import com.curex.user.exception.AccountNotActiveException;
 import com.curex.user.exception.AdminRegistrationForbiddenException;
 import com.curex.user.exception.EmailAlreadyExistsException;
 import com.curex.user.exception.InvalidCredentialsException;
+import com.curex.user.exception.InvalidPasswordChangeException;
 import com.curex.user.exception.PhoneVerificationRequiredException;
 import com.curex.user.exception.UserNotFoundException;
 import com.curex.user.repository.UserRepository;
@@ -147,6 +149,23 @@ public class AuthService {
 
         return new AuthResponse(newAccessToken, refreshToken, jwtTokenUtil.getExpirationTime(),
                 new AuthResponse.UserInfo(user));
+    }
+
+    public void changePassword(String email, ChangePasswordRequest request) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException(email));
+
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+            throw new InvalidPasswordChangeException("Current password is incorrect");
+        }
+
+        if (request.getCurrentPassword().equals(request.getNewPassword())) {
+            throw new InvalidPasswordChangeException("New password must be different from current password");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+        log.info("Password changed for user: {}", user.getEmail());
     }
 
     public boolean validateToken(String token) {
