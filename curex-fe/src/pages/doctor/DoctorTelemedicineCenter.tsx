@@ -10,7 +10,7 @@ import {
 import type { AppointmentRecord } from '../../types/appointment'
 import type { TelemedicineSessionRecord } from '../../types/telemedicine'
 import telemedImage from '../../assets/telemed/telemed.png'
-import { useAuth } from '../../store/hooks'
+import { useAuth, useToast } from '../../store/hooks'
 
 function canJoin(
   appointment: AppointmentRecord | null,
@@ -79,6 +79,7 @@ function queueStatus(
 
 export function DoctorTelemedicineCenter() {
   const { user } = useAuth()
+  const { toast } = useToast()
   const { appointmentId } = useParams<{ appointmentId?: string }>()
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
   const [activeTab, setActiveTab] = useState<'queue' | 'meeting'>(
@@ -88,13 +89,11 @@ export function DoctorTelemedicineCenter() {
     appointmentId ?? null
   )
   const [confirmEndOpen, setConfirmEndOpen] = useState(false)
-  const [systemNotice, setSystemNotice] = useState<string | null>(null)
   const [sessions, setSessions] = useState<Record<string, TelemedicineSessionRecord | null>>(
     {}
   )
   const [fullScreen, setFullScreen] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const meetingPanelRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -150,10 +149,11 @@ export function DoctorTelemedicineCenter() {
   async function load() {
     try {
       setLoading(true)
-      setError(null)
 
       if (!user?.id) {
-        setError('Please login as a doctor to access telemedicine.')
+        toast('Please login as a doctor to access telemedicine.', 'error')
+        setAppointments([])
+        setSessions({})
         setLoading(false)
         return
       }
@@ -187,7 +187,7 @@ export function DoctorTelemedicineCenter() {
       }
       setSessions(next)
     } catch {
-      setError('Could not load telemedicine appointments right now.')
+      toast('Could not load telemedicine appointments right now.', 'error')
     } finally {
       setLoading(false)
     }
@@ -233,12 +233,12 @@ export function DoctorTelemedicineCenter() {
         ...prev,
         [meetingAppointment.id]: ended,
       }))
-      setSystemNotice('Session has been ended successfully.')
+      toast('Session has been ended successfully.', 'success')
       setConfirmEndOpen(false)
       await load()
     } catch {
       setConfirmEndOpen(false)
-      setSystemNotice('Could not end session. Please try again.')
+      toast('Could not end session. Please try again.', 'error')
     }
   }
 
@@ -277,26 +277,7 @@ export function DoctorTelemedicineCenter() {
         <div className="appointment-panel p-5 text-sm text-text-secondary">Loading telemedicine data...</div>
       )}
 
-      {error && (
-        <div className="appointment-panel border border-error/30 bg-error/10 p-5 text-sm text-primary">{error}</div>
-      )}
-
       <div className="space-y-4">
-          {systemNotice && (
-            <div className="appointment-panel border border-accent-sky/40 bg-accent-sky/20 px-4 py-3 text-sm text-primary">
-              <div className="flex items-center justify-between gap-3">
-                <span>{systemNotice}</span>
-                <button
-                  type="button"
-                  onClick={() => setSystemNotice(null)}
-                  className="rounded-md border border-text-secondary/20 px-2 py-1 text-xs text-text-secondary hover:text-primary"
-                >
-                  Dismiss
-                </button>
-              </div>
-            </div>
-          )}
-
           <div className="inline-flex rounded-xl border border-text-secondary/20 bg-surface p-1">
             <button
               type="button"

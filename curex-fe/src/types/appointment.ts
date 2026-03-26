@@ -32,6 +32,14 @@ export interface DoctorDirectoryItem {
   profileId?: string
   name: string
   specialty: string
+  email?: string
+  phone?: string
+  gender?: string
+  age?: number
+  yearsOfExperience?: number
+  bio?: string
+  avatarUrl?: string
+  consultationFee?: number
   hospital?: string
 }
 

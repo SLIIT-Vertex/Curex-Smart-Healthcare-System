@@ -6,8 +6,12 @@ const REFRESH_TOKEN_KEY = 'curex_refresh_token'
 const USER_KEY = 'curex_user'
 
 function persistAuth(response: AuthResponse) {
-  localStorage.setItem(ACCESS_TOKEN_KEY, response.accessToken)
-  localStorage.setItem(REFRESH_TOKEN_KEY, response.refreshToken)
+  if (response.accessToken) {
+    localStorage.setItem(ACCESS_TOKEN_KEY, response.accessToken)
+  }
+  if (response.refreshToken) {
+    localStorage.setItem(REFRESH_TOKEN_KEY, response.refreshToken)
+  }
   localStorage.setItem(USER_KEY, JSON.stringify(response.user))
 }
 

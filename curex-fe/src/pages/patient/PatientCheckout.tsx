@@ -6,6 +6,12 @@ import { createCheckoutSession } from '../../services/paymentService'
 import type { AppointmentRecord } from '../../types/appointment.ts'
 import { useAuth } from '../../store/hooks'
 
+const PENDING_PAYMENT_STORAGE_KEY = 'curex.pendingPayment'
+
+const extractServerMessage = (err: unknown): string | undefined =>
+  (err as { response?: { data?: { message?: string } } })?.response?.data
+    ?.message
+
 export function PatientCheckout() {
   const { user } = useAuth()
   const { appointmentId } = useParams<{ appointmentId: string }>()
@@ -52,6 +58,18 @@ export function PatientCheckout() {
         successUrl,
         cancelUrl,
       });
+
+      if (session.paymentId) {
+        sessionStorage.setItem(
+          PENDING_PAYMENT_STORAGE_KEY,
+          JSON.stringify({
+            paymentId: session.paymentId,
+            appointmentId,
+            patientId: user.id,
+            createdAt: Date.now(),
+          }),
+        )
+      }
 
       if (session.checkoutUrl) {
         window.location.href = session.checkoutUrl;

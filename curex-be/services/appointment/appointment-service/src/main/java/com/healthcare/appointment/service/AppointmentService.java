@@ -399,16 +399,16 @@ public class AppointmentService {
         try {
             BookableDoctorDto profile = doctorClient.getDoctorByUserId(jwtUserId);
             if (profile == null || profile.getId() == null || profile.getId().isBlank()) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor profile not found");
+                log.warn("Doctor profile not found for user {}. Falling back to user id for lookup.", jwtUserId);
+                return jwtUserId;
             }
             return profile.getId().trim();
-        } catch (ResponseStatusException e) {
-            throw e;
         } catch (FeignException.NotFound e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor profile not found", e);
+            log.warn("Doctor profile lookup returned 404 for user {}. Falling back to user id.", jwtUserId);
+            return jwtUserId;
         } catch (Exception ex) {
-            log.warn("resolveDoctorProfileIdForDoctorUser failed: {}", ex.getMessage());
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Unable to resolve doctor profile", ex);
+            log.warn("resolveDoctorProfileIdForDoctorUser failed for user {}: {}. Falling back to user id.", jwtUserId, ex.getMessage());
+            return jwtUserId;
         }
     }
 

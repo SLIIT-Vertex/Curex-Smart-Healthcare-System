@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Eye, Maximize2, Minimize2, RefreshCcw, Video, X } from "lucide-react";
+import {
+  Copy,
+  Eye,
+  Maximize2,
+  Mic,
+  Minimize2,
+  RefreshCcw,
+  Trash2,
+  Video,
+  X,
+} from "lucide-react";
 import { getAppointmentsByPatient } from "../../services/appointmentService";
 import {
   createTelemedicineSession,
@@ -9,7 +19,28 @@ import {
 import type { AppointmentRecord } from "../../types/appointment";
 import type { TelemedicineSessionRecord } from "../../types/telemedicine";
 import telemedImage from "../../assets/telemed/telemed.png";
-import { useAuth } from "../../store/hooks";
+import { useAuth, useToast } from "../../store/hooks";
+
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onresult: ((event: {
+    resultIndex: number;
+    results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>;
+  }) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onend: (() => void) | null;
+};
+
+declare global {
+  interface Window {
+    SpeechRecognition?: new () => SpeechRecognitionLike;
+    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+  }
+}
 
 function canJoin(
   appointment: AppointmentRecord | null,
@@ -92,6 +123,7 @@ function queueStatus(
 
 export function PatientTelemedicineCenter() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const { appointmentId } = useParams<{ appointmentId?: string }>();
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
   const [activeTab, setActiveTab] = useState<"queue" | "meeting">(
@@ -105,7 +137,11 @@ export function PatientTelemedicineCenter() {
   >({});
   const [fullScreen, setFullScreen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [transcriptText, setTranscriptText] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState("");
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const autoRestartRef = useRef(false);
   const meetingPanelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -167,10 +203,11 @@ export function PatientTelemedicineCenter() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
 
       if (!user?.id) {
-        setError("Please login as a patient to access telemedicine.");
+        toast("Please login as a patient to access telemedicine.", "error");
+        setAppointments([]);
+        setSessions({});
         setLoading(false);
         return;
       }
@@ -204,11 +241,11 @@ export function PatientTelemedicineCenter() {
       }
       setSessions(next);
     } catch {
-      setError("Could not load telemedicine appointments right now.");
+      toast("Could not load telemedicine appointments right now.", "error");
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [toast, user?.id]);
 
   useEffect(() => {
     load();
@@ -240,6 +277,160 @@ export function PatientTelemedicineCenter() {
     ? (sessions[meetingAppointment.id] ?? null)
     : null;
   const roomJoinable = canJoin(meetingAppointment, meetingSession);
+  const transcriptSupported =
+    typeof window !== "undefined" &&
+    Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  useEffect(() => {
+    if (!transcriptSupported) {
+      return;
+    }
+
+    const RecognitionCtor =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!RecognitionCtor) {
+      return;
+    }
+
+    const recognition = new RecognitionCtor();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event) => {
+      let finalChunk = "";
+      let interimChunk = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const text = event.results[i][0]?.transcript ?? "";
+        if (event.results[i].isFinal) {
+          finalChunk += `${text.trim()} `;
+        } else {
+          interimChunk += text;
+        }
+      }
+
+      if (finalChunk) {
+        setTranscriptText((prev) => `${prev}${finalChunk}`.trimStart());
+      }
+      setInterimTranscript(interimChunk);
+    };
+
+    recognition.onerror = (event) => {
+      if (event.error !== "aborted") {
+        toast(`Live transcript error: ${event.error}`, "warning");
+      }
+    };
+
+    recognition.onend = () => {
+      if (autoRestartRef.current) {
+        try {
+          recognition.start();
+          return;
+        } catch {
+          // Ignore restart failures.
+        }
+      }
+      setIsTranscribing(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      autoRestartRef.current = false;
+      try {
+        recognition.stop();
+      } catch {
+        // Ignore teardown stop errors.
+      }
+      recognitionRef.current = null;
+    };
+  }, [toast, transcriptSupported]);
+
+  const startTranscript = useCallback(() => {
+    if (!recognitionRef.current) {
+      toast("Live transcript is not supported in this browser.", "warning");
+      return;
+    }
+
+    autoRestartRef.current = true;
+    try {
+      recognitionRef.current.start();
+      setIsTranscribing(true);
+      toast("Live transcript started.", "info");
+    } catch {
+      toast(
+        "Could not start live transcript. Check microphone permission.",
+        "error",
+      );
+    }
+  }, [toast]);
+
+  const stopTranscript = useCallback(() => {
+    autoRestartRef.current = false;
+    setInterimTranscript("");
+    try {
+      recognitionRef.current?.stop();
+      setIsTranscribing(false);
+      toast("Live transcript stopped.", "info");
+    } catch {
+      // Ignore stop errors.
+    }
+  }, [toast]);
+
+  const exportTranscript = useCallback(() => {
+    const content = `${transcriptText}${interimTranscript ? `\n${interimTranscript}` : ""}`.trim();
+    if (!content) {
+      toast("No transcript content to export yet.", "warning");
+      return;
+    }
+
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const appointmentPart = meetingAppointment?.id ?? "session";
+    link.href = url;
+    link.download = `telemedicine-transcript-${appointmentPart}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast("Transcript exported.", "success");
+  }, [interimTranscript, meetingAppointment?.id, toast, transcriptText]);
+
+  const copyTranscript = useCallback(async () => {
+    const content = `${transcriptText}${interimTranscript ? `\n${interimTranscript}` : ""}`.trim();
+    if (!content) {
+      toast("No transcript content to copy yet.", "warning");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(content);
+      toast("Transcript copied to clipboard.", "success");
+    } catch {
+      toast("Could not copy transcript.", "error");
+    }
+  }, [interimTranscript, toast, transcriptText]);
+
+  const clearTranscript = useCallback(() => {
+    setTranscriptText("");
+    setInterimTranscript("");
+    toast("Transcript cleared.", "info");
+  }, [toast]);
+
+  const transcriptWordCount = useMemo(() => {
+    const content = `${transcriptText} ${interimTranscript}`.trim();
+    if (!content) {
+      return 0;
+    }
+    return content.split(/\s+/).length;
+  }, [interimTranscript, transcriptText]);
+
+  useEffect(() => {
+    if (activeTab === "meeting" && roomJoinable && transcriptSupported && !isTranscribing) {
+      startTranscript();
+    }
+  }, [activeTab, isTranscribing, roomJoinable, startTranscript, transcriptSupported]);
 
   return (
     <div className="space-y-6">
@@ -272,12 +463,6 @@ export function PatientTelemedicineCenter() {
       {loading && (
         <div className="appointment-panel p-5 text-sm text-text-secondary">
           Loading telemedicine data...
-        </div>
-      )}
-
-      {error && (
-        <div className="appointment-panel border border-error/30 bg-error/10 p-5 text-sm text-primary">
-          {error}
         </div>
       )}
 
@@ -469,6 +654,10 @@ export function PatientTelemedicineCenter() {
                       meetingAppointment.doctorId}
                   </p>
                   <p>
+                    <span className="font-medium text-primary">Specialty:</span>{" "}
+                    {meetingAppointment.doctorSpecialty ?? "General"}
+                  </p>
+                  <p>
                     <span className="font-medium text-primary">Scheduled:</span>{" "}
                     {appointmentDateTime(meetingAppointment)}
                   </p>
@@ -503,6 +692,100 @@ export function PatientTelemedicineCenter() {
                     )}
                     {fullScreen ? "Exit Full Screen" : "Full Screen"}
                   </button>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-text-secondary/15 bg-background/50 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
+                      <Mic className="h-4 w-4" />
+                      Live Transcript
+                    </h3>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        !transcriptSupported
+                          ? "bg-accent-peach/30 text-primary"
+                          : isTranscribing
+                            ? "bg-accent-mint/25 text-primary"
+                            : "bg-background text-text-secondary"
+                      }`}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                      {transcriptSupported
+                        ? isTranscribing
+                          ? "Recording"
+                          : "Stopped"
+                        : "Unsupported"}
+                    </span>
+                  </div>
+
+                  <p className="mt-2 text-[11px] text-text-secondary">
+                    Speech from the meeting is transcribed live. You can copy,
+                    clear, or export at any time.
+                  </p>
+
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={startTranscript}
+                      disabled={!transcriptSupported || !roomJoinable || isTranscribing}
+                      className="rounded-lg border border-primary-light/30 bg-primary-light/10 px-2.5 py-1 text-xs font-semibold text-primary disabled:opacity-50"
+                    >
+                      Start
+                    </button>
+                    <button
+                      type="button"
+                      onClick={stopTranscript}
+                      disabled={!isTranscribing}
+                      className="rounded-lg border border-text-secondary/20 px-2.5 py-1 text-xs font-semibold text-text-secondary disabled:opacity-50"
+                    >
+                      Stop
+                    </button>
+                    <button
+                      type="button"
+                      onClick={exportTranscript}
+                      className="rounded-lg border border-primary/30 bg-primary px-2.5 py-1 text-xs font-semibold text-surface"
+                    >
+                      Export .txt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={copyTranscript}
+                      className="inline-flex items-center gap-1 rounded-lg border border-text-secondary/20 px-2.5 py-1 text-xs font-semibold text-text-secondary"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      Copy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearTranscript}
+                      className="inline-flex items-center gap-1 rounded-lg border border-text-secondary/20 px-2.5 py-1 text-xs font-semibold text-text-secondary"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Clear
+                    </button>
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-between text-[11px] text-text-secondary">
+                    <span>Words: {transcriptWordCount}</span>
+                    <span>{isTranscribing ? "Listening..." : "Idle"}</span>
+                  </div>
+
+                  <div className="mt-3 max-h-56 overflow-y-auto rounded-lg border border-text-secondary/15 bg-surface px-3 py-3 text-sm leading-6 text-primary">
+                    {(transcriptText || interimTranscript).trim() ? (
+                      <>
+                        <p className="whitespace-pre-wrap">{transcriptText}</p>
+                        {interimTranscript && (
+                          <p className="mt-1 whitespace-pre-wrap text-text-secondary">
+                            {interimTranscript}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-text-secondary">
+                        Transcript will appear here once meeting audio is captured.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </aside>
 

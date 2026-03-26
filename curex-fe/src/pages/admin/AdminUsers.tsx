@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { adminService } from "../../services/adminService";
 import { useToast } from "../../store/hooks";
-import type { AccountStatus, Role, UserResponse } from "../../types/auth";
+import type { AccountStatus, ApprovalAction, Role, UserResponse } from "../../types/auth";
 
 const ROLE_LABELS: Record<Role, string> = {
   PATIENT: "Patient",
@@ -465,11 +465,11 @@ export function AdminUsers() {
       </div>
 
       {selectedUser && (() => {
-        const modalActions: { label: string; value: "APPROVE" | "REJECT" | "SUSPEND" | "REACTIVATE"; icon: typeof UserCheck; variant: "success" | "danger" | "neutral" }[] = [
-          { label: "Approve", value: "APPROVE", icon: UserCheck, variant: "success" },
-          { label: "Reject", value: "REJECT", icon: UserX, variant: "danger" },
-          { label: "Suspend", value: "SUSPEND", icon: Ban, variant: "danger" },
-          { label: "Reactivate", value: "REACTIVATE", icon: RotateCcw, variant: "neutral" },
+        const modalActions: { label: string; value: ApprovalAction; icon: typeof UserCheck; variant: "success" | "danger" | "neutral" }[] = [
+          { label: "Approve", value: "APPROVE" as ApprovalAction, icon: UserCheck, variant: "success" as const },
+          { label: "Reject", value: "REJECT" as ApprovalAction, icon: UserX, variant: "danger" as const },
+          { label: "Suspend", value: "SUSPEND" as ApprovalAction, icon: Ban, variant: "danger" as const },
+          { label: "Reactivate", value: "REACTIVATE" as ApprovalAction, icon: RotateCcw, variant: "neutral" as const },
         ].filter(a => {
           const s = selectedUser.accountStatus;
           if (a.value === "APPROVE") return s === "PENDING" || s === "REJECTED";
