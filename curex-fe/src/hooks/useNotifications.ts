@@ -37,11 +37,14 @@ export function useNotifications() {
 
       try {
         const readStatus = filter === "ALL" ? undefined : filter;
-        const listResponse = await notificationService.getUserNotifications(userId, {
-          size: 20,
-          readStatus,
-          channel: BELL_CHANNEL,
-        });
+        const listResponse = await notificationService.getUserNotifications(
+          userId,
+          {
+            size: 20,
+            readStatus,
+            channel: BELL_CHANNEL,
+          },
+        );
 
         const inAppNotifications = listResponse.notifications.filter(
           (notification) => notification.channel === BELL_CHANNEL,
@@ -49,7 +52,9 @@ export function useNotifications() {
 
         setNotifications(inAppNotifications);
         setUnreadCount(
-          inAppNotifications.filter((notification) => notification.readStatus === "UNREAD").length,
+          inAppNotifications.filter(
+            (notification) => notification.readStatus === "UNREAD",
+          ).length,
         );
       } catch {
         if (!silent) {
