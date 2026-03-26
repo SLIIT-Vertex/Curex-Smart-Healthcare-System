@@ -66,6 +66,52 @@ public class NotificationEventConsumer {
         }
     }
 
+    // ── OTP delivery ──────────────────────────────────────────────────────────
+
+    /**
+     * Consumes OTP delivery events published by the user-service.
+     * Routes the OTP to the correct channel (SMS or EMAIL) via NotificationService.
+     *
+     * Event payload:
+     *   { "recipient": "...", "otp": "...", "channel": "SMS" | "EMAIL" }
+     */
+    @RabbitListener(queues = "user.otp.queue")
+    public void handleOtpSend(Map<String, Object> event) {
+        try {
+            String recipient = (String) event.get("recipient");
+            String otp       = (String) event.get("otp");
+            String channel   = (String) event.get("channel");
+
+            log.info("Received user.otp.send event: channel={}, recipient={}", channel, recipient);
+
+            if ("SMS".equalsIgnoreCase(channel)) {
+                String content = "Your Curex verification code is: " + otp + ". Do not share this code with anyone.";
+                notificationService.sendNotificationAsync(NotificationRequest.builder()
+                        .userId("otp-verification")
+                        .recipientPhone(recipient)
+                        .type(Notification.NotificationType.OTP_VERIFICATION)
+                        .channel(Notification.NotificationChannel.SMS)
+                        .subject("Curex OTP Verification")
+                        .content(content)
+                        .build());
+            } else if ("EMAIL".equalsIgnoreCase(channel)) {
+                String content = buildOtpEmailContent(otp);
+                notificationService.sendNotificationAsync(NotificationRequest.builder()
+                        .userId("otp-verification")
+                        .recipientEmail(recipient)
+                        .type(Notification.NotificationType.OTP_VERIFICATION)
+                        .channel(Notification.NotificationChannel.EMAIL)
+                        .subject("Curex Healthcare — Your Verification Code")
+                        .content(content)
+                        .build());
+            } else {
+                log.warn("Unknown OTP channel: {}", channel);
+            }
+        } catch (Exception e) {
+            log.error("Failed to process user.otp.send event: {}", e.getMessage(), e);
+        }
+    }
+
     // ── Appointment booking ───────────────────────────────────────────────────
 
     @RabbitListener(queues = "appointment.booking.queue")
@@ -246,5 +292,18 @@ public class NotificationEventConsumer {
                 HtmlUtils.htmlEscape(patientName),
                 HtmlUtils.htmlEscape(amount),
                 HtmlUtils.htmlEscape(appointmentId));
+    }
+
+    private String buildOtpEmailContent(String otp) {
+        return String.format("""
+                <p>Hello,</p>
+                <p>Your Curex Healthcare verification code is:</p>
+                <div style="background:#e7f3ff;padding:20px;border-radius:8px;text-align:center;margin:15px 0;">
+                    <h2 style="margin:0;letter-spacing:8px;font-size:32px;color:#007bff;">%s</h2>
+                </div>
+                <p>This code is valid for <strong>5 minutes</strong>. Do not share it with anyone.</p>
+                <p>If you did not request this code, please ignore this email.</p>
+                <p>Best regards,<br>The Curex Healthcare Team</p>
+                """, HtmlUtils.htmlEscape(otp));
     }
 }

@@ -20,6 +20,9 @@ public interface UserRepository extends JpaRepository<User, String> {
 
     boolean existsByEmail(String email);
 
+    @Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE u.email = :email AND u.accountStatus = 'REJECTED'")
+    boolean isUserRejected(@Param("email") String email);
+
     List<User> findByRole(User.Role role);
 
     List<User> findByAccountStatus(User.AccountStatus accountStatus);
@@ -42,7 +45,7 @@ public interface UserRepository extends JpaRepository<User, String> {
     @Query("SELECT u FROM User u WHERE " +
            "(:role IS NULL OR u.role = :role) AND " +
            "(:status IS NULL OR u.accountStatus = :status) AND " +
-           "(:searchTerm IS NULL OR " +
+            "(:searchTerm = '' OR " +
            "LOWER(u.firstName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
            "LOWER(u.lastName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
            "LOWER(u.email) LIKE LOWER(CONCAT('%', :searchTerm, '%'))) " +

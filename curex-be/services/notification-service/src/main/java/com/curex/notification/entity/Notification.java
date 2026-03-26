@@ -53,6 +53,13 @@ public class Notification {
     @Column(nullable = false)
     private NotificationStatus status = NotificationStatus.PENDING;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "read_status", nullable = false)
+    private NotificationReadStatus readStatus = NotificationReadStatus.UNREAD;
+
+    @Column(name = "read_at")
+    private LocalDateTime readAt;
+
     @Column(name = "sent_at")
     private LocalDateTime sentAt;
 
@@ -181,6 +188,22 @@ public class Notification {
         this.status = status;
     }
 
+    public NotificationReadStatus getReadStatus() {
+        return readStatus;
+    }
+
+    public void setReadStatus(NotificationReadStatus readStatus) {
+        this.readStatus = readStatus;
+    }
+
+    public LocalDateTime getReadAt() {
+        return readAt;
+    }
+
+    public void setReadAt(LocalDateTime readAt) {
+        this.readAt = readAt;
+    }
+
     public LocalDateTime getSentAt() {
         return sentAt;
     }
@@ -249,6 +272,7 @@ public class Notification {
     public enum NotificationType {
         WELCOME,
         EMAIL_VERIFICATION,
+        OTP_VERIFICATION,
         PASSWORD_RESET,
         APPOINTMENT_CONFIRMATION,
         APPOINTMENT_REMINDER,
@@ -275,5 +299,10 @@ public class Notification {
         DELIVERED,
         FAILED,
         CANCELLED
+    }
+
+    public enum NotificationReadStatus {
+        UNREAD,
+        READ
     }
 }

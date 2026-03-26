@@ -1,10 +1,18 @@
+import { Link } from 'react-router-dom'
 import { Menu, Search, Bell } from 'lucide-react'
+import { useAuth } from '../../../store/hooks'
 
 interface DoctorTopBarProps {
   onMenuClick?: () => void
 }
 
 export function DoctorTopBar({ onMenuClick }: DoctorTopBarProps) {
+  const { user } = useAuth()
+
+  const initials = user
+    ? `${user.firstName?.[0] ?? ''}${user.lastName?.[0] ?? ''}`.toUpperCase()
+    : 'DR'
+
   return (
     <header
       className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-text-secondary/10 bg-surface px-4 shadow-sm lg:px-6"
@@ -46,13 +54,23 @@ export function DoctorTopBar({ onMenuClick }: DoctorTopBarProps) {
           <Bell className="h-5 w-5" strokeWidth={1.5} />
         </button>
 
-        {/* Avatar - TODO: from auth or doctor profile */}
-        <div
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-light/20 text-sm font-semibold text-primary"
-          aria-hidden="true"
+        <Link
+          to="/doctor/profile"
+          className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition-all duration-200 hover:bg-primary-light/5"
+          aria-label="Go to profile"
         >
-          DS
-        </div>
+          <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary-light/20 text-sm font-semibold text-primary">
+            {user?.profileImageUrl
+              ? <img src={user.profileImageUrl} alt="" className="h-full w-full object-cover" />
+              : initials}
+          </div>
+          <div className="hidden flex-col sm:flex">
+            <span className="text-sm font-medium text-primary leading-tight">
+              {user ? `${user.firstName} ${user.lastName}` : 'Doctor'}
+            </span>
+            <span className="text-xs text-text-secondary">Doctor</span>
+          </div>
+        </Link>
       </div>
     </header>
   )

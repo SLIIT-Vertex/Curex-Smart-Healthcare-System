@@ -30,14 +30,15 @@ public class AdminService {
     public Page<UserResponse> getAllUsers(int page, int size, User.Role role,
                                          User.AccountStatus status, String searchTerm) {
         Pageable pageable = PageRequest.of(page, size);
-        return userRepository.searchUsers(role, status, searchTerm, pageable)
-                .map(UserResponse::new);
+        String normalizedSearch = searchTerm == null ? "" : searchTerm.trim();
+        return userRepository.searchUsers(role, status, normalizedSearch, pageable)
+            .map(this::toUserResponse);
     }
 
     @Transactional(readOnly = true)
     public List<UserResponse> getPendingDoctors() {
         return userRepository.findPendingDoctors().stream()
-                .map(UserResponse::new)
+                .map(this::toUserResponse)
                 .collect(Collectors.toList());
     }
 
@@ -50,27 +51,27 @@ public class AdminService {
         stampApprovalAudit(user, adminId, request.getNotes());
 
         log.info("Admin {} changed user {} status to {}", adminId, userId, user.getAccountStatus());
-        return new UserResponse(userRepository.save(user));
+        return toUserResponse(userRepository.save(user));
     }
 
     @Transactional(readOnly = true)
     public UserResponse getUserById(String userId) {
         return userRepository.findById(userId)
-                .map(UserResponse::new)
+                .map(this::toUserResponse)
                 .orElseThrow(() -> new UserNotFoundException(userId));
     }
 
     @Transactional(readOnly = true)
     public List<UserResponse> getUsersByRole(User.Role role) {
         return userRepository.findByRole(role).stream()
-                .map(UserResponse::new)
+                .map(this::toUserResponse)
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
     public List<UserResponse> getUsersByStatus(User.AccountStatus status) {
         return userRepository.findByAccountStatus(status).stream()
-                .map(UserResponse::new)
+                .map(this::toUserResponse)
                 .collect(Collectors.toList());
     }
 
@@ -116,7 +117,7 @@ public class AdminService {
     @Transactional(readOnly = true)
     public List<UserResponse> getUsersRegisteredBetween(LocalDateTime startDate, LocalDateTime endDate) {
         return userRepository.findUsersRegisteredBetween(startDate, endDate).stream()
-                .map(UserResponse::new)
+                .map(this::toUserResponse)
                 .collect(Collectors.toList());
     }
 
@@ -143,7 +144,7 @@ public class AdminService {
         }
         log.info("Admin {} bulk-updated {} users with action {}", adminId, users.size(), request.getAction());
         return userRepository.saveAll(users).stream()
-                .map(UserResponse::new)
+            .map(this::toUserResponse)
                 .collect(Collectors.toList());
     }
 
@@ -162,5 +163,26 @@ public class AdminService {
         user.setApprovedBy(adminId);
         user.setApprovalNotes(notes);
         user.setApprovalDate(LocalDateTime.now());
+    }
+
+    private UserResponse toUserResponse(User user) {
+        UserResponse response = new UserResponse(user);
+        response.setApprovedBy(resolveApprovedByDisplayName(response.getApprovedBy()));
+        return response;
+    }
+
+    private String resolveApprovedByDisplayName(String approvedBy) {
+        if (approvedBy == null || approvedBy.isBlank()) {
+            return approvedBy;
+        }
+        if ("system".equalsIgnoreCase(approvedBy)) {
+            return "System";
+        }
+
+        return userRepository.findById(approvedBy)
+                .map(approver -> approver.getFirstName() + " " + approver.getLastName())
+                .map(String::trim)
+                .filter(name -> !name.isBlank())
+                .orElse(approvedBy);
     }
 }

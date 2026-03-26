@@ -52,10 +52,47 @@ public class NotificationService {
     }
 
     @Transactional(readOnly = true)
-    public Page<NotificationResponse> getUserNotifications(String userId, int page, int size) {
+    public Page<NotificationResponse> getUserNotifications(
+            String userId,
+            Notification.NotificationReadStatus readStatus,
+            int page,
+            int size) {
         Pageable pageable = PageRequest.of(page, size);
-        return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable)
+        Page<Notification> notifications = (readStatus == null)
+                ? notificationRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable)
+                : notificationRepository.findByUserIdAndReadStatusOrderByCreatedAtDesc(
+                        userId,
+                        readStatus,
+                        pageable);
+
+        return notifications
                 .map(NotificationResponse::new);
+    }
+
+    @Transactional(readOnly = true)
+    public long getUnreadCount(String userId) {
+        return notificationRepository.countByUserIdAndReadStatus(
+                userId,
+                Notification.NotificationReadStatus.UNREAD);
+    }
+
+    @Transactional
+    public void markAsRead(String userId, String notificationId) {
+        Notification notification = notificationRepository.findByIdAndUserId(notificationId, userId)
+                .orElseThrow(() -> new NotificationNotFoundException(notificationId));
+
+        if (notification.getReadStatus() == Notification.NotificationReadStatus.READ) {
+            return;
+        }
+
+        notification.setReadStatus(Notification.NotificationReadStatus.READ);
+        notification.setReadAt(LocalDateTime.now());
+        notificationRepository.save(notification);
+    }
+
+    @Transactional
+    public int markAllAsRead(String userId) {
+        return notificationRepository.markAllAsRead(userId, LocalDateTime.now());
     }
 
     @Transactional(readOnly = true)
@@ -128,8 +165,9 @@ public class NotificationService {
         return switch (notification.getChannel()) {
             case EMAIL -> sendEmailNotification(notification);
             case SMS -> sendSmsNotification(notification);
-            case PUSH, IN_APP -> {
-                log.warn("Push and In-App notifications are not implemented yet");
+            case IN_APP -> true;
+            case PUSH -> {
+                log.warn("Push notifications are not implemented yet");
                 yield false;
             }
         };
@@ -193,6 +231,8 @@ public class NotificationService {
         notification.setTemplateName(request.getTemplateName());
         notification.setMaxAttempts(request.getMaxAttempts());
         notification.setStatus(Notification.NotificationStatus.PENDING);
+        notification.setReadStatus(Notification.NotificationReadStatus.UNREAD);
+        notification.setReadAt(null);
         notification.setDeliveryAttempts(0);
 
         if (request.getTemplateData() != null) {

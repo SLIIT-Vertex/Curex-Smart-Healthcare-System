@@ -15,6 +15,8 @@ public class NotificationResponse {
     private String content;
     private String templateName;
     private Notification.NotificationStatus status;
+    private Notification.NotificationReadStatus readStatus;
+    private LocalDateTime readAt;
     private LocalDateTime sentAt;
     private Integer deliveryAttempts;
     private String errorMessage;
@@ -37,6 +39,8 @@ public class NotificationResponse {
         this.content = notification.getContent();
         this.templateName = notification.getTemplateName();
         this.status = notification.getStatus();
+        this.readStatus = notification.getReadStatus();
+        this.readAt = notification.getReadAt();
         this.sentAt = notification.getSentAt();
         this.deliveryAttempts = notification.getDeliveryAttempts();
         this.errorMessage = notification.getErrorMessage();
@@ -124,6 +128,22 @@ public class NotificationResponse {
 
     public void setStatus(Notification.NotificationStatus status) {
         this.status = status;
+    }
+
+    public Notification.NotificationReadStatus getReadStatus() {
+        return readStatus;
+    }
+
+    public void setReadStatus(Notification.NotificationReadStatus readStatus) {
+        this.readStatus = readStatus;
+    }
+
+    public LocalDateTime getReadAt() {
+        return readAt;
+    }
+
+    public void setReadAt(LocalDateTime readAt) {
+        this.readAt = readAt;
     }
 
     public LocalDateTime getSentAt() {

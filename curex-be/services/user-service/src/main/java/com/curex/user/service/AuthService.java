@@ -8,6 +8,7 @@ import com.curex.user.exception.AccountNotActiveException;
 import com.curex.user.exception.AdminRegistrationForbiddenException;
 import com.curex.user.exception.EmailAlreadyExistsException;
 import com.curex.user.exception.InvalidCredentialsException;
+import com.curex.user.exception.PhoneVerificationRequiredException;
 import com.curex.user.exception.UserNotFoundException;
 import com.curex.user.repository.UserRepository;
 import com.curex.user.security.JwtTokenUtil;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 
 @Slf4j
 @Service
@@ -39,12 +41,23 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final UserDetailsService userDetailsService;
     private final RabbitTemplate rabbitTemplate;
+    private final OtpService otpService;
 
     public AuthResponse register(RegisterRequest request) {
         // ADMIN accounts must be seeded via database or created by an existing admin.
         // Self-registration as ADMIN is forbidden to prevent privilege escalation.
         if (request.getRole() == User.Role.ADMIN) {
             throw new AdminRegistrationForbiddenException();
+        }
+
+        // Enforce phone verification before account creation.
+        if (!otpService.isPhoneVerified(request.getPhoneNumber(), request.getPhoneVerificationToken())) {
+            throw new PhoneVerificationRequiredException();
+        }
+
+        // Enforce email verification before account creation.
+        if (!otpService.isEmailVerified(request.getEmail(), request.getEmailVerificationToken())) {
+            throw new PhoneVerificationRequiredException();
         }
 
         if (userRepository.existsByEmail(request.getEmail())) {
@@ -61,15 +74,26 @@ public class AuthService {
         user.setAccountStatus(request.getRole() == User.Role.DOCTOR
                 ? User.AccountStatus.PENDING
                 : User.AccountStatus.APPROVED);
-        user.setEmailVerified(false);
+        user.setEmailVerified(true);
+
+        applyProfileFields(user, request);
 
         User savedUser = userRepository.save(user);
         log.info("User registered: {} role={}", savedUser.getEmail(), savedUser.getRole());
 
+        // Invalidate the verification tokens so they cannot be reused.
+        otpService.consumePhoneVerificationToken(request.getPhoneVerificationToken());
+        otpService.consumeEmailVerificationToken(request.getEmailVerificationToken());
+
         publishRegistrationEvent(savedUser);
 
+        // Doctors require admin approval before they can log in — do not issue tokens.
+        if (request.getRole() == User.Role.DOCTOR) {
+            return new AuthResponse(null, null, null, new AuthResponse.UserInfo(savedUser));
+        }
+
         UserDetails userDetails = userDetailsService.loadUserByUsername(savedUser.getEmail());
-        String accessToken = jwtTokenUtil.generateToken(userDetails);
+        String accessToken  = jwtTokenUtil.generateToken(userDetails);
         String refreshToken = jwtTokenUtil.generateRefreshToken(userDetails);
 
         return new AuthResponse(accessToken, refreshToken, jwtTokenUtil.getExpirationTime(),
@@ -98,7 +122,7 @@ public class AuthService {
 
             log.info("User logged in: {}", user.getEmail());
 
-            String accessToken = jwtTokenUtil.generateToken(userDetails);
+            String accessToken  = jwtTokenUtil.generateToken(userDetails);
             String refreshToken = jwtTokenUtil.generateRefreshToken(userDetails);
 
             return new AuthResponse(accessToken, refreshToken, jwtTokenUtil.getExpirationTime(),
@@ -114,7 +138,7 @@ public class AuthService {
             throw new InvalidCredentialsException();
         }
 
-        String email = jwtTokenUtil.extractEmail(refreshToken);
+        String email        = jwtTokenUtil.extractEmail(refreshToken);
         UserDetails userDetails = userDetailsService.loadUserByUsername(email);
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UserNotFoundException(email));
@@ -129,6 +153,15 @@ public class AuthService {
         return jwtTokenUtil.validateToken(token);
     }
 
+    /**
+     * Returns {@code true} when an account with the given email already exists.
+     * Used by the OTP send endpoint to fail fast before dispatching verification codes.
+     */
+    @Transactional(readOnly = true)
+    public boolean emailExists(String email) {
+        return userRepository.existsByEmail(email) || userRepository.isUserRejected(email) ;
+    }
+
     @Transactional(readOnly = true)
     public User getUserByEmail(String email) {
         return userRepository.findByEmail(email)
@@ -141,14 +174,43 @@ public class AuthService {
                 .orElseThrow(() -> new UserNotFoundException(userId));
     }
 
+    /**
+     * Copies optional profile fields from the registration payload onto the new user entity.
+     * Role-specific fields are naturally skipped because the frontend sends them as null
+     * for the wrong role — no explicit role guard needed.
+     */
+    private void applyProfileFields(User user, RegisterRequest r) {
+        // Common
+        set(r.getProfileImageUrl(), user::setProfileImageUrl);
+        set(r.getDob(),             user::setDob);
+        set(r.getGender(),          user::setGender);
+        set(r.getAddress(),         user::setAddress);
+        // Doctor-specific
+        set(r.getSpecialty(),            user::setSpecialty);
+        set(r.getMedicalLicenseNumber(), user::setMedicalLicenseNumber);
+        set(r.getYearsOfExperience(),    user::setYearsOfExperience);
+        set(r.getCertifications(),       user::setCertifications);
+        set(r.getProofDocumentUrls(),    user::setProofDocumentUrls);
+        // Patient-specific
+        set(r.getBloodGroup(),            user::setBloodGroup);
+        set(r.getAllergies(),              user::setAllergies);
+        set(r.getChronicConditions(),     user::setChronicConditions);
+        set(r.getEmergencyContactName(),  user::setEmergencyContactName);
+        set(r.getEmergencyContactPhone(), user::setEmergencyContactPhone);
+    }
+
+    private static <T> void set(T value, Consumer<T> setter) {
+        if (value != null) setter.accept(value);
+    }
+
     private void publishRegistrationEvent(User user) {
         try {
             Map<String, Object> event = new HashMap<>();
-            event.put("userId", user.getId());
-            event.put("email", user.getEmail());
-            event.put("firstName", user.getFirstName());
-            event.put("lastName", user.getLastName());
-            event.put("role", user.getRole().name());
+            event.put("userId",      user.getId());
+            event.put("email",       user.getEmail());
+            event.put("firstName",   user.getFirstName());
+            event.put("lastName",    user.getLastName());
+            event.put("role",        user.getRole().name());
             event.put("phoneNumber", user.getPhoneNumber());
 
             rabbitTemplate.convertAndSend("user.exchange", "user.registration", event);

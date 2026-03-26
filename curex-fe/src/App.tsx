@@ -20,10 +20,12 @@ import { HomePage } from './pages/HomePage'
 import { AdminDashboard } from './pages/admin/AdminDashboard'
 import { AdminUsers } from './pages/admin/AdminUsers'
 import { AdminDoctorApproval } from './pages/admin/AdminDoctorApproval'
+import { AdminProfile } from './pages/admin/AdminProfile'
 
 // Doctor
 import { DoctorDashboard } from './pages/doctor/DoctorDashboard'
 import { DoctorProfile } from './pages/doctor/DoctorProfile'
+import { DoctorPendingPage } from './pages/doctor/DoctorPendingPage'
 import { DoctorAvailability } from './pages/doctor/DoctorAvailability'
 import { DoctorPrescriptions } from './pages/doctor/DoctorPrescriptions'
 import { DoctorTelemedicineCenter } from './pages/doctor/DoctorTelemedicineCenter'
@@ -74,11 +76,13 @@ function App() {
             <Route path="dashboard" element={<AdminDashboard />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="doctor-approval" element={<AdminDoctorApproval />} />
+            <Route path="profile" element={<AdminProfile />} />
           </Route>
         </Route>
 
         {/* ── Doctor (DOCTOR role only) ───────────────────────────────────────── */}
         <Route element={<ProtectedRoute allowedRoles={['DOCTOR']} />}>
+          <Route path="/doctor/pending" element={<DoctorPendingPage />} />
           <Route path="/doctor" element={<DoctorLayout />}>
             <Route index element={<Navigate to="/doctor/dashboard" replace />} />
             <Route path="dashboard" element={<DoctorDashboard />} />

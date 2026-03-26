@@ -1,335 +1,101 @@
-import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, UserPlus, Stethoscope, User } from 'lucide-react'
-import { authService } from '../../services/authService'
-import { useAppDispatch, useToast } from '../../store/hooks'
-import { setCredentials } from '../../store/slices/authSlice'
-import { ROLE_HOME } from '../../components/auth/ProtectedRoute'
-import type { Role } from '../../types/auth'
+import { Fragment } from 'react'
+import { Check } from 'lucide-react'
+import { useAppSelector } from '../../store/hooks'
+import { RegisterBrandPanel }  from '../../components/auth/RegisterBrandPanel'
+import { RoleStep }            from '../../components/auth/register/RoleStep'
+import { PersonalStep }        from '../../components/auth/register/PersonalStep'
+import { DetailsStep }         from '../../components/auth/register/DetailsStep'
+import { ContactStep }         from '../../components/auth/register/ContactStep'
+import { SecurityStep }        from '../../components/auth/register/SecurityStep'
+import { VerifyStep }          from '../../components/auth/register/VerifyStep'
+import { DoctorPendingStep }   from '../../components/auth/register/DoctorPendingStep'
 
-const LOGO_SRC = '/logo.svg'
+const LOGO_SRC    = '/logo.svg'
+const STEP_LABELS = ['Role', 'Personal', 'Details', 'Contact', 'Security', 'Verify']
+const TOTAL_STEPS = 6
 
-type RoleOption = Extract<Role, 'PATIENT' | 'DOCTOR'>
+const STEP_COMPONENTS = [RoleStep, PersonalStep, DetailsStep, ContactStep, SecurityStep, VerifyStep]
 
-const ROLE_OPTIONS: { value: RoleOption; label: string; description: string; icon: typeof User }[] =
-  [
-    {
-      value: 'PATIENT',
-      label: 'Patient',
-      description: 'Book appointments and manage your health',
-      icon: User,
-    },
-    {
-      value: 'DOCTOR',
-      label: 'Doctor',
-      description: 'Manage your practice and see patients',
-      icon: Stethoscope,
-    },
-  ]
+/**
+ * Multi-step registration wizard.
+ *
+ * Pure shell — owns the progress stepper and animation container.
+ * All form state, validation and step logic live in Redux (registerSlice)
+ * and the individual step components.
+ *
+ * When a DOCTOR completes registration, `form.doctorPending` flips to true
+ * and the stepper is swapped for <DoctorPendingStep> — no page navigation.
+ */
+export const RegisterPage = () => {
+  const form    = useAppSelector(s => s.register)
+  const step    = form.currentStep
+  const animKey = form.animKey
+  const animDir = form.animDir
 
-export function RegisterPage() {
-  const dispatch = useAppDispatch()
-  const navigate = useNavigate()
-  const { toast } = useToast()
-
-  const [role, setRole] = useState<RoleOption>('PATIENT')
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [specialty, setSpecialty] = useState('')
-  const [licenseNumber, setLicenseNumber] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [fieldError, setFieldError] = useState<string | null>(null)
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setFieldError(null)
-
-    if (password.length < 8) {
-      setFieldError('Password must be at least 8 characters.')
-      return
-    }
-
-    setIsLoading(true)
-    try {
-      const response = await authService.register({
-        email: email.trim(),
-        password,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        phoneNumber: phone.trim() || undefined,
-        role,
-        specialty: role === 'DOCTOR' ? specialty.trim() || undefined : undefined,
-        medicalLicenseNumber:
-          role === 'DOCTOR' ? licenseNumber.trim() || undefined : undefined,
-      })
-      dispatch(setCredentials(response))
-      toast('Account created! Welcome to Curex.', 'success')
-      navigate(ROLE_HOME[role], { replace: true })
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message ?? 'Registration failed. Please try again.'
-      setFieldError(msg)
-      toast(msg, 'error')
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const animClass  = animDir === 'forward' ? 'auth-step-enter-forward' : 'auth-step-enter-back'
+  const ActiveStep = STEP_COMPONENTS[step - 1]
 
   return (
     <div className="flex min-h-dvh bg-background">
-      {/*  Left brand panel  */}
-      <div className="hidden flex-col justify-between bg-primary p-10 lg:flex lg:w-[42%]">
-        <a href="/" className="flex items-center gap-2.5 no-underline">
-          <img src={LOGO_SRC} alt="" width={36} height={36} className="h-9 w-9" />
-          <span className="text-xl font-semibold tracking-tight text-surface">Curex</span>
-        </a>
+      <RegisterBrandPanel />
 
-        <div>
-          <h2 className="text-balance text-2xl font-semibold text-surface/90">
-            Join thousands who manage their healthcare in one place.
-          </h2>
-          <p className="mt-4 text-sm text-surface/50">
-            Patients get faster care. Doctors spend less time on admin.
-          </p>
-        </div>
+      <div className="flex flex-1 flex-col items-center overflow-y-auto">
+        {form.doctorPending ? (
+          <DoctorPendingStep />
+        ) : (
+          <div className="my-auto w-full max-w-[440px] px-6 py-10">
 
-        <ul className="flex flex-col gap-3 text-sm text-surface/60">
-          {['Free to get started', 'HIPAA-compliant security', 'No credit card required'].map(
-            (item) => (
-              <li key={item} className="flex items-center gap-2">
-                <span className="h-1.5 w-1.5 rounded-full bg-accent-mint" />
-                {item}
-              </li>
-            ),
-          )}
-        </ul>
-      </div>
+            {/* Mobile logo */}
+            <a href="/" className="mb-8 flex items-center gap-2.5 no-underline lg:hidden">
+              <img src={LOGO_SRC} alt="" className="h-8 w-8" />
+              <span className="text-lg font-bold tracking-tight text-primary">Curex</span>
+            </a>
 
-      {/*  Right form panel  */}
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-10">
-        <a href="/" className="mb-8 flex items-center gap-2 no-underline lg:hidden">
-          <img src={LOGO_SRC} alt="" width={32} height={32} className="h-8 w-8" />
-          <span className="text-lg font-semibold tracking-tight text-primary">Curex</span>
-        </a>
+            {/* ── Step progress indicator ── */}
+            <div className="mb-8">
+              <div className="flex items-center">
+                {STEP_LABELS.map((label, i) => {
+                  const n      = i + 1
+                  const state  = n < step ? 'done' : n === step ? 'active' : 'todo'
+                  const isLast = i === STEP_LABELS.length - 1
+                  return (
+                    <Fragment key={label}>
+                      <div className="flex flex-col items-center gap-1.5">
+                        <div className={`register-step-dot ${state}`}>
+                          {state === 'done'
+                            ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+                            : n
+                          }
+                        </div>
+                        <span className={`hidden sm:block text-[9px] font-medium uppercase tracking-wide transition-colors ${
+                          state === 'done'    ? 'text-primary-light'
+                          : state === 'active' ? 'text-primary'
+                          : 'text-text-secondary/30'
+                        }`}>{label}</span>
+                      </div>
+                      {!isLast && (
+                        <div className={`register-step-line ${n < step ? 'done' : 'todo'}`} />
+                      )}
+                    </Fragment>
+                  )
+                })}
+              </div>
 
-        <div className="w-full max-w-sm">
-          <h1 className="text-2xl font-semibold tracking-tight text-primary">
-            Create your account
-          </h1>
-          <p className="mt-1.5 text-sm text-text-secondary">
-            Already have one?{' '}
-            <Link to="/login" className="font-medium text-primary-light hover:underline">
-              Sign in
-            </Link>
-          </p>
-
-          <form onSubmit={handleSubmit} noValidate className="mt-8 flex flex-col gap-5">
-            {/* Role selector */}
-            <div className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium text-primary">I am a…</span>
-              <div className="grid grid-cols-2 gap-2.5">
-                {ROLE_OPTIONS.map(({ value, label, description, icon: Icon }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setRole(value)}
-                    className={`
-                      flex flex-col items-start gap-1.5 rounded-xl border p-3.5 text-left transition-all
-                      ${
-                        role === value
-                          ? 'border-primary-light bg-primary-light/8 shadow-sm'
-                          : 'border-text-secondary/20 bg-surface hover:border-primary-light/40'
-                      }
-                    `}
-                  >
-                    <Icon
-                      className={`h-5 w-5 ${role === value ? 'text-primary-light' : 'text-text-secondary'}`}
-                      strokeWidth={1.5}
-                    />
-                    <span
-                      className={`text-sm font-semibold ${role === value ? 'text-primary' : 'text-text-secondary'}`}
-                    >
-                      {label}
-                    </span>
-                    <span className="text-xs leading-tight text-text-secondary">
-                      {description}
-                    </span>
-                  </button>
-                ))}
+              <div className="mt-4 flex items-center justify-between">
+                <p className="text-base font-semibold text-primary">{STEP_LABELS[step - 1]}</p>
+                <span className="rounded-full bg-text-secondary/8 px-2.5 py-0.5 text-[11px] font-medium text-text-secondary">
+                  {step} / {TOTAL_STEPS}
+                </span>
               </div>
             </div>
 
-            {/* Name row */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="firstName" className="text-sm font-medium text-primary">
-                  First name
-                </label>
-                <input
-                  id="firstName"
-                  type="text"
-                  autoComplete="given-name"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="Jane"
-                  required
-                  className="auth-input"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="lastName" className="text-sm font-medium text-primary">
-                  Last name
-                </label>
-                <input
-                  id="lastName"
-                  type="text"
-                  autoComplete="family-name"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Smith"
-                  required
-                  className="auth-input"
-                />
-              </div>
+            {/* Active step — re-keyed on animKey to trigger CSS animation */}
+            <div key={animKey} className={animClass}>
+              <ActiveStep />
             </div>
 
-            {/* Email */}
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="email" className="text-sm font-medium text-primary">
-                Email address
-              </label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-                className="auth-input"
-              />
-            </div>
-
-            {/* Phone */}
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="phone" className="text-sm font-medium text-primary">
-                Phone{' '}
-                <span className="font-normal text-text-secondary">(optional)</span>
-              </label>
-              <input
-                id="phone"
-                type="tel"
-                autoComplete="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+94 77 000 0000"
-                className="auth-input"
-              />
-            </div>
-
-            {/* Doctor-only fields */}
-            {role === 'DOCTOR' && (
-              <>
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="specialty" className="text-sm font-medium text-primary">
-                    Specialty{' '}
-                    <span className="font-normal text-text-secondary">(optional)</span>
-                  </label>
-                  <input
-                    id="specialty"
-                    type="text"
-                    value={specialty}
-                    onChange={(e) => setSpecialty(e.target.value)}
-                    placeholder="e.g. Cardiology"
-                    className="auth-input"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="licenseNumber" className="text-sm font-medium text-primary">
-                    Medical licence no.{' '}
-                    <span className="font-normal text-text-secondary">(optional)</span>
-                  </label>
-                  <input
-                    id="licenseNumber"
-                    type="text"
-                    value={licenseNumber}
-                    onChange={(e) => setLicenseNumber(e.target.value)}
-                    placeholder="e.g. MC-12345"
-                    className="auth-input"
-                  />
-                </div>
-              </>
-            )}
-
-            {/* Password */}
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="password" className="text-sm font-medium text-primary">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Min. 8 characters"
-                  required
-                  className="auth-input pr-11"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-secondary hover:text-primary"
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" strokeWidth={1.5} />
-                  ) : (
-                    <Eye className="h-4 w-4" strokeWidth={1.5} />
-                  )}
-                </button>
-              </div>
-              {password.length > 0 && password.length < 8 && (
-                <p className="text-xs text-status-attention">
-                  {8 - password.length} more character{8 - password.length !== 1 ? 's' : ''} needed
-                </p>
-              )}
-            </div>
-
-            {/* Field error */}
-            {fieldError && (
-              <p role="alert" className="rounded-lg bg-error/10 px-3 py-2 text-sm text-error">
-                {fieldError}
-              </p>
-            )}
-
-            {role === 'DOCTOR' && (
-              <p className="rounded-lg bg-accent-peach/15 px-3 py-2.5 text-xs leading-relaxed text-text-secondary">
-                Doctor accounts require admin approval before you can see patients. You'll receive an
-                email when your account is verified.
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="btn-primary mt-1 w-full justify-center gap-2 py-3 disabled:opacity-60"
-            >
-              {isLoading ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-surface/30 border-t-surface" />
-              ) : (
-                <UserPlus className="h-4 w-4" strokeWidth={1.75} />
-              )}
-              {isLoading ? 'Creating account…' : 'Create account'}
-            </button>
-          </form>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -146,4 +146,21 @@ public class RabbitMQConfig {
                 .to(doctorExchange())
                 .with(PRESCRIPTION_ISSUED_ROUTING_KEY);
     }
+
+    // === OTP EVENTS (from user-service) ===
+    public static final String OTP_QUEUE = "user.otp.queue";
+    public static final String OTP_ROUTING_KEY = "user.otp.send";
+
+    @Bean
+    public Queue otpQueue() {
+        return QueueBuilder.durable(OTP_QUEUE).build();
+    }
+
+    @Bean
+    public Binding otpBinding() {
+        return BindingBuilder
+                .bind(otpQueue())
+                .to(userExchange())
+                .with(OTP_ROUTING_KEY);
+    }
 }

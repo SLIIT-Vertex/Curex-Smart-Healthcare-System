@@ -1,8 +1,11 @@
 package com.curex.user.controller;
 
+import com.curex.user.dto.UpdateProfileRequest;
 import com.curex.user.dto.UserResponse;
 import com.curex.user.entity.User;
+import com.curex.user.service.UserProfileService;
 import com.curex.user.service.UserQueryService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
@@ -11,6 +14,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -48,6 +53,7 @@ import java.util.Map;
 public class UserController {
 
     private final UserQueryService userQueryService;
+    private final UserProfileService userProfileService;
 
     // ── Own profile ──────────────────────────────────────────────────────────
 
@@ -56,6 +62,22 @@ public class UserController {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         UserDetails userDetails = (UserDetails) auth.getPrincipal();
         return ResponseEntity.ok(userQueryService.getOwnProfile(userDetails.getUsername()));
+    }
+
+    /**
+     * Update the authenticated user's profile.
+     *
+     * All fields are optional — only non-null values in the request body are applied.
+     * Typically called immediately after registration to persist dob, gender, address,
+     * and role-specific details (doctor credentials / patient health info).
+     *
+     * PUT /api/users/me/profile
+     */
+    @PutMapping("/api/users/me/profile")
+    public ResponseEntity<UserResponse> updateMyProfile(@Valid @RequestBody UpdateProfileRequest request) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        UserDetails userDetails = (UserDetails) auth.getPrincipal();
+        return ResponseEntity.ok(userProfileService.updateProfile(userDetails.getUsername(), request));
     }
 
     // ── Approved-user endpoints ──────────────────────────────────────────────

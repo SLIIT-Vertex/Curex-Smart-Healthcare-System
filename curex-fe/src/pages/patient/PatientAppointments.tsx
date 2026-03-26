@@ -1,588 +1,683 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   bookAppointment,
   getAppointmentsByPatient,
   getDoctorAppointments,
   getDoctorDirectory,
   getDoctorSlots,
-} from '../../services/appointmentService'
+} from "../../services/appointmentService";
 import {
   createTelemedicineSession,
   getTelemedicineSession,
-} from '../../services/telemedicineService'
+} from "../../services/telemedicineService";
 import {
   dateSlotKey,
   getUpcomingDateKeys,
   parseDateSlotKey,
   toDateKey,
-} from '../../services/availabilityService'
+} from "../../services/availabilityService";
 import {
   type AppointmentRecord,
   type DoctorDirectoryItem,
-} from '../../types/appointment'
-import type { TelemedicineSessionRecord } from '../../types/telemedicine'
-import { useAuth, useToast } from '../../store/hooks'
-import '../../styles/pages/AppointmentFlow.css'
+} from "../../types/appointment";
+import type { TelemedicineSessionRecord } from "../../types/telemedicine";
+import { useAuth, useToast } from "../../store/hooks";
+import "../../styles/pages/AppointmentFlow.css";
 
 function generateTimeSlots(): string[] {
-  const slots: string[] = []
+  const slots: string[] = [];
   for (let h = 8; h <= 17; h++) {
     for (let m = 0; m < 60; m += 30) {
-      slots.push(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`)
+      slots.push(
+        `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`,
+      );
     }
   }
-  return slots
+  return slots;
 }
 
-const TIME_SLOTS = generateTimeSlots()
+const TIME_SLOTS = generateTimeSlots();
 
 function dateLabel(dateKey: string): string {
-  const date = new Date(`${dateKey}T00:00:00`)
-  return date.toLocaleDateString('en-GB', {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-  })
+  const date = new Date(`${dateKey}T00:00:00`);
+  return date.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+  });
 }
 
 function toAppointmentDateTime(dateKey: string, time: string): string {
-  return `${dateKey}T${time}:00`
+  return `${dateKey}T${time}:00`;
 }
 
 function monthStart(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), 1)
+  return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
 function addMonths(date: Date, offset: number): Date {
-  return new Date(date.getFullYear(), date.getMonth() + offset, 1)
+  return new Date(date.getFullYear(), date.getMonth() + offset, 1);
 }
 
 const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-]
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 
-function buildMonthCells(currentMonth: Date): Array<{ dateKey: string; inMonth: boolean; dayNumber: number }> {
-  const first = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1)
-  const start = new Date(first)
-  start.setDate(first.getDate() - first.getDay())
+function buildMonthCells(
+  currentMonth: Date,
+): Array<{ dateKey: string; inMonth: boolean; dayNumber: number }> {
+  const first = new Date(
+    currentMonth.getFullYear(),
+    currentMonth.getMonth(),
+    1,
+  );
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
 
-  const cells: Array<{ dateKey: string; inMonth: boolean; dayNumber: number }> = []
+  const cells: Array<{ dateKey: string; inMonth: boolean; dayNumber: number }> =
+    [];
   for (let i = 0; i < 42; i++) {
-    const d = new Date(start)
-    d.setDate(start.getDate() + i)
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
     cells.push({
       dateKey: toDateKey(d),
       inMonth: d.getMonth() === currentMonth.getMonth(),
       dayNumber: d.getDate(),
-    })
+    });
   }
-  return cells
+  return cells;
 }
 
 function statusPastelClass(status: string): string {
-  const normalized = status.toUpperCase()
-  if (normalized === 'CONFIRMED') {
-    return 'bg-accent-mint/25 text-primary'
+  const normalized = status.toUpperCase();
+  if (normalized === "CONFIRMED") {
+    return "bg-accent-mint/25 text-primary";
   }
-  if (normalized === 'PENDING') {
-    return 'bg-accent-peach/30 text-primary'
+  if (normalized === "PENDING") {
+    return "bg-accent-peach/30 text-primary";
   }
-  if (normalized === 'CANCELLED') {
-    return 'bg-error/20 text-primary'
+  if (normalized === "CANCELLED") {
+    return "bg-error/20 text-primary";
   }
-  return 'bg-primary-light/15 text-primary'
+  return "bg-primary-light/15 text-primary";
 }
 
 function canJoinTelemedicine(
   appt: AppointmentRecord,
-  session: TelemedicineSessionRecord | null | undefined
+  session: TelemedicineSessionRecord | null | undefined,
 ): boolean {
-  if (appt.type !== 'TELEMEDICINE' || !session?.sessionUrl || session.status === 'ENDED') {
-    return false
+  if (
+    appt.type !== "TELEMEDICINE" ||
+    !session?.sessionUrl ||
+    session.status === "ENDED"
+  ) {
+    return false;
   }
 
-  const statusEligible = appt.status === 'CONFIRMED' || appt.status === 'IN_SESSION'
-  const joinOpensAt = new Date(appt.appointmentTime).getTime() - 60 * 60 * 1000
-  const startsWithinOneHour = Date.now() >= joinOpensAt
-  return statusEligible && startsWithinOneHour
+  const statusEligible =
+    appt.status === "CONFIRMED" || appt.status === "IN_SESSION";
+  const joinOpensAt = new Date(appt.appointmentTime).getTime() - 60 * 60 * 1000;
+  const startsWithinOneHour = Date.now() >= joinOpensAt;
+  return statusEligible && startsWithinOneHour;
 }
 
 function telemedicineStateLabel(
   appt: AppointmentRecord,
-  session: TelemedicineSessionRecord | null | undefined
+  session: TelemedicineSessionRecord | null | undefined,
 ): string {
-  if (appt.type !== 'TELEMEDICINE') {
-    return 'In-person visit'
+  if (appt.type !== "TELEMEDICINE") {
+    return "In-person visit";
   }
 
-  if (appt.status !== 'CONFIRMED' && appt.status !== 'IN_SESSION') {
-    return 'Video link available after confirmation'
+  if (appt.status !== "CONFIRMED" && appt.status !== "IN_SESSION") {
+    return "Video link available after confirmation";
   }
 
   if (!session?.sessionUrl) {
-    return 'Preparing session link'
+    return "Preparing session link";
   }
 
-  if (session.status === 'ENDED') {
-    return 'Session ended'
+  if (session.status === "ENDED") {
+    return "Session ended";
   }
 
-  const joinOpensAt = new Date(appt.appointmentTime).getTime() - 60 * 60 * 1000
+  const joinOpensAt = new Date(appt.appointmentTime).getTime() - 60 * 60 * 1000;
   if (Date.now() < joinOpensAt) {
-    return 'Link unlocks 1 hour before appointment'
+    return "Link unlocks 1 hour before appointment";
   }
 
-  return 'Join video consultation'
+  return "Join video consultation";
 }
 
 function bookingStatusLabel(
   appt: AppointmentRecord,
-  session: TelemedicineSessionRecord | null | undefined
+  session: TelemedicineSessionRecord | null | undefined,
 ): string {
-  if (appt.type === 'TELEMEDICINE' && session?.status === 'ENDED') {
-    return 'ENDED'
+  if (appt.type === "TELEMEDICINE" && session?.status === "ENDED") {
+    return "ENDED";
   }
-  return String(appt.status).toUpperCase()
+  return String(appt.status).toUpperCase();
 }
 
 function doctorInitials(doctor: DoctorDirectoryItem | null): string {
   if (!doctor) {
-    return 'DR'
+    return "DR";
   }
-  const base = doctor.name.replace(/^Dr\.\s*/i, '').trim()
-  const parts = base.split(/\s+/).filter(Boolean)
-  const first = parts[0]?.[0] ?? 'D'
-  const second = parts[1]?.[0] ?? 'R'
-  return `${first}${second}`.toUpperCase()
+  const base = doctor.name.replace(/^Dr\.\s*/i, "").trim();
+  const parts = base.split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "D";
+  const second = parts[1]?.[0] ?? "R";
+  return `${first}${second}`.toUpperCase();
 }
 
-function appointmentDateTimeKey(appointmentTime: string): { dateKey: string; time: string } | null {
-  const match = String(appointmentTime).match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/)
+function appointmentDateTimeKey(
+  appointmentTime: string,
+): { dateKey: string; time: string } | null {
+  const match = String(appointmentTime).match(
+    /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/,
+  );
   if (match) {
-    return { dateKey: match[1], time: match[2] }
+    return { dateKey: match[1], time: match[2] };
   }
 
-  const parsed = new Date(appointmentTime)
+  const parsed = new Date(appointmentTime);
   if (Number.isNaN(parsed.getTime())) {
-    return null
+    return null;
   }
 
   return {
     dateKey: toDateKey(parsed),
-    time: `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`,
-  }
+    time: `${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`,
+  };
 }
 
 export function PatientAppointments() {
-  const { user } = useAuth()
-  const { toast } = useToast()
-  const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<'make' | 'bookings'>('make')
-  const [search, setSearch] = useState('')
-  const [selectedSpecialty, setSelectedSpecialty] = useState<string>('ALL')
-  const [doctors, setDoctors] = useState<DoctorDirectoryItem[]>([])
-  const [doctorSlots, setDoctorSlots] = useState<Record<string, Array<{ day: string; startTime: string; endTime: string; booked: boolean }>>>({})
-  const [doctorAppointmentsById, setDoctorAppointmentsById] = useState<Record<string, AppointmentRecord[]>>({})
-  const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null)
-  const [doctorsLoading, setDoctorsLoading] = useState(false)
-  const [slotsLoading, setSlotsLoading] = useState(false)
-  const dateKeys = useMemo(() => getUpcomingDateKeys(30), [])
-  const [selectedDateKey, setSelectedDateKey] = useState(dateKeys[0])
-  const [makeDateStartIndex, setMakeDateStartIndex] = useState(0)
-  const [selectedBookingDate, setSelectedBookingDate] = useState(dateKeys[0])
-  const [bookingMonth, setBookingMonth] = useState(() => monthStart(new Date()))
-  const [showBookingMonthPicker, setShowBookingMonthPicker] = useState(false)
-  const [showBookingCalendar, setShowBookingCalendar] = useState(true)
-  const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
-  const [doctorCardStartIndex, setDoctorCardStartIndex] = useState(0)
-  const [slotStartIndex, setSlotStartIndex] = useState(0)
-  const [popupBooking, setPopupBooking] = useState<AppointmentRecord | null>(null)
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<"make" | "bookings">("make");
+  const [search, setSearch] = useState("");
+  const [selectedSpecialty, setSelectedSpecialty] = useState<string>("ALL");
+  const [doctors, setDoctors] = useState<DoctorDirectoryItem[]>([]);
+  const [doctorSlots, setDoctorSlots] = useState<
+    Record<
+      string,
+      Array<{
+        day: string;
+        startTime: string;
+        endTime: string;
+        booked: boolean;
+      }>
+    >
+  >({});
+  const [doctorAppointmentsById, setDoctorAppointmentsById] = useState<
+    Record<string, AppointmentRecord[]>
+  >({});
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null);
+  const [doctorsLoading, setDoctorsLoading] = useState(false);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const dateKeys = useMemo(() => getUpcomingDateKeys(30), []);
+  const [selectedDateKey, setSelectedDateKey] = useState(dateKeys[0]);
+  const [makeDateStartIndex, setMakeDateStartIndex] = useState(0);
+  const [selectedBookingDate, setSelectedBookingDate] = useState(dateKeys[0]);
+  const [bookingMonth, setBookingMonth] = useState(() =>
+    monthStart(new Date()),
+  );
+  const [showBookingMonthPicker, setShowBookingMonthPicker] = useState(false);
+  const [showBookingCalendar, setShowBookingCalendar] = useState(true);
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [doctorCardStartIndex, setDoctorCardStartIndex] = useState(0);
+  const [slotStartIndex, setSlotStartIndex] = useState(0);
+  const [popupBooking, setPopupBooking] = useState<AppointmentRecord | null>(
+    null,
+  );
 
-  const [notes, setNotes] = useState('')
-  const [appointmentType, setAppointmentType] = useState<'IN_PERSON' | 'TELEMEDICINE'>('TELEMEDICINE')
+  const [notes, setNotes] = useState("");
+  const [appointmentType, setAppointmentType] = useState<
+    "IN_PERSON" | "TELEMEDICINE"
+  >("TELEMEDICINE");
 
-  const [myAppointments, setMyAppointments] = useState<AppointmentRecord[]>([])
-  const [loading, setLoading] = useState(false)
-  const [booking, setBooking] = useState(false)
+  const [myAppointments, setMyAppointments] = useState<AppointmentRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [booking, setBooking] = useState(false);
   const [telemedicineSessions, setTelemedicineSessions] = useState<
     Record<string, TelemedicineSessionRecord | null>
-  >({})
-  const [message, setMessage] = useState<string | null>(null)
+  >({});
+  const [message, setMessage] = useState<string | null>(null);
 
-  const patientId = user?.id ?? ''
-  const patientName = user ? `${user.firstName} ${user.lastName}`.trim() : ''
-  const patientEmail = user?.email ?? ''
+  const patientId = user?.id ?? "";
+  const patientName = user ? `${user.firstName} ${user.lastName}`.trim() : "";
+  const patientEmail = user?.email ?? "";
+
+  const extractServerMessage = (err: unknown): string | undefined =>
+    (err as { response?: { data?: { message?: string } } })?.response?.data
+      ?.message;
 
   // Fetch doctors on component mount
   useEffect(() => {
     const fetchDoctors = async () => {
-      setDoctorsLoading(true)
+      setDoctorsLoading(true);
       try {
-        const fetchedDoctors = await getDoctorDirectory()
-        setDoctors(fetchedDoctors)
+        const fetchedDoctors = await getDoctorDirectory();
+        setDoctors(fetchedDoctors);
       } catch (err) {
-        console.error('Failed to fetch doctors:', err)
-        toast('Failed to load doctors.', 'error')
+        console.error("Failed to fetch doctors:", err);
+        toast("Failed to load doctors.", "error");
       } finally {
-        setDoctorsLoading(false)
+        setDoctorsLoading(false);
       }
-    }
-    fetchDoctors()
-  }, [])
+    };
+    fetchDoctors();
+  }, [toast]);
 
   // Fetch slots when selected doctor changes
   useEffect(() => {
-    if (!selectedDoctorId) return
-    
+    if (!selectedDoctorId) return;
+
     const fetchSlots = async () => {
-      setSlotsLoading(true)
+      setSlotsLoading(true);
       try {
-        const slots = await getDoctorSlots(selectedDoctorId)
+        const slots = await getDoctorSlots(selectedDoctorId);
         setDoctorSlots((prev) => ({
           ...prev,
           [selectedDoctorId]: slots,
-        }))
+        }));
       } catch (err) {
-        console.error('Failed to fetch slots:', err)
-        toast('Failed to load available slots for this doctor.', 'error')
+        console.error("Failed to fetch slots:", err);
+        toast("Failed to load available slots for this doctor.", "error");
       } finally {
-        setSlotsLoading(false)
+        setSlotsLoading(false);
       }
-    }
-    fetchSlots()
-  }, [selectedDoctorId])
+    };
+    fetchSlots();
+  }, [selectedDoctorId, toast]);
 
   useEffect(() => {
-    if (!selectedDoctorId) return
+    if (!selectedDoctorId) return;
 
     const fetchDoctorAppointments = async () => {
       try {
-        const selected = doctors.find((d) => d.id === selectedDoctorId)
-        const idsToCheck = [selectedDoctorId, selected?.profileId]
-          .filter((id): id is string => Boolean(id))
+        const selected = doctors.find((d) => d.id === selectedDoctorId);
+        const idsToCheck = [selectedDoctorId, selected?.profileId].filter(
+          (id): id is string => Boolean(id),
+        );
 
-        const settled = await Promise.allSettled(idsToCheck.map((id) => getDoctorAppointments(id)))
+        const settled = await Promise.allSettled(
+          idsToCheck.map((id) => getDoctorAppointments(id)),
+        );
         const merged = settled
-          .filter((result): result is PromiseFulfilledResult<AppointmentRecord[]> => result.status === 'fulfilled')
+          .filter(
+            (result): result is PromiseFulfilledResult<AppointmentRecord[]> =>
+              result.status === "fulfilled",
+          )
           .flatMap((result) => result.value)
           .flat()
-          .filter((appt, idx, arr) => arr.findIndex((x) => x.id === appt.id) === idx)
+          .filter(
+            (appt, idx, arr) => arr.findIndex((x) => x.id === appt.id) === idx,
+          );
 
         setDoctorAppointmentsById((prev) => ({
           ...prev,
           [selectedDoctorId]: merged,
-        }))
+        }));
       } catch (err) {
-        console.error('Failed to fetch doctor appointments:', err)
+        console.error("Failed to fetch doctor appointments:", err);
       }
-    }
+    };
 
-    fetchDoctorAppointments()
-  }, [selectedDoctorId, doctors])
+    fetchDoctorAppointments();
+  }, [selectedDoctorId, doctors]);
 
-  const selectedDoctor = useMemo(
-    () => {
-      if (!selectedDoctorId) return null
-      return doctors.find((d) => d.id === selectedDoctorId) ?? null
-    },
-    [doctors, selectedDoctorId]
-  )
+  const selectedDoctor = useMemo(() => {
+    if (!selectedDoctorId) return null;
+    return doctors.find((d) => d.id === selectedDoctorId) ?? null;
+  }, [doctors, selectedDoctorId]);
 
   const specialtyOptions = useMemo(() => {
     const all = doctors
       .map((doctor) => doctor.specialty?.trim())
-      .filter((specialty): specialty is string => Boolean(specialty))
-    return ['ALL', ...Array.from(new Set(all)).sort((a, b) => a.localeCompare(b))]
-  }, [doctors])
+      .filter((specialty): specialty is string => Boolean(specialty));
+    return [
+      "ALL",
+      ...Array.from(new Set(all)).sort((a, b) => a.localeCompare(b)),
+    ];
+  }, [doctors]);
 
   const filteredDoctors = useMemo(() => {
-    const key = search.trim().toLowerCase()
+    const key = search.trim().toLowerCase();
     return doctors.filter((doctor) => {
       const matchesText =
-        !key || `${doctor.name} ${doctor.specialty}`.toLowerCase().includes(key)
+        !key ||
+        `${doctor.name} ${doctor.specialty}`.toLowerCase().includes(key);
       const matchesSpecialty =
-        selectedSpecialty === 'ALL' || doctor.specialty === selectedSpecialty
-      return matchesText && matchesSpecialty
-    })
-  }, [doctors, search, selectedSpecialty])
+        selectedSpecialty === "ALL" || doctor.specialty === selectedSpecialty;
+      return matchesText && matchesSpecialty;
+    });
+  }, [doctors, search, selectedSpecialty]);
 
   const visibleDoctors = useMemo(() => {
-    return filteredDoctors.slice(doctorCardStartIndex, doctorCardStartIndex + 2)
-  }, [filteredDoctors, doctorCardStartIndex])
+    return filteredDoctors.slice(
+      doctorCardStartIndex,
+      doctorCardStartIndex + 2,
+    );
+  }, [filteredDoctors, doctorCardStartIndex]);
 
-  const canGoPrevDoctors = doctorCardStartIndex > 0
-  const canGoNextDoctors = doctorCardStartIndex + 2 < filteredDoctors.length
+  const canGoPrevDoctors = doctorCardStartIndex > 0;
+  const canGoNextDoctors = doctorCardStartIndex + 2 < filteredDoctors.length;
 
   const availableSlotsForSelectedDoctor = useMemo(() => {
     if (!selectedDoctor || !selectedDoctorId) {
-      return [] as Array<{ key: string; time: string; isBooked: boolean; isAvailable: boolean; isPast: boolean }>
+      return [] as Array<{
+        key: string;
+        time: string;
+        isBooked: boolean;
+        isAvailable: boolean;
+        isPast: boolean;
+      }>;
     }
 
-    const slots = doctorSlots[selectedDoctorId] || []
-    const doctorAppointments = doctorAppointmentsById[selectedDoctorId] || []
-    
+    const slots = doctorSlots[selectedDoctorId] || [];
+    const doctorAppointments = doctorAppointmentsById[selectedDoctorId] || [];
+
     // Convert backend slots to date-time format for the selected date
-    const availableForDate = new Set<string>()
-    const bookedForDate = new Set<string>()
+    const availableForDate = new Set<string>();
+    const bookedForDate = new Set<string>();
 
     // Parse the selected date
-    const selectedDate = new Date(`${selectedDateKey}T00:00:00`)
-    const selectedDayOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][selectedDate.getDay()]
+    const selectedDate = new Date(`${selectedDateKey}T00:00:00`);
+    const selectedDayOfWeek = [
+      "SUNDAY",
+      "MONDAY",
+      "TUESDAY",
+      "WEDNESDAY",
+      "THURSDAY",
+      "FRIDAY",
+      "SATURDAY",
+    ][selectedDate.getDay()];
 
     // Filter slots that match the selected day
     for (const slot of slots) {
       if (slot.day === selectedDayOfWeek) {
-        const time = slot.startTime.substring(0, 5) // Get HH:mm format
-        const slotKey = dateSlotKey(selectedDateKey, time)
-        
+        const time = slot.startTime.substring(0, 5); // Get HH:mm format
+        const slotKey = dateSlotKey(selectedDateKey, time);
+
         if (slot.booked) {
-          bookedForDate.add(slotKey)
+          bookedForDate.add(slotKey);
         } else {
-          availableForDate.add(slotKey)
+          availableForDate.add(slotKey);
         }
       }
     }
 
     // Merge appointment records as booked markers so patients can always see booked slots.
     for (const appt of doctorAppointments) {
-      const status = String(appt.status).toUpperCase()
-      if (status === 'CANCELLED' || status === 'COMPLETED') {
-        continue
+      const status = String(appt.status).toUpperCase();
+      if (status === "CANCELLED" || status === "COMPLETED") {
+        continue;
       }
 
-      const parsedSlot = appt.slotId ? parseDateSlotKey(appt.slotId) : null
+      const parsedSlot = appt.slotId ? parseDateSlotKey(appt.slotId) : null;
       if (parsedSlot && parsedSlot.dateKey === selectedDateKey) {
-        bookedForDate.add(appt.slotId as string)
-        continue
+        bookedForDate.add(appt.slotId as string);
+        continue;
       }
 
-      const appointmentKey = appointmentDateTimeKey(appt.appointmentTime)
+      const appointmentKey = appointmentDateTimeKey(appt.appointmentTime);
       if (!appointmentKey || appointmentKey.dateKey !== selectedDateKey) {
-        continue
+        continue;
       }
 
-      bookedForDate.add(dateSlotKey(appointmentKey.dateKey, appointmentKey.time))
+      bookedForDate.add(
+        dateSlotKey(appointmentKey.dateKey, appointmentKey.time),
+      );
     }
 
-    const merged = new Set<string>([...availableForDate, ...bookedForDate])
+    const merged = new Set<string>([...availableForDate, ...bookedForDate]);
 
     return [...merged]
       .map((key) => {
-        const parsed = parseDateSlotKey(key)
+        const parsed = parseDateSlotKey(key);
         if (!parsed) {
-          return null
+          return null;
         }
         return {
           key,
           time: parsed.time,
           isBooked: bookedForDate.has(key),
           isAvailable: availableForDate.has(key),
-          isPast: new Date(`${parsed.dateKey}T${parsed.time}:00`).getTime() <= Date.now(),
-        }
+          isPast:
+            new Date(`${parsed.dateKey}T${parsed.time}:00`).getTime() <=
+            Date.now(),
+        };
       })
       .filter(
         (
-          slot
+          slot,
         ): slot is {
-          key: string
-          time: string
-          isBooked: boolean
-          isAvailable: boolean
-          isPast: boolean
-        } => Boolean(slot)
+          key: string;
+          time: string;
+          isBooked: boolean;
+          isAvailable: boolean;
+          isPast: boolean;
+        } => Boolean(slot),
       )
-      .sort((a, b) => TIME_SLOTS.indexOf(a.time) - TIME_SLOTS.indexOf(b.time))
-  }, [selectedDoctor, selectedDoctorId, doctorSlots, doctorAppointmentsById, selectedDateKey])
+      .sort((a, b) => TIME_SLOTS.indexOf(a.time) - TIME_SLOTS.indexOf(b.time));
+  }, [
+    selectedDoctor,
+    selectedDoctorId,
+    doctorSlots,
+    doctorAppointmentsById,
+    selectedDateKey,
+  ]);
 
   const visibleSlots = useMemo(() => {
-    return availableSlotsForSelectedDoctor.slice(slotStartIndex, slotStartIndex + 8)
-  }, [availableSlotsForSelectedDoctor, slotStartIndex])
+    return availableSlotsForSelectedDoctor.slice(
+      slotStartIndex,
+      slotStartIndex + 8,
+    );
+  }, [availableSlotsForSelectedDoctor, slotStartIndex]);
 
-  const canGoPrevSlots = slotStartIndex > 0
-  const canGoNextSlots = slotStartIndex + 8 < availableSlotsForSelectedDoctor.length
+  const canGoPrevSlots = slotStartIndex > 0;
+  const canGoNextSlots =
+    slotStartIndex + 8 < availableSlotsForSelectedDoctor.length;
 
   const sortedMyAppointments = useMemo(() => {
     return [...myAppointments].sort(
       (a, b) =>
-        new Date(b.appointmentTime).getTime() - new Date(a.appointmentTime).getTime()
-    )
-  }, [myAppointments])
+        new Date(b.appointmentTime).getTime() -
+        new Date(a.appointmentTime).getTime(),
+    );
+  }, [myAppointments]);
 
   const bookingsByDate = useMemo(() => {
-    const grouped: Record<string, AppointmentRecord[]> = {}
+    const grouped: Record<string, AppointmentRecord[]> = {};
     for (const appt of sortedMyAppointments) {
-      const key = toDateKey(new Date(appt.appointmentTime))
+      const key = toDateKey(new Date(appt.appointmentTime));
       if (!grouped[key]) {
-        grouped[key] = []
+        grouped[key] = [];
       }
-      grouped[key].push(appt)
+      grouped[key].push(appt);
     }
 
     for (const key of Object.keys(grouped)) {
       grouped[key].sort(
         (a, b) =>
           new Date(a.appointmentTime).getTime() -
-          new Date(b.appointmentTime).getTime()
-      )
+          new Date(b.appointmentTime).getTime(),
+      );
     }
 
-    return grouped
-  }, [sortedMyAppointments])
+    return grouped;
+  }, [sortedMyAppointments]);
 
   const bookingCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
+    const counts: Record<string, number> = {};
     for (const appt of sortedMyAppointments) {
-      const key = toDateKey(new Date(appt.appointmentTime))
-      counts[key] = (counts[key] ?? 0) + 1
+      const key = toDateKey(new Date(appt.appointmentTime));
+      counts[key] = (counts[key] ?? 0) + 1;
     }
-    return counts
-  }, [sortedMyAppointments])
+    return counts;
+  }, [sortedMyAppointments]);
 
   const bookingsForSelectedDate = useMemo(() => {
-    return bookingsByDate[selectedBookingDate] ?? []
-  }, [bookingsByDate, selectedBookingDate])
+    return bookingsByDate[selectedBookingDate] ?? [];
+  }, [bookingsByDate, selectedBookingDate]);
 
-  const bookingCalendarCells = useMemo(() => buildMonthCells(bookingMonth), [bookingMonth])
+  const bookingCalendarCells = useMemo(
+    () => buildMonthCells(bookingMonth),
+    [bookingMonth],
+  );
 
   const visibleMakeDates = useMemo(() => {
-    return dateKeys.slice(makeDateStartIndex, makeDateStartIndex + 7)
-  }, [dateKeys, makeDateStartIndex])
+    return dateKeys.slice(makeDateStartIndex, makeDateStartIndex + 7);
+  }, [dateKeys, makeDateStartIndex]);
 
-  const canGoPrevMakeDates = makeDateStartIndex > 0
-  const canGoNextMakeDates = makeDateStartIndex + 7 < dateKeys.length
+  const canGoPrevMakeDates = makeDateStartIndex > 0;
+  const canGoNextMakeDates = makeDateStartIndex + 7 < dateKeys.length;
 
   const bookingYearOptions = useMemo(() => {
-    const currentYear = new Date().getFullYear()
-    const years: number[] = []
+    const currentYear = new Date().getFullYear();
+    const years: number[] = [];
     for (let y = currentYear - 5; y <= currentYear + 5; y++) {
-      years.push(y)
+      years.push(y);
     }
-    return years
-  }, [])
+    return years;
+  }, []);
 
   useEffect(() => {
     async function loadAppointments() {
       if (!patientId) {
-        return
+        return;
       }
 
       try {
-        setLoading(true)
-        const patientData = await getAppointmentsByPatient(patientId)
-        setMyAppointments(patientData)
+        setLoading(true);
+        const patientData = await getAppointmentsByPatient(patientId);
+        setMyAppointments(patientData);
 
         if (patientData.length > 0) {
-          const firstDate = toDateKey(new Date(patientData[0].appointmentTime))
-          setSelectedBookingDate(firstDate)
+          const firstDate = toDateKey(new Date(patientData[0].appointmentTime));
+          setSelectedBookingDate(firstDate);
         }
       } catch {
-        toast('Could not fetch appointment data. Please ensure backend is running.', 'error')
+        toast(
+          "Could not fetch appointment data. Please ensure backend is running.",
+          "error",
+        );
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
     }
 
-    loadAppointments()
-  }, [patientId])
+    loadAppointments();
+  }, [patientId, toast]);
 
   useEffect(() => {
-    let active = true
+    let active = true;
 
     async function loadTelemedicineSessions() {
       const telemedicineAppointments = myAppointments.filter(
-        (appt) => appt.type === 'TELEMEDICINE'
-      )
+        (appt) => appt.type === "TELEMEDICINE",
+      );
 
       if (telemedicineAppointments.length === 0) {
         if (active) {
-          setTelemedicineSessions({})
+          setTelemedicineSessions({});
         }
-        return
+        return;
       }
 
       const entries = await Promise.all(
         telemedicineAppointments.map(async (appt) => {
           try {
-            const session = await getTelemedicineSession(appt.id)
-            return [appt.id, session] as const
+            const session = await getTelemedicineSession(appt.id);
+            return [appt.id, session] as const;
           } catch {
-            return [appt.id, null] as const
+            return [appt.id, null] as const;
           }
-        })
-      )
+        }),
+      );
 
       if (!active) {
-        return
+        return;
       }
 
-      const nextMap: Record<string, TelemedicineSessionRecord | null> = {}
+      const nextMap: Record<string, TelemedicineSessionRecord | null> = {};
       for (const [appointmentId, session] of entries) {
-        nextMap[appointmentId] = session
+        nextMap[appointmentId] = session;
       }
-      setTelemedicineSessions(nextMap)
+      setTelemedicineSessions(nextMap);
     }
 
-    loadTelemedicineSessions()
+    loadTelemedicineSessions();
 
     return () => {
-      active = false
-    }
-  }, [myAppointments])
+      active = false;
+    };
+  }, [myAppointments]);
 
   useEffect(() => {
     setDoctorCardStartIndex((prev) => {
       if (filteredDoctors.length <= 2) {
-        return 0
+        return 0;
       }
-      return Math.min(prev, Math.max(filteredDoctors.length - 2, 0))
-    })
-  }, [filteredDoctors])
+      return Math.min(prev, Math.max(filteredDoctors.length - 2, 0));
+    });
+  }, [filteredDoctors]);
 
   useEffect(() => {
-    setSlotStartIndex(0)
-  }, [selectedDoctorId, selectedDateKey])
+    setSlotStartIndex(0);
+  }, [selectedDoctorId, selectedDateKey]);
 
   const handleBook = async () => {
     if (!selectedDoctor || !selectedSlot) {
-      return
+      return;
     }
 
     if (!patientId || !patientName || !patientEmail) {
-      toast('Please login as a patient to book appointments.', 'error')
-      return
+      toast("Please login as a patient to book appointments.", "error");
+      return;
     }
 
-    const parsed = parseDateSlotKey(selectedSlot)
+    const parsed = parseDateSlotKey(selectedSlot);
     if (!parsed) {
-      toast('Selected slot is invalid. Please re-select a slot.', 'error')
-      return
+      toast("Selected slot is invalid. Please re-select a slot.", "error");
+      return;
     }
 
-    const selectedSlotTime = new Date(`${parsed.dateKey}T${parsed.time}:00`).getTime()
+    const selectedSlotTime = new Date(
+      `${parsed.dateKey}T${parsed.time}:00`,
+    ).getTime();
     if (selectedSlotTime <= Date.now()) {
-      toast('Selected time has already passed. Please choose a future slot.', 'error')
-      return
+      toast(
+        "Selected time has already passed. Please choose a future slot.",
+        "error",
+      );
+      return;
     }
 
     try {
-      setBooking(true)
-      setMessage(null)
+      setBooking(true);
+      setMessage(null);
 
-      const appointmentTime = toAppointmentDateTime(parsed.dateKey, parsed.time)
+      const appointmentTime = toAppointmentDateTime(
+        parsed.dateKey,
+        parsed.time,
+      );
 
       const createdAppointment = await bookAppointment({
         patientId,
@@ -595,70 +690,82 @@ export function PatientAppointments() {
         appointmentTime,
         type: appointmentType,
         notes,
-      })
+      });
 
       let bookingMessage =
-        'Appointment booked. It will be confirmed after payment is completed.'
+        "Appointment booked. It will be confirmed after payment is completed.";
 
-      if (appointmentType === 'TELEMEDICINE') {
+      if (appointmentType === "TELEMEDICINE") {
         try {
-          const session = await createTelemedicineSession(createdAppointment.id, {
-            patientId,
-            doctorId: selectedDoctor.id,
-          })
+          const session = await createTelemedicineSession(
+            createdAppointment.id,
+            {
+              patientId,
+              doctorId: selectedDoctor.id,
+            },
+          );
           setTelemedicineSessions((prev) => ({
             ...prev,
             [createdAppointment.id]: session,
-          }))
-          bookingMessage += ' Video session has been prepared for this appointment.'
+          }));
+          bookingMessage +=
+            " Video session has been prepared for this appointment.";
         } catch {
           bookingMessage +=
-            ' Video session creation is in progress. Refresh My Bookings if link is not visible yet.'
+            " Video session creation is in progress. Refresh My Bookings if link is not visible yet.";
         }
       }
 
-      setMessage(bookingMessage)
-      toast(bookingMessage, 'success')
-      setSelectedSlot(null)
-      setNotes('')
+      setMessage(bookingMessage);
+      toast(bookingMessage, "success");
+      setSelectedSlot(null);
+      setNotes("");
 
-      const patientData = await getAppointmentsByPatient(patientId)
-      setMyAppointments(patientData)
+      const patientData = await getAppointmentsByPatient(patientId);
+      setMyAppointments(patientData);
 
-      const slots = await getDoctorSlots(selectedDoctor.id)
+      const slots = await getDoctorSlots(selectedDoctor.id);
       setDoctorSlots((prev) => ({
         ...prev,
         [selectedDoctor.id]: slots,
-      }))
+      }));
 
-      const idsToCheck = [selectedDoctor.id, selectedDoctor.profileId]
-        .filter((id): id is string => Boolean(id))
-      const latestSettled = await Promise.allSettled(idsToCheck.map((id) => getDoctorAppointments(id)))
+      const idsToCheck = [selectedDoctor.id, selectedDoctor.profileId].filter(
+        (id): id is string => Boolean(id),
+      );
+      const latestSettled = await Promise.allSettled(
+        idsToCheck.map((id) => getDoctorAppointments(id)),
+      );
       const mergedAppointments = latestSettled
-        .filter((result): result is PromiseFulfilledResult<AppointmentRecord[]> => result.status === 'fulfilled')
+        .filter(
+          (result): result is PromiseFulfilledResult<AppointmentRecord[]> =>
+            result.status === "fulfilled",
+        )
         .flatMap((result) => result.value)
-        .filter((appt, idx, arr) => arr.findIndex((x) => x.id === appt.id) === idx)
+        .filter(
+          (appt, idx, arr) => arr.findIndex((x) => x.id === appt.id) === idx,
+        );
       setDoctorAppointmentsById((prev) => ({
         ...prev,
         [selectedDoctor.id]: mergedAppointments,
-      }))
-    } catch (err: any) {
-      const serverMessage = err?.response?.data?.message
-      toast(serverMessage ?? 'Booking failed. Please try again.', 'error')
+      }));
+    } catch (err: unknown) {
+      const serverMessage = extractServerMessage(err);
+      toast(serverMessage ?? "Booking failed. Please try again.", "error");
     } finally {
-      setBooking(false)
+      setBooking(false);
     }
-  }
+  };
 
   const handleBookingCalendarDateClick = (dateKey: string) => {
-    const todayDateKey = toDateKey(new Date())
-    const isPastDate = dateKey < todayDateKey
+    const todayDateKey = toDateKey(new Date());
+    const isPastDate = dateKey < todayDateKey;
     if (isPastDate) {
-      toast('Previous dates cannot be selected.', 'error')
-      return
+      toast("Previous dates cannot be selected.", "error");
+      return;
     }
-    setSelectedBookingDate(dateKey)
-  }
+    setSelectedBookingDate(dateKey);
+  };
 
   return (
     <div className="space-y-6">
@@ -672,29 +779,29 @@ export function PatientAppointments() {
       <div className="inline-flex rounded-xl border border-text-secondary/20 bg-surface p-1">
         <button
           type="button"
-          onClick={() => setActiveTab('make')}
+          onClick={() => setActiveTab("make")}
           className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-            activeTab === 'make'
-              ? 'bg-primary-light/10 text-primary'
-              : 'text-text-secondary hover:text-primary'
+            activeTab === "make"
+              ? "bg-primary-light/10 text-primary"
+              : "text-text-secondary hover:text-primary"
           }`}
         >
           Make Appointment
         </button>
         <button
           type="button"
-          onClick={() => setActiveTab('bookings')}
+          onClick={() => setActiveTab("bookings")}
           className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-            activeTab === 'bookings'
-              ? 'bg-primary-light/10 text-primary'
-              : 'text-text-secondary hover:text-primary'
+            activeTab === "bookings"
+              ? "bg-primary-light/10 text-primary"
+              : "text-text-secondary hover:text-primary"
           }`}
         >
           My Bookings
         </button>
       </div>
 
-      {activeTab === 'make' && (
+      {activeTab === "make" && (
         <>
           <div className="appointment-panel p-4 lg:p-5">
             <div className="relative">
@@ -713,9 +820,9 @@ export function PatientAppointments() {
                   key={specialty}
                   type="button"
                   onClick={() => setSelectedSpecialty(specialty)}
-                  className={`day-pill ${selectedSpecialty === specialty ? 'day-pill--active' : ''}`}
+                  className={`day-pill ${selectedSpecialty === specialty ? "day-pill--active" : ""}`}
                 >
-                  {specialty === 'ALL' ? 'All Specialties' : specialty}
+                  {specialty === "ALL" ? "All Specialties" : specialty}
                 </button>
               ))}
             </div>
@@ -724,8 +831,14 @@ export function PatientAppointments() {
             <div className="space-y-6">
               <div className="appointment-panel p-4 lg:p-5">
                 <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-lg font-semibold text-primary">Choose doctor</h2>
-                  {slotsLoading && <span className="text-xs text-text-secondary">Loading slots...</span>}
+                  <h2 className="text-lg font-semibold text-primary">
+                    Choose doctor
+                  </h2>
+                  {slotsLoading && (
+                    <span className="text-xs text-text-secondary">
+                      Loading slots...
+                    </span>
+                  )}
                 </div>
 
                 <div className="mt-4">
@@ -737,20 +850,25 @@ export function PatientAppointments() {
 
                   {!doctorsLoading && filteredDoctors.length === 0 && (
                     <p className="rounded-xl border border-text-secondary/15 bg-background/40 px-3 py-2 text-xs text-text-secondary">
-                      No doctors found right now. You can still view your existing bookings.
+                      No doctors found right now. You can still view your
+                      existing bookings.
                     </p>
                   )}
 
-                  {!doctorsLoading && filteredDoctors.length > 0 && !selectedDoctorId && (
-                    <p className="rounded-xl border border-primary-light/20 bg-primary-light/10 px-3 py-2 text-xs text-primary">
-                      Select a doctor first to load availability.
-                    </p>
-                  )}
+                  {!doctorsLoading &&
+                    filteredDoctors.length > 0 &&
+                    !selectedDoctorId && (
+                      <p className="rounded-xl border border-primary-light/20 bg-primary-light/10 px-3 py-2 text-xs text-primary">
+                        Select a doctor first to load availability.
+                      </p>
+                    )}
 
                   <div className="mt-3 flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setDoctorCardStartIndex((v) => Math.max(0, v - 2))}
+                      onClick={() =>
+                        setDoctorCardStartIndex((v) => Math.max(0, v - 2))
+                      }
                       disabled={!canGoPrevDoctors}
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary disabled:opacity-40"
                     >
@@ -763,17 +881,25 @@ export function PatientAppointments() {
                           key={doctor.id}
                           type="button"
                           onClick={() => {
-                            setSelectedDoctorId(doctor.id)
-                            setSelectedSlot(null)
+                            setSelectedDoctorId(doctor.id);
+                            setSelectedSlot(null);
                           }}
                           className={`doctor-card-horizontal text-left ${
-                            doctor.id === selectedDoctorId ? 'doctor-card-horizontal--active' : ''
+                            doctor.id === selectedDoctorId
+                              ? "doctor-card-horizontal--active"
+                              : ""
                           }`}
                         >
-                          <div className="doctor-card-avatar">{doctor.name.replace(/^Dr\.\s*/i, '').charAt(0)}</div>
+                          <div className="doctor-card-avatar">
+                            {doctor.name.replace(/^Dr\.\s*/i, "").charAt(0)}
+                          </div>
                           <div>
-                            <p className="font-semibold text-primary">{doctor.name}</p>
-                            <p className="text-xs text-text-secondary">{doctor.specialty}</p>
+                            <p className="font-semibold text-primary">
+                              {doctor.name}
+                            </p>
+                            <p className="text-xs text-text-secondary">
+                              {doctor.specialty}
+                            </p>
                           </div>
                         </button>
                       ))}
@@ -791,7 +917,12 @@ export function PatientAppointments() {
 
                   {filteredDoctors.length > 2 && (
                     <p className="mt-2 text-xs text-text-secondary">
-                      Showing {doctorCardStartIndex + 1}-{Math.min(doctorCardStartIndex + 2, filteredDoctors.length)} of {filteredDoctors.length} doctors
+                      Showing {doctorCardStartIndex + 1}-
+                      {Math.min(
+                        doctorCardStartIndex + 2,
+                        filteredDoctors.length,
+                      )}{" "}
+                      of {filteredDoctors.length} doctors
                     </p>
                   )}
                 </div>
@@ -800,9 +931,12 @@ export function PatientAppointments() {
               <div className="appointment-panel p-4 lg:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-semibold text-primary">Choose date and time</h2>
+                    <h2 className="text-lg font-semibold text-primary">
+                      Choose date and time
+                    </h2>
                     <p className="text-sm text-text-secondary">
-                      {selectedDoctor?.name ?? 'Select a doctor to view available slots'}
+                      {selectedDoctor?.name ??
+                        "Select a doctor to view available slots"}
                     </p>
                   </div>
                 </div>
@@ -810,7 +944,9 @@ export function PatientAppointments() {
                 <div className="mt-4 flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setMakeDateStartIndex((v) => Math.max(0, v - 7))}
+                    onClick={() =>
+                      setMakeDateStartIndex((v) => Math.max(0, v - 7))
+                    }
                     disabled={!canGoPrevMakeDates}
                     className="flex h-9 w-9 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary disabled:opacity-40"
                   >
@@ -823,10 +959,10 @@ export function PatientAppointments() {
                         key={dateKey}
                         type="button"
                         onClick={() => {
-                          setSelectedDateKey(dateKey)
-                          setSelectedSlot(null)
+                          setSelectedDateKey(dateKey);
+                          setSelectedSlot(null);
                         }}
-                        className={`day-pill shrink-0 ${selectedDateKey === dateKey ? 'day-pill--active' : ''}`}
+                        className={`day-pill shrink-0 ${selectedDateKey === dateKey ? "day-pill--active" : ""}`}
                       >
                         {dateLabel(dateKey)}
                       </button>
@@ -835,7 +971,11 @@ export function PatientAppointments() {
 
                   <button
                     type="button"
-                    onClick={() => setMakeDateStartIndex((v) => Math.min(v + 7, dateKeys.length - 7))}
+                    onClick={() =>
+                      setMakeDateStartIndex((v) =>
+                        Math.min(v + 7, dateKeys.length - 7),
+                      )
+                    }
                     disabled={!canGoNextMakeDates}
                     className="flex h-9 w-9 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary disabled:opacity-40"
                   >
@@ -848,14 +988,16 @@ export function PatientAppointments() {
                     <div className="rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-4 py-6 text-center text-sm text-text-secondary">
                       {selectedDoctor
                         ? `No slots on ${dateLabel(selectedDateKey)}.`
-                        : 'Select a doctor first to view available slots.'}
+                        : "Select a doctor first to view available slots."}
                     </div>
                   ) : (
                     <>
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setSlotStartIndex((v) => Math.max(0, v - 8))}
+                          onClick={() =>
+                            setSlotStartIndex((v) => Math.max(0, v - 8))
+                          }
                           disabled={!canGoPrevSlots}
                           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary disabled:opacity-40"
                         >
@@ -868,37 +1010,47 @@ export function PatientAppointments() {
                               key={slot.key}
                               type="button"
                               onClick={() => {
-                                if (!slot.isBooked && slot.isAvailable && !slot.isPast) {
-                                  setSelectedSlot(slot.key)
+                                if (
+                                  !slot.isBooked &&
+                                  slot.isAvailable &&
+                                  !slot.isPast
+                                ) {
+                                  setSelectedSlot(slot.key);
                                 }
                               }}
-                              disabled={slot.isBooked || !slot.isAvailable || slot.isPast}
+                              disabled={
+                                slot.isBooked ||
+                                !slot.isAvailable ||
+                                slot.isPast
+                              }
                               className={`slot-pill min-w-0 w-full ${
-                                selectedSlot === slot.key ? 'slot-pill--active' : ''
+                                selectedSlot === slot.key
+                                  ? "slot-pill--active"
+                                  : ""
                               } ${
                                 slot.isBooked
-                                  ? 'cursor-not-allowed border-accent-sky/40 bg-accent-sky/20 text-text-secondary'
-                                  : ''
+                                  ? "cursor-not-allowed border-accent-sky/40 bg-accent-sky/20 text-text-secondary"
+                                  : ""
                               } ${
                                 !slot.isAvailable
-                                  ? 'cursor-not-allowed border-text-secondary/15 bg-background/40 text-text-secondary'
-                                  : ''
+                                  ? "cursor-not-allowed border-text-secondary/15 bg-background/40 text-text-secondary"
+                                  : ""
                               } ${
                                 !slot.isBooked && slot.isPast
-                                  ? 'cursor-not-allowed border-text-secondary/20 bg-background/60 text-text-secondary/80'
-                                  : ''
+                                  ? "cursor-not-allowed border-text-secondary/20 bg-background/60 text-text-secondary/80"
+                                  : ""
                               }`}
                             >
                               <div className="text-center">
                                 <div>{slot.time}</div>
                                 <div className="text-[10px] text-text-secondary">
                                   {slot.isBooked
-                                    ? 'Booked'
+                                    ? "Booked"
                                     : slot.isPast
-                                      ? 'Passed'
+                                      ? "Passed"
                                       : slot.isAvailable
-                                        ? 'Available'
-                                        : 'Off'}
+                                        ? "Available"
+                                        : "Off"}
                                 </div>
                               </div>
                             </button>
@@ -916,7 +1068,12 @@ export function PatientAppointments() {
                       </div>
 
                       <p className="mt-2 text-xs text-text-secondary">
-                        Showing {slotStartIndex + 1}-{Math.min(slotStartIndex + 8, availableSlotsForSelectedDoctor.length)} of {availableSlotsForSelectedDoctor.length} slots
+                        Showing {slotStartIndex + 1}-
+                        {Math.min(
+                          slotStartIndex + 8,
+                          availableSlotsForSelectedDoctor.length,
+                        )}{" "}
+                        of {availableSlotsForSelectedDoctor.length} slots
                       </p>
                     </>
                   )}
@@ -933,22 +1090,22 @@ export function PatientAppointments() {
                   <div className="grid gap-2 sm:grid-cols-2">
                     <button
                       type="button"
-                      onClick={() => setAppointmentType('IN_PERSON')}
+                      onClick={() => setAppointmentType("IN_PERSON")}
                       className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
-                        appointmentType === 'IN_PERSON'
-                          ? 'border-primary-light/40 bg-primary-light/10 text-primary'
-                          : 'border-text-secondary/20 text-text-secondary hover:text-primary'
+                        appointmentType === "IN_PERSON"
+                          ? "border-primary-light/40 bg-primary-light/10 text-primary"
+                          : "border-text-secondary/20 text-text-secondary hover:text-primary"
                       }`}
                     >
                       In-person
                     </button>
                     <button
                       type="button"
-                      onClick={() => setAppointmentType('TELEMEDICINE')}
+                      onClick={() => setAppointmentType("TELEMEDICINE")}
                       className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
-                        appointmentType === 'TELEMEDICINE'
-                          ? 'border-primary-light/40 bg-primary-light/10 text-primary'
-                          : 'border-text-secondary/20 text-text-secondary hover:text-primary'
+                        appointmentType === "TELEMEDICINE"
+                          ? "border-primary-light/40 bg-primary-light/10 text-primary"
+                          : "border-text-secondary/20 text-text-secondary hover:text-primary"
                       }`}
                     >
                       Telemedicine
@@ -962,10 +1119,10 @@ export function PatientAppointments() {
                     className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {booking
-                      ? 'Booking...'
-                      : appointmentType === 'TELEMEDICINE'
-                        ? 'Book and Create Video Session'
-                        : 'Book Selected Slot'}
+                      ? "Booking..."
+                      : appointmentType === "TELEMEDICINE"
+                        ? "Book and Create Video Session"
+                        : "Book Selected Slot"}
                   </button>
                 </div>
 
@@ -980,27 +1137,54 @@ export function PatientAppointments() {
             <div className="space-y-4">
               <div className="appointment-panel bg-primary p-4 text-surface lg:p-5">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-base font-semibold text-surface">Doctor Profile</h3>
-                  {loading && <span className="text-xs text-surface/80">Loading...</span>}
+                  <h3 className="text-base font-semibold text-surface">
+                    Doctor Profile
+                  </h3>
+                  {loading && (
+                    <span className="text-xs text-surface/80">Loading...</span>
+                  )}
                 </div>
                 <div className="mt-4 flex items-center gap-3">
-                  <div className="doctor-profile-avatar border-surface/35 bg-surface/15 text-surface">{doctorInitials(selectedDoctor)}</div>
+                  <div className="doctor-profile-avatar border-surface/35 bg-surface/15 text-surface">
+                    {doctorInitials(selectedDoctor)}
+                  </div>
                   <div>
-                    <p className="font-semibold text-surface">{selectedDoctor?.name ?? 'No doctor selected'}</p>
-                    <p className="text-sm text-surface/80">{selectedDoctor?.specialty ?? 'Specialty'}</p>
+                    <p className="font-semibold text-surface">
+                      {selectedDoctor?.name ?? "No doctor selected"}
+                    </p>
+                    <p className="text-sm text-surface/80">
+                      {selectedDoctor?.specialty ?? "Specialty"}
+                    </p>
                   </div>
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-2">
-                  <button type="button" className="day-pill border-surface/30 bg-surface/10 text-surface hover:text-surface">Chat</button>
-                  <button type="button" className="day-pill border-surface/30 bg-surface/10 text-surface hover:text-surface">Call</button>
-                  <button type="button" className="day-pill border-surface/30 bg-surface/10 text-surface hover:text-surface">Info</button>
+                  <button
+                    type="button"
+                    className="day-pill border-surface/30 bg-surface/10 text-surface hover:text-surface"
+                  >
+                    Chat
+                  </button>
+                  <button
+                    type="button"
+                    className="day-pill border-surface/30 bg-surface/10 text-surface hover:text-surface"
+                  >
+                    Call
+                  </button>
+                  <button
+                    type="button"
+                    className="day-pill border-surface/30 bg-surface/10 text-surface hover:text-surface"
+                  >
+                    Info
+                  </button>
                 </div>
                 <div className="mt-4 rounded-xl border border-surface/20 bg-surface/10 p-3">
-                  <p className="text-xs uppercase tracking-wide text-surface/70">Biography</p>
+                  <p className="text-xs uppercase tracking-wide text-surface/70">
+                    Biography
+                  </p>
                   <p className="mt-2 text-sm text-surface">
                     {selectedDoctor
                       ? `${selectedDoctor.name} specializes in ${selectedDoctor.specialty}.`
-                      : 'Select a doctor to view profile details.'}
+                      : "Select a doctor to view profile details."}
                   </p>
                 </div>
               </div>
@@ -1009,23 +1193,24 @@ export function PatientAppointments() {
         </>
       )}
 
-      {activeTab === 'bookings' && (
+      {activeTab === "bookings" && (
         <div className="appointment-panel p-4 lg:p-5">
           <h2 className="text-lg font-semibold text-primary">My Bookings</h2>
           <p className="mt-1 text-sm text-text-secondary">
-            Calendar view for patient ID: {patientId}. Dates with bookings are marked.
+            Calendar view for patient ID: {patientId}. Dates with bookings are
+            marked.
           </p>
 
-            <div className="mt-4 space-y-5">
-              <button
-                type="button"
-                onClick={() => setShowBookingCalendar((v) => !v)}
-                className="inline-flex items-center gap-2 rounded-xl border border-text-secondary/20 bg-surface px-3 py-2 text-sm font-medium text-primary"
-              >
-                {showBookingCalendar ? 'Hide Calendar' : 'Show Calendar'}
-              </button>
+          <div className="mt-4 space-y-5">
+            <button
+              type="button"
+              onClick={() => setShowBookingCalendar((v) => !v)}
+              className="inline-flex items-center gap-2 rounded-xl border border-text-secondary/20 bg-surface px-3 py-2 text-sm font-medium text-primary"
+            >
+              {showBookingCalendar ? "Hide Calendar" : "Show Calendar"}
+            </button>
 
-              {showBookingCalendar && (
+            {showBookingCalendar && (
               <div className="calendar-surface rounded-2xl border border-text-secondary/15 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <button
@@ -1033,9 +1218,9 @@ export function PatientAppointments() {
                     onClick={() => setShowBookingMonthPicker((v) => !v)}
                     className="text-base font-semibold text-primary underline-offset-2 hover:underline"
                   >
-                    {bookingMonth.toLocaleDateString('en-GB', {
-                      month: 'long',
-                      year: 'numeric',
+                    {bookingMonth.toLocaleDateString("en-GB", {
+                      month: "long",
+                      year: "numeric",
                     })}
                   </button>
 
@@ -1067,13 +1252,15 @@ export function PatientAppointments() {
                           new Date(
                             bookingMonth.getFullYear(),
                             Number(e.target.value),
-                            1
-                          )
+                            1,
+                          ),
                         )
                       }
                     >
                       {MONTH_NAMES.map((name, idx) => (
-                        <option key={name} value={idx}>{name}</option>
+                        <option key={name} value={idx}>
+                          {name}
+                        </option>
                       ))}
                     </select>
                     <select
@@ -1084,13 +1271,15 @@ export function PatientAppointments() {
                           new Date(
                             Number(e.target.value),
                             bookingMonth.getMonth(),
-                            1
-                          )
+                            1,
+                          ),
                         )
                       }
                     >
                       {bookingYearOptions.map((year) => (
-                        <option key={year} value={year}>{year}</option>
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
                       ))}
                     </select>
                     <button
@@ -1104,28 +1293,34 @@ export function PatientAppointments() {
                 )}
 
                 <div className="mt-4 grid grid-cols-7 gap-1 text-center text-xs font-semibold text-text-secondary">
-                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-                    <div key={d} className="py-1">{d}</div>
-                  ))}
+                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+                    (d) => (
+                      <div key={d} className="py-1">
+                        {d}
+                      </div>
+                    ),
+                  )}
                 </div>
 
                 <div className="mt-1 grid grid-cols-7 gap-1">
                   {bookingCalendarCells.map((cell) => {
-                    const dayBookings = bookingsByDate[cell.dateKey] ?? []
-                    const marked = dayBookings.length > 0
-                    const selected = selectedBookingDate === cell.dateKey
+                    const dayBookings = bookingsByDate[cell.dateKey] ?? [];
+                    const marked = dayBookings.length > 0;
+                    const selected = selectedBookingDate === cell.dateKey;
                     return (
                       <div
                         key={cell.dateKey}
-                        onClick={() => handleBookingCalendarDateClick(cell.dateKey)}
+                        onClick={() =>
+                          handleBookingCalendarDateClick(cell.dateKey)
+                        }
                         className={`min-h-24 rounded-lg border px-1 py-1 text-left text-xs transition ${
                           selected
-                            ? 'border-primary-light/40 bg-primary-light/10 text-primary'
+                            ? "border-primary-light/40 bg-primary-light/10 text-primary"
                             : marked
-                              ? 'border-accent-mint/45 bg-accent-mint/20 text-primary'
+                              ? "border-accent-mint/45 bg-accent-mint/20 text-primary"
                               : cell.inMonth
-                                ? 'border-text-secondary/15 bg-surface text-primary'
-                              : 'border-text-secondary/10 bg-background/40 text-text-secondary/70'
+                                ? "border-text-secondary/15 bg-surface text-primary"
+                                : "border-text-secondary/10 bg-background/40 text-text-secondary/70"
                         }`}
                       >
                         <div className="flex items-center justify-between">
@@ -1139,26 +1334,28 @@ export function PatientAppointments() {
 
                         <div className="mt-1 space-y-1">
                           {dayBookings.slice(0, 2).map((appt) => {
-                            const apptTime = new Date(appt.appointmentTime).toLocaleTimeString('en-GB', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })
+                            const apptTime = new Date(
+                              appt.appointmentTime,
+                            ).toLocaleTimeString("en-GB", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            });
                             return (
                               <button
                                 key={appt.id}
                                 type="button"
                                 onClick={(e) => {
-                                  e.stopPropagation()
-                                  setPopupBooking(appt)
+                                  e.stopPropagation();
+                                  setPopupBooking(appt);
                                 }}
                                 className={`w-full truncate rounded-md px-1.5 py-1 text-left text-[10px] font-medium ${statusPastelClass(
-                                  String(appt.status)
+                                  String(appt.status),
                                 )}`}
                                 title={`${apptTime} - ${appt.doctorName ?? appt.doctorId}`}
                               >
                                 {apptTime} {appt.doctorName ?? appt.doctorId}
                               </button>
-                            )
+                            );
                           })}
                           {dayBookings.length > 2 && (
                             <div className="px-1 text-[10px] font-medium text-text-secondary">
@@ -1167,13 +1364,14 @@ export function PatientAppointments() {
                           )}
                         </div>
                       </div>
-                    )
+                    );
                   })}
                 </div>
 
                 <div className="mt-4">
                   <h4 className="text-sm font-semibold text-primary">
-                    {dateLabel(selectedBookingDate)} ({bookingsForSelectedDate.length})
+                    {dateLabel(selectedBookingDate)} (
+                    {bookingsForSelectedDate.length})
                   </h4>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {bookingsForSelectedDate.length === 0 ? (
@@ -1182,30 +1380,33 @@ export function PatientAppointments() {
                       </div>
                     ) : (
                       bookingsForSelectedDate.map((appt) => {
-                        const date = new Date(appt.appointmentTime)
+                        const date = new Date(appt.appointmentTime);
                         return (
                           <button
                             key={appt.id}
                             type="button"
                             onClick={() => setPopupBooking(appt)}
                             className={`rounded-xl px-3 py-2 text-left text-xs font-medium ${statusPastelClass(
-                              String(appt.status)
+                              String(appt.status),
                             )}`}
                           >
                             <div className="flex flex-wrap items-center gap-2">
                               <span
                                 className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${statusPastelClass(
-                                  appt.status
+                                  appt.status,
                                 )}`}
                               >
-                                {bookingStatusLabel(appt, telemedicineSessions[appt.id])}
+                                {bookingStatusLabel(
+                                  appt,
+                                  telemedicineSessions[appt.id],
+                                )}
                               </span>
-                              {appt.status.toUpperCase() === 'PENDING' && (
+                              {appt.status.toUpperCase() === "PENDING" && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
-                                    e.stopPropagation()
-                                    navigate(`/patient/checkout/${appt.id}`)
+                                    e.stopPropagation();
+                                    navigate(`/patient/checkout/${appt.id}`);
                                   }}
                                   className="rounded-full bg-primary px-3 py-0.5 text-[10px] font-bold text-surface transition hover:bg-primary/90"
                                 >
@@ -1213,13 +1414,13 @@ export function PatientAppointments() {
                                 </button>
                               )}
                             </div>
-                            {date.toLocaleTimeString('en-GB', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}{' '}
+                            {date.toLocaleTimeString("en-GB", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}{" "}
                             {appt.doctorName ?? appt.doctorId}
                           </button>
-                        )
+                        );
                       })
                     )}
                   </div>
@@ -1229,15 +1430,17 @@ export function PatientAppointments() {
                   Previous dates are view-only.
                 </p>
               </div>
-              )}
+            )}
 
-              <div className="overflow-x-auto rounded-2xl border border-text-secondary/15 bg-background/40 p-4">
-                <h3 className="mb-3 text-base font-semibold text-primary">All Bookings</h3>
-                {sortedMyAppointments.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-4 py-6 text-center text-sm text-text-secondary">
-                    No bookings yet.
-                  </div>
-                ) : (
+            <div className="overflow-x-auto rounded-2xl border border-text-secondary/15 bg-background/40 p-4">
+              <h3 className="mb-3 text-base font-semibold text-primary">
+                All Bookings
+              </h3>
+              {sortedMyAppointments.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-4 py-6 text-center text-sm text-text-secondary">
+                  No bookings yet.
+                </div>
+              ) : (
                 <table className="w-full min-w-[52rem] text-left text-sm">
                   <thead>
                     <tr className="border-b border-text-secondary/20 text-text-secondary">
@@ -1252,32 +1455,46 @@ export function PatientAppointments() {
                   </thead>
                   <tbody>
                     {sortedMyAppointments.map((appt) => {
-                      const date = new Date(appt.appointmentTime)
-                      const telemedSession = telemedicineSessions[appt.id]
-                      const canJoin = canJoinTelemedicine(appt, telemedSession)
+                      const date = new Date(appt.appointmentTime);
+                      const telemedSession = telemedicineSessions[appt.id];
+                      const canJoin = canJoinTelemedicine(appt, telemedSession);
                       return (
                         <tr
                           key={appt.id}
                           className="border-b border-text-secondary/10 hover:bg-background/40"
                         >
-                          <td className="px-3 py-2">{appt.doctorName ?? appt.doctorId}</td>
-                          <td className="px-3 py-2">{appt.doctorSpecialty ?? '-'}</td>
-                          <td className="px-3 py-2">{date.toLocaleDateString('en-GB')}</td>
                           <td className="px-3 py-2">
-                            {date.toLocaleTimeString('en-GB', {
-                              hour: '2-digit',
-                              minute: '2-digit',
+                            {appt.doctorName ?? appt.doctorId}
+                          </td>
+                          <td className="px-3 py-2">
+                            {appt.doctorSpecialty ?? "-"}
+                          </td>
+                          <td className="px-3 py-2">
+                            {date.toLocaleDateString("en-GB")}
+                          </td>
+                          <td className="px-3 py-2">
+                            {date.toLocaleTimeString("en-GB", {
+                              hour: "2-digit",
+                              minute: "2-digit",
                             })}
                           </td>
-                          <td className="px-3 py-2">{appt.type === 'TELEMEDICINE' ? 'Video' : 'In-person'}</td>
                           <td className="px-3 py-2">
-                            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusPastelClass(String(appt.status))}`}>
+                            {appt.type === "TELEMEDICINE"
+                              ? "Video"
+                              : "In-person"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusPastelClass(String(appt.status))}`}
+                            >
                               {bookingStatusLabel(appt, telemedSession)}
                             </span>
                           </td>
                           <td className="px-3 py-2">
-                            {appt.type !== 'TELEMEDICINE' ? (
-                              <span className="text-xs text-text-secondary">-</span>
+                            {appt.type !== "TELEMEDICINE" ? (
+                              <span className="text-xs text-text-secondary">
+                                -
+                              </span>
                             ) : canJoin ? (
                               <Link
                                 to={`/patient/telemedicine/${appt.id}`}
@@ -1292,23 +1509,30 @@ export function PatientAppointments() {
                             )}
                           </td>
                         </tr>
-                      )
+                      );
                     })}
                   </tbody>
                 </table>
-                )}
-              </div>
+              )}
             </div>
+          </div>
         </div>
       )}
 
       {popupBooking && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl bg-surface p-5" style={{ boxShadow: 'var(--shadow-card)' }}>
+          <div
+            className="w-full max-w-lg rounded-2xl bg-surface p-5"
+            style={{ boxShadow: "var(--shadow-card)" }}
+          >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-primary">Booking Details</h3>
-                <p className="text-sm text-text-secondary">Click outside or close to dismiss.</p>
+                <h3 className="text-lg font-semibold text-primary">
+                  Booking Details
+                </h3>
+                <p className="text-sm text-text-secondary">
+                  Click outside or close to dismiss.
+                </p>
               </div>
               <button
                 type="button"
@@ -1320,34 +1544,74 @@ export function PatientAppointments() {
             </div>
 
             <div className="mt-4 space-y-2 text-sm">
-              <p><span className="font-medium text-primary">Doctor:</span> {popupBooking.doctorName ?? popupBooking.doctorId}</p>
-              <p><span className="font-medium text-primary">Specialty:</span> {popupBooking.doctorSpecialty ?? '-'}</p>
-              <p><span className="font-medium text-primary">Date:</span> {new Date(popupBooking.appointmentTime).toLocaleDateString('en-GB')}</p>
-              <p><span className="font-medium text-primary">Time:</span> {new Date(popupBooking.appointmentTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>
-              <p><span className="font-medium text-primary">Type:</span> {popupBooking.type === 'TELEMEDICINE' ? 'Video' : 'In-person'}</p>
-              <p><span className="font-medium text-primary">Status:</span> {bookingStatusLabel(popupBooking, telemedicineSessions[popupBooking.id])}</p>
-              {popupBooking.type === 'TELEMEDICINE' && (
+              <p>
+                <span className="font-medium text-primary">Doctor:</span>{" "}
+                {popupBooking.doctorName ?? popupBooking.doctorId}
+              </p>
+              <p>
+                <span className="font-medium text-primary">Specialty:</span>{" "}
+                {popupBooking.doctorSpecialty ?? "-"}
+              </p>
+              <p>
+                <span className="font-medium text-primary">Date:</span>{" "}
+                {new Date(popupBooking.appointmentTime).toLocaleDateString(
+                  "en-GB",
+                )}
+              </p>
+              <p>
+                <span className="font-medium text-primary">Time:</span>{" "}
+                {new Date(popupBooking.appointmentTime).toLocaleTimeString(
+                  "en-GB",
+                  { hour: "2-digit", minute: "2-digit" },
+                )}
+              </p>
+              <p>
+                <span className="font-medium text-primary">Type:</span>{" "}
+                {popupBooking.type === "TELEMEDICINE" ? "Video" : "In-person"}
+              </p>
+              <p>
+                <span className="font-medium text-primary">Status:</span>{" "}
+                {bookingStatusLabel(
+                  popupBooking,
+                  telemedicineSessions[popupBooking.id],
+                )}
+              </p>
+              {popupBooking.type === "TELEMEDICINE" && (
                 <p>
-                  <span className="font-medium text-primary">Telemedicine:</span>{' '}
-                  {telemedicineStateLabel(popupBooking, telemedicineSessions[popupBooking.id])}
+                  <span className="font-medium text-primary">
+                    Telemedicine:
+                  </span>{" "}
+                  {telemedicineStateLabel(
+                    popupBooking,
+                    telemedicineSessions[popupBooking.id],
+                  )}
                 </p>
               )}
-              {popupBooking.notes && <p><span className="font-medium text-primary">Notes:</span> {popupBooking.notes}</p>}
+              {popupBooking.notes && (
+                <p>
+                  <span className="font-medium text-primary">Notes:</span>{" "}
+                  {popupBooking.notes}
+                </p>
+              )}
             </div>
 
-            {popupBooking.type === 'TELEMEDICINE' && canJoinTelemedicine(popupBooking, telemedicineSessions[popupBooking.id]) && (
-              <div className="mt-4">
-                <Link
-                  to={`/patient/telemedicine/${popupBooking.id}`}
-                  className="btn-primary inline-flex items-center justify-center px-4 py-2 text-sm"
-                >
-                  Open Telemedicine Room
-                </Link>
-              </div>
-            )}
+            {popupBooking.type === "TELEMEDICINE" &&
+              canJoinTelemedicine(
+                popupBooking,
+                telemedicineSessions[popupBooking.id],
+              ) && (
+                <div className="mt-4">
+                  <Link
+                    to={`/patient/telemedicine/${popupBooking.id}`}
+                    className="btn-primary inline-flex items-center justify-center px-4 py-2 text-sm"
+                  >
+                    Open Telemedicine Room
+                  </Link>
+                </div>
+              )}
           </div>
         </div>
       )}
     </div>
-  )
+  );
 }

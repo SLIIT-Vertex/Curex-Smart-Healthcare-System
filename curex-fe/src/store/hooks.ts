@@ -26,6 +26,12 @@ export function useRole() {
   return useAppSelector((s) => s.auth.user?.role ?? null)
 }
 
+/** Convenience selector for the multi-step registration form state */
+export function useRegister() {
+  return useAppSelector((s) => s.register)
+}
+
+
 /**
  * Returns auth action helpers. Must be called inside BrowserRouter
  * because it uses useNavigate internally.

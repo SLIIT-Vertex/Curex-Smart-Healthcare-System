@@ -4,12 +4,14 @@ import com.curex.notification.entity.Notification;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface NotificationRepository extends JpaRepository<Notification, String> {
@@ -47,6 +49,13 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
      */
     Page<Notification> findByUserIdOrderByCreatedAtDesc(String userId, Pageable pageable);
 
+    Page<Notification> findByUserIdAndReadStatusOrderByCreatedAtDesc(
+           String userId,
+           Notification.NotificationReadStatus readStatus,
+           Pageable pageable);
+
+    Optional<Notification> findByIdAndUserId(String id, String userId);
+
     /**
      * Find notifications by multiple criteria
      */
@@ -74,6 +83,8 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
      */
     long countByUserIdAndStatus(String userId, Notification.NotificationStatus status);
 
+       long countByUserIdAndReadStatus(String userId, Notification.NotificationReadStatus readStatus);
+
     /**
      * Find notifications created between dates
      */
@@ -89,9 +100,23 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
     /**
      * Delete old notifications (cleanup job)
      */
+    @Modifying
     @Query("DELETE FROM Notification n WHERE n.createdAt < :cutoffDate AND " +
            "n.status NOT IN ('PENDING', 'PROCESSING')")
     void deleteOldNotifications(@Param("cutoffDate") LocalDateTime cutoffDate);
+
+    @Modifying
+    @Query("UPDATE Notification n SET n.readStatus = 'READ', n.readAt = :readAt " +
+           "WHERE n.id = :notificationId AND n.userId = :userId AND n.readStatus = 'UNREAD'")
+    int markAsRead(@Param("userId") String userId,
+                   @Param("notificationId") String notificationId,
+                   @Param("readAt") LocalDateTime readAt);
+
+    @Modifying
+    @Query("UPDATE Notification n SET n.readStatus = 'READ', n.readAt = :readAt " +
+           "WHERE n.userId = :userId AND n.readStatus = 'UNREAD'")
+    int markAllAsRead(@Param("userId") String userId,
+                      @Param("readAt") LocalDateTime readAt);
 
     /**
      * Get notification statistics

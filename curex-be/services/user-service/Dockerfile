@@ -6,10 +6,12 @@ WORKDIR /app
 
 # Copy pom.xml first so Maven dependency layer is cached separately from source
 COPY pom.xml .
-RUN mvn dependency:go-offline -q
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn dependency:go-offline -q
 
 COPY src ./src
-RUN mvn clean package -DskipTests -q
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn clean package -DskipTests -q
 
 #  Stage 2: Runtime 
 # eclipse-temurin:17-jre-jammy — JRE only, ~200 MB smaller than JDK image

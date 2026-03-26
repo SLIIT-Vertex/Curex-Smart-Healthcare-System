@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { Menu, Bell } from 'lucide-react'
 import { useAuth } from '../../../store/hooks'
 
@@ -32,9 +33,15 @@ export function AdminTopBar({ onMenuClick }: AdminTopBarProps) {
           <Bell className="h-5 w-5" strokeWidth={1.5} />
         </button>
 
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-surface">
-            {user?.firstName?.[0] ?? 'A'}
+        <Link
+          to="/admin/profile"
+          className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition-all duration-200 hover:bg-primary-light/5"
+          aria-label="Go to profile"
+        >
+          <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-primary text-sm font-semibold text-surface">
+            {user?.profileImageUrl
+              ? <img src={user.profileImageUrl} alt="" className="h-full w-full object-cover" />
+              : (user?.firstName?.[0] ?? 'A')}
           </div>
           <div className="hidden flex-col sm:flex">
             <span className="text-sm font-medium text-primary leading-tight">
@@ -42,7 +49,7 @@ export function AdminTopBar({ onMenuClick }: AdminTopBarProps) {
             </span>
             <span className="text-xs text-text-secondary">Admin</span>
           </div>
-        </div>
+        </Link>
       </div>
     </header>
   )

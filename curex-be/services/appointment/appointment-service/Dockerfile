@@ -4,11 +4,13 @@ WORKDIR /app
 
 # Copy pom first (layer caching – dependencies don't re-download unless pom changes)
 COPY pom.xml .
-RUN mvn dependency:go-offline -B
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn dependency:go-offline -B
 
 # Copy source and build
 COPY src ./src
-RUN mvn clean package -DskipTests -B
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn clean package -DskipTests -B
 
 # Runtime stage
 FROM eclipse-temurin:17-jre-jammy

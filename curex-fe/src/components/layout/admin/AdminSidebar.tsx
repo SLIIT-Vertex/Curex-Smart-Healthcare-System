@@ -3,12 +3,11 @@ import {
   LayoutDashboard,
   Users,
   UserCheck,
-  Bell,
   Settings,
   LogOut,
   ShieldCheck,
 } from 'lucide-react'
-import { useAuth, useAuthActions } from '../../../store/hooks'
+import { useAuthActions } from '../../../store/hooks'
 
 const LOGO_SRC = '/logo.svg'
 
@@ -16,7 +15,6 @@ const navLinks = [
   { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/admin/users', icon: Users, label: 'Users' },
   { to: '/admin/doctor-approval', icon: UserCheck, label: 'Doctor Approval' },
-  { to: '/admin/notifications', icon: Bell, label: 'Notifications' },
 ] as const
 
 interface AdminSidebarProps {
@@ -25,7 +23,6 @@ interface AdminSidebarProps {
 }
 
 export function AdminSidebar({ isOpen = true, onClose }: AdminSidebarProps) {
-  const { user } = useAuth()
   const { logout } = useAuthActions()
 
   return (
@@ -79,32 +76,24 @@ export function AdminSidebar({ isOpen = true, onClose }: AdminSidebarProps) {
                 {label}
               </NavLink>
             ))}
+          </nav>
 
-            <div className="my-2 border-t border-text-secondary/10" />
-
-            <span className="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-text-secondary" title="Coming soon">
-              <Settings className="h-5 w-5 shrink-0" strokeWidth={1.5} />
-              Settings
+          <div className="shrink-0 border-t border-text-secondary/10 p-4">
+            <span
+                className="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-text-secondary"
+                title="Coming soon"
+              >
+                <Settings className="h-5 w-5 shrink-0" strokeWidth={1.5} />
+                Settings
             </span>
-
             <button
               type="button"
-              className="sidebar-link flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-text-secondary transition-colors hover:bg-error/5 hover:text-error"
+              className="sidebar-link flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-text-secondary transition-colors hover:bg-primary-light/5 hover:text-primary"
               onClick={logout}
             >
               <LogOut className="h-5 w-5 shrink-0" strokeWidth={1.5} />
               Sign out
             </button>
-          </nav>
-
-          {/* Bottom profile card */}
-          <div className="shrink-0 border-t border-text-secondary/10 p-4">
-            <div className="rounded-xl bg-primary px-4 py-3">
-              <p className="text-sm font-semibold text-surface">
-                {user ? `${user.firstName} ${user.lastName}` : 'Admin'}
-              </p>
-              <p className="text-xs text-surface/60">Platform Administrator</p>
-            </div>
           </div>
         </div>
       </aside>

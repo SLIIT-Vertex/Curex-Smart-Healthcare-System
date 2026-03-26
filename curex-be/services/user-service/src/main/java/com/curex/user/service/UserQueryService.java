@@ -53,7 +53,8 @@ public class UserQueryService {
 
     /** Paginated search across APPROVED users. Filters by name (first/last/email) and/or role. */
     public Page<UserResponse> searchApprovedUsers(String name, User.Role role, int page, int size) {
-        return userRepository.searchUsers(role, User.AccountStatus.APPROVED, name, PageRequest.of(page, size))
+        String normalizedName = name == null ? "" : name.trim();
+        return userRepository.searchUsers(role, User.AccountStatus.APPROVED, normalizedName, PageRequest.of(page, size))
                 .map(UserResponse::new);
     }
 

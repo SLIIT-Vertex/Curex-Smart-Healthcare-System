@@ -9,4 +9,4 @@ export interface Report {
   downloadUrl: string
 }
 
-export interface ReportUploadResponse extends Report {}
+export type ReportUploadResponse = Report;

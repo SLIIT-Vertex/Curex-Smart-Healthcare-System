@@ -46,11 +46,12 @@ public class NotificationController {
     @GetMapping("/user/{userId}")
     public ResponseEntity<Map<String, Object>> getUserNotifications(
             @PathVariable String userId,
+                        @RequestParam(required = false) Notification.NotificationReadStatus readStatus,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
         Page<NotificationResponse> notifications =
-                notificationService.getUserNotifications(userId, page, size);
+                                notificationService.getUserNotifications(userId, readStatus, page, size);
         return ResponseEntity.ok(Map.of(
                 "notifications", notifications.getContent(),
                 "currentPage", notifications.getNumber(),
@@ -60,6 +61,29 @@ public class NotificationController {
                 "hasPrevious", notifications.hasPrevious()
         ));
     }
+
+        @GetMapping("/user/{userId}/unread-count")
+        public ResponseEntity<Map<String, Object>> getUnreadCount(@PathVariable String userId) {
+                long unreadCount = notificationService.getUnreadCount(userId);
+                return ResponseEntity.ok(Map.of("userId", userId, "unreadCount", unreadCount));
+        }
+
+        @PutMapping("/user/{userId}/{notificationId}/read")
+        public ResponseEntity<Map<String, String>> markAsRead(
+                        @PathVariable String userId,
+                        @PathVariable String notificationId) {
+                notificationService.markAsRead(userId, notificationId);
+                return ResponseEntity.ok(Map.of("message", "Notification marked as read"));
+        }
+
+        @PutMapping("/user/{userId}/read-all")
+        public ResponseEntity<Map<String, Object>> markAllAsRead(@PathVariable String userId) {
+                int updatedCount = notificationService.markAllAsRead(userId);
+                return ResponseEntity.ok(Map.of(
+                                "message", "Notifications marked as read",
+                                "updatedCount", updatedCount
+                ));
+        }
 
     @GetMapping("/{notificationId}")
     public ResponseEntity<NotificationResponse> getNotificationById(

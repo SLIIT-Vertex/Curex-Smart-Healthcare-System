@@ -1,20 +1,18 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
-  User,
   CalendarClock,
   ClipboardList,
   Video,
   Settings,
   LogOut,
 } from 'lucide-react'
-import { useAuth, useAuthActions } from '../../../store/hooks'
+import { useAuthActions } from '../../../store/hooks'
 
 const LOGO_SRC = '/logo.svg'
 
 const navLinks = [
   { to: '/doctor/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/doctor/profile', icon: User, label: 'Profile' },
   { to: '/doctor/availability', icon: CalendarClock, label: 'Availability' },
   { to: '/doctor/telemedicine', icon: Video, label: 'Telemedicine' },
   { to: '/doctor/prescriptions', icon: ClipboardList, label: 'Prescriptions' },
@@ -26,7 +24,6 @@ interface DoctorSidebarProps {
 }
 
 export function DoctorSidebar({ isOpen = true, onClose }: DoctorSidebarProps) {
-  const { user } = useAuth()
   const { logout } = useAuthActions()
 
   return (
@@ -84,15 +81,15 @@ export function DoctorSidebar({ isOpen = true, onClose }: DoctorSidebarProps) {
                 {label}
               </NavLink>
             ))}
+          </nav>
 
-            <div className="my-2 border-t border-text-secondary/10" />
-
+          <div className="shrink-0 border-t border-text-secondary/10 p-4">
             <span
-              className="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-text-secondary"
-              title="Coming soon"
-            >
-              <Settings className="h-5 w-5 shrink-0" strokeWidth={1.5} />
-              Settings
+                className="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-text-secondary"
+                title="Coming soon"
+              >
+                <Settings className="h-5 w-5 shrink-0" strokeWidth={1.5} />
+                Settings
             </span>
             <button
               type="button"
@@ -102,16 +99,6 @@ export function DoctorSidebar({ isOpen = true, onClose }: DoctorSidebarProps) {
               <LogOut className="h-5 w-5 shrink-0" strokeWidth={1.5} />
               Sign out
             </button>
-          </nav>
-
-          {/* Bottom profile card */}
-          <div className="shrink-0 border-t border-text-secondary/10 p-4">
-            <div className="rounded-xl bg-background px-4 py-3">
-              <p className="text-sm font-semibold text-primary">
-                {user ? `Dr. ${user.firstName} ${user.lastName}` : 'Doctor'}
-              </p>
-              <p className="text-xs text-text-secondary">Doctor</p>
-            </div>
           </div>
         </div>
       </aside>
