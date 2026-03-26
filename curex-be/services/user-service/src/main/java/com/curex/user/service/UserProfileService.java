@@ -1,5 +1,7 @@
 package com.curex.user.service;
 
+import com.curex.user.dto.NotificationPreferencesRequest;
+import com.curex.user.dto.NotificationPreferencesResponse;
 import com.curex.user.dto.UpdateProfileRequest;
 import com.curex.user.dto.UserResponse;
 import com.curex.user.entity.User;
@@ -69,5 +71,43 @@ public class UserProfileService {
         log.info("Profile updated for user: {}", saved.getEmail());
 
         return new UserResponse(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public NotificationPreferencesResponse getNotificationPreferencesByEmail(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException(email));
+        return new NotificationPreferencesResponse(user);
+    }
+
+    @Transactional(readOnly = true)
+    public NotificationPreferencesResponse getNotificationPreferencesByUserId(String userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException(userId));
+        return new NotificationPreferencesResponse(user);
+    }
+
+    public NotificationPreferencesResponse updateNotificationPreferences(
+            String email,
+            NotificationPreferencesRequest request
+    ) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException(email));
+
+        if (request.getAppointmentReminders() != null) {
+            user.setNotifyAppointmentReminders(request.getAppointmentReminders());
+        }
+        if (request.getPrescriptionAlerts() != null) {
+            user.setNotifyPrescriptionAlerts(request.getPrescriptionAlerts());
+        }
+        if (request.getPaymentAlerts() != null) {
+            user.setNotifyPaymentAlerts(request.getPaymentAlerts());
+        }
+        if (request.getEmailDigest() != null) {
+            user.setNotifyEmailDigest(request.getEmailDigest());
+        }
+
+        User saved = userRepository.save(user);
+        return new NotificationPreferencesResponse(saved);
     }
 }

@@ -34,6 +34,21 @@ export interface ChangePasswordRequest {
   newPassword: string;
 }
 
+export interface NotificationPreferences {
+  userId?: string;
+  appointmentReminders: boolean;
+  prescriptionAlerts: boolean;
+  paymentAlerts: boolean;
+  emailDigest: boolean;
+}
+
+export interface UpdateNotificationPreferencesRequest {
+  appointmentReminders?: boolean;
+  prescriptionAlerts?: boolean;
+  paymentAlerts?: boolean;
+  emailDigest?: boolean;
+}
+
 export interface RegisterRequest {
   // Required identity
   email: string;

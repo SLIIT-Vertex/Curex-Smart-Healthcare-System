@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { authService } from "../../services/authService";
 import { getApiErrorMessage } from "../../services/axiosInstance";
+import { userService } from "../../services/userService";
 import { useAuth, useToast } from "../../store/hooks";
 import type { Role } from "../../types/auth";
 
@@ -77,6 +79,8 @@ export function SettingsPage() {
     () => `curex-ui-preferences-${user?.id ?? "anonymous"}`,
     [user?.id],
   );
+  const notificationPrefsLoadedRef = useRef(false);
+  const skipNextNotificationPersistRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -101,8 +105,54 @@ export function SettingsPage() {
   }, [preferencesStorageKey]);
 
   useEffect(() => {
+    if (!user?.id) return;
+
+    let active = true;
+    userService
+      .getMyNotificationPreferences()
+      .then((data) => {
+        if (!active) return;
+        skipNextNotificationPersistRef.current = true;
+        setNotifications({
+          appointmentReminders: data.appointmentReminders,
+          prescriptionAlerts: data.prescriptionAlerts,
+          paymentAlerts: data.paymentAlerts,
+          emailDigest: data.emailDigest,
+        });
+      })
+      .catch(() => {
+        // Keep local defaults/fallback on fetch failure.
+      })
+      .finally(() => {
+        if (active) {
+          notificationPrefsLoadedRef.current = true;
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
     localStorage.setItem(settingsStorageKey, JSON.stringify(notifications));
     window.dispatchEvent(new Event("curex:notification-preferences-changed"));
+
+    if (!user?.id || !notificationPrefsLoadedRef.current) {
+      return;
+    }
+
+    if (skipNextNotificationPersistRef.current) {
+      skipNextNotificationPersistRef.current = false;
+      return;
+    }
+
+    void userService.updateMyNotificationPreferences({
+      appointmentReminders: notifications.appointmentReminders,
+      prescriptionAlerts: notifications.prescriptionAlerts,
+      paymentAlerts: notifications.paymentAlerts,
+      emailDigest: notifications.emailDigest,
+    });
   }, [notifications, settingsStorageKey]);
 
   useEffect(() => {

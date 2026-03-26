@@ -1,5 +1,6 @@
 package com.curex.notification.consumer;
 
+import com.curex.notification.client.UserPreferenceClient;
 import com.curex.notification.dto.NotificationRequest;
 import com.curex.notification.entity.Notification;
 import com.curex.notification.service.NotificationService;
@@ -27,6 +28,7 @@ import java.util.Map;
 public class NotificationEventConsumer {
 
     private final NotificationService notificationService;
+    private final UserPreferenceClient userPreferenceClient;
 
     // ── User registration ─────────────────────────────────────────────────────
 
@@ -170,6 +172,13 @@ public class NotificationEventConsumer {
             String appointmentTime = (String) event.get("appointmentTime");
             String patientPhone    = (String) event.get("patientPhone");
 
+            UserPreferenceClient.NotificationPreferences preferences =
+                    userPreferenceClient.getNotificationPreferences(patientId);
+            if (!preferences.isAppointmentRemindersEnabled()) {
+                log.info("Skipping appointment notification for user {} due to preference", patientId);
+                return;
+            }
+
                 if (patientEmail != null && !patientEmail.isBlank()) {
                 notificationService.sendNotificationAsync(NotificationRequest.builder()
                     .userId(patientId)
@@ -224,6 +233,13 @@ public class NotificationEventConsumer {
             String amount        = (String) event.get("amount");
             String appointmentId = (String) event.get("appointmentId");
 
+            UserPreferenceClient.NotificationPreferences preferences =
+                    userPreferenceClient.getNotificationPreferences(patientId);
+            if (!preferences.isPaymentAlertsEnabled()) {
+                log.info("Skipping payment notification for user {} due to preference", patientId);
+                return;
+            }
+
             if (patientEmail != null && !patientEmail.isBlank()) {
                 notificationService.sendNotificationAsync(NotificationRequest.builder()
                         .userId(patientId)
@@ -260,6 +276,13 @@ public class NotificationEventConsumer {
             String patientEmail   = (String) event.get("patientEmail");
             String doctorName     = (String) event.get("doctorName");
             String prescriptionId = (String) event.get("prescriptionId");
+
+            UserPreferenceClient.NotificationPreferences preferences =
+                    userPreferenceClient.getNotificationPreferences(patientId);
+            if (!preferences.isPrescriptionAlertsEnabled()) {
+                log.info("Skipping prescription notification for user {} due to preference", patientId);
+                return;
+            }
 
             String content = String.format("A new prescription from Dr. %s is ready. Prescription ID: %s.",
                     HtmlUtils.htmlEscape(doctorName),

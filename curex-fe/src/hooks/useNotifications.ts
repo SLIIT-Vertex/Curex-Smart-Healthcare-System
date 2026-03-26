@@ -42,7 +42,8 @@ function isAllowedBySettings(
   settings: NotificationSettings,
 ): boolean {
   const type = notification.type.toUpperCase();
-  const text = `${notification.subject} ${notification.content ?? ""}`.toLowerCase();
+  const text =
+    `${notification.subject} ${notification.content ?? ""}`.toLowerCase();
 
   if (!settings.appointmentReminders) {
     if (type.startsWith("APPOINTMENT_") || text.includes("appointment")) {
@@ -204,7 +205,10 @@ export function useNotifications() {
       void refresh(true);
     };
 
-    window.addEventListener("curex:notification-preferences-changed", onPreferenceChange);
+    window.addEventListener(
+      "curex:notification-preferences-changed",
+      onPreferenceChange,
+    );
     return () => {
       window.removeEventListener(
         "curex:notification-preferences-changed",
