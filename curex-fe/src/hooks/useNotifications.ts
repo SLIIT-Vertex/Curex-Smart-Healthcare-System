@@ -12,6 +12,65 @@ export type NotificationFilter = "ALL" | NotificationReadStatus;
 const POLL_INTERVAL_MS = 30000;
 const BELL_CHANNEL: NotificationChannel = "IN_APP";
 
+interface NotificationSettings {
+  appointmentReminders: boolean;
+  prescriptionAlerts: boolean;
+  paymentAlerts: boolean;
+  emailDigest: boolean;
+}
+
+const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  appointmentReminders: true,
+  prescriptionAlerts: true,
+  paymentAlerts: true,
+  emailDigest: false,
+};
+
+function getNotificationSettings(userId: string): NotificationSettings {
+  try {
+    const raw = localStorage.getItem(`curex-notification-settings-${userId}`);
+    if (!raw) return DEFAULT_NOTIFICATION_SETTINGS;
+    const parsed = JSON.parse(raw) as Partial<NotificationSettings>;
+    return { ...DEFAULT_NOTIFICATION_SETTINGS, ...parsed };
+  } catch {
+    return DEFAULT_NOTIFICATION_SETTINGS;
+  }
+}
+
+function isAllowedBySettings(
+  notification: NotificationItem,
+  settings: NotificationSettings,
+): boolean {
+  const type = notification.type.toUpperCase();
+  const text = `${notification.subject} ${notification.content ?? ""}`.toLowerCase();
+
+  if (!settings.appointmentReminders) {
+    if (type.startsWith("APPOINTMENT_") || text.includes("appointment")) {
+      return false;
+    }
+  }
+
+  if (!settings.prescriptionAlerts) {
+    if (type.startsWith("PRESCRIPTION_") || text.includes("prescription")) {
+      return false;
+    }
+  }
+
+  if (!settings.paymentAlerts) {
+    if (type.startsWith("PAYMENT_") || text.includes("payment")) {
+      return false;
+    }
+  }
+
+  if (!settings.emailDigest) {
+    if (text.includes("digest")) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export function useNotifications() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -37,6 +96,7 @@ export function useNotifications() {
 
       try {
         const readStatus = filter === "ALL" ? undefined : filter;
+        const settings = getNotificationSettings(userId);
         const listResponse = await notificationService.getUserNotifications(
           userId,
           {
@@ -50,9 +110,13 @@ export function useNotifications() {
           (notification) => notification.channel === BELL_CHANNEL,
         );
 
-        setNotifications(inAppNotifications);
+        const visibleNotifications = inAppNotifications.filter((notification) =>
+          isAllowedBySettings(notification, settings),
+        );
+
+        setNotifications(visibleNotifications);
         setUnreadCount(
-          inAppNotifications.filter(
+          visibleNotifications.filter(
             (notification) => notification.readStatus === "UNREAD",
           ).length,
         );
@@ -131,6 +195,22 @@ export function useNotifications() {
     }, POLL_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
+  }, [refresh, userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const onPreferenceChange = () => {
+      void refresh(true);
+    };
+
+    window.addEventListener("curex:notification-preferences-changed", onPreferenceChange);
+    return () => {
+      window.removeEventListener(
+        "curex:notification-preferences-changed",
+        onPreferenceChange,
+      );
+    };
   }, [refresh, userId]);
 
   const hasUnread = useMemo(() => unreadCount > 0, [unreadCount]);

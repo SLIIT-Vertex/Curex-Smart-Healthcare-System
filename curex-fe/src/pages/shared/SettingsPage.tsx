@@ -102,6 +102,7 @@ export function SettingsPage() {
 
   useEffect(() => {
     localStorage.setItem(settingsStorageKey, JSON.stringify(notifications));
+    window.dispatchEvent(new Event("curex:notification-preferences-changed"));
   }, [notifications, settingsStorageKey]);
 
   useEffect(() => {
