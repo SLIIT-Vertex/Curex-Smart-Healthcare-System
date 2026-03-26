@@ -159,7 +159,7 @@ public class AuthService {
      */
     @Transactional(readOnly = true)
     public boolean emailExists(String email) {
-        return userRepository.existsByEmail(email);
+        return userRepository.existsByEmail(email) || userRepository.isUserRejected(email) ;
     }
 
     @Transactional(readOnly = true)

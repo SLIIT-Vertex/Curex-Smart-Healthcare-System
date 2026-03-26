@@ -1,222 +1,245 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { Eye, Maximize2, Minimize2, RefreshCcw, Video, X } from 'lucide-react'
-import { getAppointmentsByPatient } from '../../services/appointmentService'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { Eye, Maximize2, Minimize2, RefreshCcw, Video, X } from "lucide-react";
+import { getAppointmentsByPatient } from "../../services/appointmentService";
 import {
   createTelemedicineSession,
   getTelemedicineSession,
-} from '../../services/telemedicineService'
-import type { AppointmentRecord } from '../../types/appointment'
-import type { TelemedicineSessionRecord } from '../../types/telemedicine'
-import telemedImage from '../../assets/telemed/telemed.png'
-import { useAuth } from '../../store/hooks'
+} from "../../services/telemedicineService";
+import type { AppointmentRecord } from "../../types/appointment";
+import type { TelemedicineSessionRecord } from "../../types/telemedicine";
+import telemedImage from "../../assets/telemed/telemed.png";
+import { useAuth } from "../../store/hooks";
 
 function canJoin(
   appointment: AppointmentRecord | null,
-  session: TelemedicineSessionRecord | null
+  session: TelemedicineSessionRecord | null,
 ): boolean {
-  if (!appointment || appointment.type !== 'TELEMEDICINE' || !session?.sessionUrl) {
-    return false
+  if (
+    !appointment ||
+    appointment.type !== "TELEMEDICINE" ||
+    !session?.sessionUrl
+  ) {
+    return false;
   }
 
   const statusEligible =
-    appointment.status === 'CONFIRMED' || appointment.status === 'IN_SESSION'
-  const joinOpensAt = new Date(appointment.appointmentTime).getTime() - 60 * 60 * 1000
-  const startsWithinOneHour = Date.now() >= joinOpensAt
+    appointment.status === "CONFIRMED" || appointment.status === "IN_SESSION";
+  const joinOpensAt =
+    new Date(appointment.appointmentTime).getTime() - 60 * 60 * 1000;
+  const startsWithinOneHour = Date.now() >= joinOpensAt;
 
-  return statusEligible && startsWithinOneHour
+  return statusEligible && startsWithinOneHour;
 }
 
 function formatDateTime(value?: string | null): string {
   if (!value) {
-    return '-'
+    return "-";
   }
 
-  const date = new Date(value)
-  return `${date.toLocaleDateString('en-GB')} ${date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })}`
+  const date = new Date(value);
+  return `${date.toLocaleDateString("en-GB")} ${date.toLocaleTimeString(
+    "en-GB",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+    },
+  )}`;
 }
 
 function appointmentDateTime(appointment: AppointmentRecord): string {
-  const dt = new Date(appointment.appointmentTime)
-  return `${dt.toLocaleDateString('en-GB')} ${dt.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })}`
+  const dt = new Date(appointment.appointmentTime);
+  return `${dt.toLocaleDateString("en-GB")} ${dt.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
 }
 
 function meetingTitle(appointment: AppointmentRecord): string {
-  const doctor = appointment.doctorName ?? appointment.doctorId
-  const date = new Date(appointment.appointmentTime).toLocaleDateString('en-GB')
-  return `Telemedicine with ${doctor} - ${date}`
+  const doctor = appointment.doctorName ?? appointment.doctorId;
+  const date = new Date(appointment.appointmentTime).toLocaleDateString(
+    "en-GB",
+  );
+  return `Telemedicine with ${doctor} - ${date}`;
 }
 
 function joinAvailability(appointment: AppointmentRecord): string {
-  if (appointment.status !== 'CONFIRMED' && appointment.status !== 'IN_SESSION') {
-    return 'Waiting for confirmation'
+  if (
+    appointment.status !== "CONFIRMED" &&
+    appointment.status !== "IN_SESSION"
+  ) {
+    return "Waiting for confirmation";
   }
 
-  const joinOpensAt = new Date(appointment.appointmentTime).getTime() - 60 * 60 * 1000
+  const joinOpensAt =
+    new Date(appointment.appointmentTime).getTime() - 60 * 60 * 1000;
   if (Date.now() >= joinOpensAt) {
-    return 'Available now'
+    return "Available now";
   }
 
-  return `Available at ${formatDateTime(new Date(joinOpensAt).toISOString())}`
+  return `Available at ${formatDateTime(new Date(joinOpensAt).toISOString())}`;
 }
 
 function queueStatus(
   appointment: AppointmentRecord,
-  session: TelemedicineSessionRecord | null | undefined
+  session: TelemedicineSessionRecord | null | undefined,
 ): string {
-  if (session?.status === 'ENDED') {
-    return 'ENDED'
+  if (session?.status === "ENDED") {
+    return "ENDED";
   }
-  return String(appointment.status)
+  return String(appointment.status);
 }
 
 export function PatientTelemedicineCenter() {
-  const { user } = useAuth()
-  const { appointmentId } = useParams<{ appointmentId?: string }>()
-  const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
-  const [activeTab, setActiveTab] = useState<'queue' | 'meeting'>(
-    appointmentId ? 'meeting' : 'queue'
-  )
-  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(
-    appointmentId ?? null
-  )
-  const [sessions, setSessions] = useState<Record<string, TelemedicineSessionRecord | null>>(
-    {}
-  )
-  const [fullScreen, setFullScreen] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const meetingPanelRef = useRef<HTMLDivElement | null>(null)
+  const { user } = useAuth();
+  const { appointmentId } = useParams<{ appointmentId?: string }>();
+  const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
+  const [activeTab, setActiveTab] = useState<"queue" | "meeting">(
+    appointmentId ? "meeting" : "queue",
+  );
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<
+    string | null
+  >(appointmentId ?? null);
+  const [sessions, setSessions] = useState<
+    Record<string, TelemedicineSessionRecord | null>
+  >({});
+  const [fullScreen, setFullScreen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const meetingPanelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (appointmentId) {
-      setSelectedAppointmentId(appointmentId)
-      setActiveTab('meeting')
+      setSelectedAppointmentId(appointmentId);
+      setActiveTab("meeting");
     }
-  }, [appointmentId])
+  }, [appointmentId]);
 
   const teleAppointments = useMemo(
     () =>
       appointments
-        .filter((appt) => appt.type === 'TELEMEDICINE')
+        .filter((appt) => appt.type === "TELEMEDICINE")
         .sort(
           (a, b) =>
             new Date(a.appointmentTime).getTime() -
-            new Date(b.appointmentTime).getTime()
+            new Date(b.appointmentTime).getTime(),
         ),
-    [appointments]
-  )
+    [appointments],
+  );
 
   const activeTeleAppointments = useMemo(
-    () => teleAppointments.filter((appt) => sessions[appt.id]?.status !== 'ENDED'),
-    [teleAppointments, sessions]
-  )
+    () =>
+      teleAppointments.filter((appt) => sessions[appt.id]?.status !== "ENDED"),
+    [teleAppointments, sessions],
+  );
 
   const endedTeleAppointments = useMemo(
-    () => teleAppointments.filter((appt) => sessions[appt.id]?.status === 'ENDED'),
-    [teleAppointments, sessions]
-  )
+    () =>
+      teleAppointments.filter((appt) => sessions[appt.id]?.status === "ENDED"),
+    [teleAppointments, sessions],
+  );
 
   const selectedAppointment = useMemo(
     () =>
       teleAppointments.find((appt) => appt.id === selectedAppointmentId) ??
       teleAppointments[0] ??
       null,
-    [teleAppointments, selectedAppointmentId]
-  )
+    [teleAppointments, selectedAppointmentId],
+  );
 
   const nextUpcomingAppointment = useMemo(() => {
-    const now = Date.now()
-    return teleAppointments.find((appt) => new Date(appt.appointmentTime).getTime() >= now) ?? null
-  }, [teleAppointments])
+    const now = Date.now();
+    return (
+      teleAppointments.find(
+        (appt) => new Date(appt.appointmentTime).getTime() >= now,
+      ) ?? null
+    );
+  }, [teleAppointments]);
 
-  const meetingAppointment = selectedAppointment ?? nextUpcomingAppointment
+  const meetingAppointment = selectedAppointment ?? nextUpcomingAppointment;
 
   useEffect(() => {
     if (!selectedAppointment && teleAppointments.length > 0) {
-      setSelectedAppointmentId(teleAppointments[0].id)
+      setSelectedAppointmentId(teleAppointments[0].id);
     }
-  }, [teleAppointments, selectedAppointment])
+  }, [teleAppointments, selectedAppointment]);
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
-      setLoading(true)
-      setError(null)
+      setLoading(true);
+      setError(null);
 
       if (!user?.id) {
-        setError('Please login as a patient to access telemedicine.')
-        setLoading(false)
-        return
+        setError("Please login as a patient to access telemedicine.");
+        setLoading(false);
+        return;
       }
 
-      const appts = await getAppointmentsByPatient(user.id)
-      setAppointments(appts)
+      const appts = await getAppointmentsByPatient(user.id);
+      setAppointments(appts);
 
-      const tele = appts.filter((appt) => appt.type === 'TELEMEDICINE')
+      const tele = appts.filter((appt) => appt.type === "TELEMEDICINE");
       const entries = await Promise.all(
         tele.map(async (appt) => {
           try {
-            const existing = await getTelemedicineSession(appt.id)
+            const existing = await getTelemedicineSession(appt.id);
             if (existing) {
-              return [appt.id, existing] as const
+              return [appt.id, existing] as const;
             }
 
             const created = await createTelemedicineSession(appt.id, {
               patientId: appt.patientId,
               doctorId: appt.doctorId,
-            })
-            return [appt.id, created] as const
+            });
+            return [appt.id, created] as const;
           } catch {
-            return [appt.id, null] as const
+            return [appt.id, null] as const;
           }
-        })
-      )
+        }),
+      );
 
-      const next: Record<string, TelemedicineSessionRecord | null> = {}
+      const next: Record<string, TelemedicineSessionRecord | null> = {};
       for (const [id, session] of entries) {
-        next[id] = session
+        next[id] = session;
       }
-      setSessions(next)
+      setSessions(next);
     } catch {
-      setError('Could not load telemedicine appointments right now.')
+      setError("Could not load telemedicine appointments right now.");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  }, [user?.id]);
 
   useEffect(() => {
-    load()
-  }, [])
+    load();
+  }, [load]);
 
   useEffect(() => {
     const onFullScreenChange = () => {
-      setFullScreen(Boolean(document.fullscreenElement))
-    }
-    document.addEventListener('fullscreenchange', onFullScreenChange)
-    return () => document.removeEventListener('fullscreenchange', onFullScreenChange)
-  }, [])
+      setFullScreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener("fullscreenchange", onFullScreenChange);
+    return () =>
+      document.removeEventListener("fullscreenchange", onFullScreenChange);
+  }, []);
 
   async function toggleFullScreen() {
     if (!meetingPanelRef.current) {
-      return
+      return;
     }
 
     if (document.fullscreenElement) {
-      await document.exitFullscreen()
-      return
+      await document.exitFullscreen();
+      return;
     }
 
-    await meetingPanelRef.current.requestFullscreen()
+    await meetingPanelRef.current.requestFullscreen();
   }
 
-  const meetingSession = meetingAppointment ? sessions[meetingAppointment.id] ?? null : null
-  const roomJoinable = canJoin(meetingAppointment, meetingSession)
+  const meetingSession = meetingAppointment
+    ? (sessions[meetingAppointment.id] ?? null)
+    : null;
+  const roomJoinable = canJoin(meetingAppointment, meetingSession);
 
   return (
     <div className="space-y-6">
@@ -247,148 +270,186 @@ export function PatientTelemedicineCenter() {
       </div>
 
       {loading && (
-        <div className="appointment-panel p-5 text-sm text-text-secondary">Loading telemedicine data...</div>
+        <div className="appointment-panel p-5 text-sm text-text-secondary">
+          Loading telemedicine data...
+        </div>
       )}
 
       {error && (
-        <div className="appointment-panel border border-error/30 bg-error/10 p-5 text-sm text-primary">{error}</div>
+        <div className="appointment-panel border border-error/30 bg-error/10 p-5 text-sm text-primary">
+          {error}
+        </div>
       )}
 
       <div className="space-y-4">
-          <div className="inline-flex rounded-xl border border-text-secondary/20 bg-surface p-1">
-            <button
-              type="button"
-              onClick={() => setActiveTab('queue')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                activeTab === 'queue'
-                  ? 'bg-primary-light/10 text-primary'
-                  : 'text-text-secondary hover:text-primary'
-              }`}
-            >
-              Video Queue
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('meeting')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                activeTab === 'meeting'
-                  ? 'bg-primary-light/10 text-primary'
-                  : 'text-text-secondary hover:text-primary'
-              }`}
-            >
-              Meeting Room
-            </button>
-          </div>
+        <div className="inline-flex rounded-xl border border-text-secondary/20 bg-surface p-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab("queue")}
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+              activeTab === "queue"
+                ? "bg-primary-light/10 text-primary"
+                : "text-text-secondary hover:text-primary"
+            }`}
+          >
+            Video Queue
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("meeting")}
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+              activeTab === "meeting"
+                ? "bg-primary-light/10 text-primary"
+                : "text-text-secondary hover:text-primary"
+            }`}
+          >
+            Meeting Room
+          </button>
+        </div>
 
-          {activeTab === 'queue' && (
-            <div className="appointment-panel p-4">
-              <h2 className="text-base font-semibold text-primary">My Video Appointments</h2>
-              <div className="mt-3 rounded-2xl border border-text-secondary/15 bg-background/40 p-3">
-                <table className="w-full text-left text-sm">
+        {activeTab === "queue" && (
+          <div className="appointment-panel p-4">
+            <h2 className="text-base font-semibold text-primary">
+              My Video Appointments
+            </h2>
+            <div className="mt-3 rounded-2xl border border-text-secondary/15 bg-background/40 p-3">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-text-secondary/20 text-text-secondary">
+                    <th className="px-3 py-2 font-medium">Title</th>
+                    <th className="px-3 py-2 font-medium">Date & Time</th>
+                    <th className="px-3 py-2 font-medium">Doctor</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                    <th className="px-3 py-2 font-medium">Meeting Link</th>
+                    <th className="px-3 py-2 font-medium">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeTeleAppointments.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-3 py-5 text-center text-text-secondary"
+                      >
+                        No telemedicine bookings found. Book a video appointment
+                        to start a session.
+                      </td>
+                    </tr>
+                  )}
+
+                  {activeTeleAppointments.map((appt) => {
+                    const session = sessions[appt.id] ?? null;
+                    const joinable = canJoin(appt, session);
+                    const ended = session?.status === "ENDED";
+
+                    return (
+                      <tr
+                        key={appt.id}
+                        className="border-b border-text-secondary/10"
+                      >
+                        <td className="px-3 py-2 font-medium text-primary">
+                          {meetingTitle(appt)}
+                        </td>
+                        <td className="px-3 py-2">
+                          {appointmentDateTime(appt)}
+                        </td>
+                        <td className="px-3 py-2">
+                          {appt.doctorName ?? appt.doctorId}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className="rounded-full bg-primary-light/10 px-2.5 py-1 text-xs font-medium text-primary">
+                            {queueStatus(appt, session)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-text-secondary">
+                          {joinable ? "Available" : joinAvailability(appt)}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedAppointmentId(appt.id);
+                                setActiveTab("meeting");
+                              }}
+                              disabled={ended}
+                              className="inline-flex items-center rounded-lg border border-primary-light/40 bg-primary-light/10 p-2 text-primary transition hover:bg-primary-light/20 disabled:cursor-not-allowed disabled:opacity-50"
+                              title={ended ? "Meeting ended" : "View meeting"}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {endedTeleAppointments.length > 0 && (
+              <div className="mt-5 overflow-x-auto rounded-2xl border border-text-secondary/15 bg-background/40 p-3">
+                <h3 className="mb-3 text-sm font-semibold text-primary">
+                  Ended Video Sessions
+                </h3>
+                <table className="w-full min-w-[52rem] text-left text-sm">
                   <thead>
                     <tr className="border-b border-text-secondary/20 text-text-secondary">
                       <th className="px-3 py-2 font-medium">Title</th>
-                      <th className="px-3 py-2 font-medium">Date & Time</th>
-                      <th className="px-3 py-2 font-medium">Doctor</th>
-                      <th className="px-3 py-2 font-medium">Status</th>
-                      <th className="px-3 py-2 font-medium">Meeting Link</th>
-                      <th className="px-3 py-2 font-medium">Action</th>
+                      <th className="px-3 py-2 font-medium">Date</th>
+                      <th className="px-3 py-2 font-medium">Start Time</th>
+                      <th className="px-3 py-2 font-medium">End Time</th>
+                      <th className="px-3 py-2 font-medium">End Date Time</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {activeTeleAppointments.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="px-3 py-5 text-center text-text-secondary">
-                          No telemedicine bookings found. Book a video appointment to start a session.
-                        </td>
-                      </tr>
-                    )}
-
-                    {activeTeleAppointments.map((appt) => {
-                      const session = sessions[appt.id] ?? null
-                      const joinable = canJoin(appt, session)
-                      const ended = session?.status === 'ENDED'
-
+                    {endedTeleAppointments.map((appt) => {
+                      const session = sessions[appt.id] ?? null;
                       return (
-                        <tr key={appt.id} className="border-b border-text-secondary/10">
-                          <td className="px-3 py-2 font-medium text-primary">{meetingTitle(appt)}</td>
-                          <td className="px-3 py-2">{appointmentDateTime(appt)}</td>
-                          <td className="px-3 py-2">{appt.doctorName ?? appt.doctorId}</td>
-                          <td className="px-3 py-2">
-                            <span className="rounded-full bg-primary-light/10 px-2.5 py-1 text-xs font-medium text-primary">
-                              {queueStatus(appt, session)}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-xs text-text-secondary">
-                            {joinable ? 'Available' : joinAvailability(appt)}
+                        <tr
+                          key={`ended-${appt.id}`}
+                          className="border-b border-text-secondary/10"
+                        >
+                          <td className="px-3 py-2 font-medium text-primary">
+                            {meetingTitle(appt)}
                           </td>
                           <td className="px-3 py-2">
-                            <div className="flex items-center">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedAppointmentId(appt.id)
-                                  setActiveTab('meeting')
-                                }}
-                                disabled={ended}
-                                className="inline-flex items-center rounded-lg border border-primary-light/40 bg-primary-light/10 p-2 text-primary transition hover:bg-primary-light/20 disabled:cursor-not-allowed disabled:opacity-50"
-                                title={ended ? 'Meeting ended' : 'View meeting'}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </button>
-                            </div>
+                            {new Date(appt.appointmentTime).toLocaleDateString(
+                              "en-GB",
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {formatDateTime(session?.startedAt)}
+                          </td>
+                          <td className="px-3 py-2">
+                            {formatDateTime(session?.endedAt)}
+                          </td>
+                          <td className="px-3 py-2">
+                            {formatDateTime(session?.endedAt)}
                           </td>
                         </tr>
-                      )
+                      );
                     })}
                   </tbody>
                 </table>
               </div>
+            )}
+          </div>
+        )}
 
-              {endedTeleAppointments.length > 0 && (
-                <div className="mt-5 overflow-x-auto rounded-2xl border border-text-secondary/15 bg-background/40 p-3">
-                  <h3 className="mb-3 text-sm font-semibold text-primary">Ended Video Sessions</h3>
-                  <table className="w-full min-w-[52rem] text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-text-secondary/20 text-text-secondary">
-                        <th className="px-3 py-2 font-medium">Title</th>
-                        <th className="px-3 py-2 font-medium">Date</th>
-                        <th className="px-3 py-2 font-medium">Start Time</th>
-                        <th className="px-3 py-2 font-medium">End Time</th>
-                        <th className="px-3 py-2 font-medium">End Date Time</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {endedTeleAppointments.map((appt) => {
-                        const session = sessions[appt.id] ?? null
-                        return (
-                          <tr key={`ended-${appt.id}`} className="border-b border-text-secondary/10">
-                            <td className="px-3 py-2 font-medium text-primary">{meetingTitle(appt)}</td>
-                            <td className="px-3 py-2">{new Date(appt.appointmentTime).toLocaleDateString('en-GB')}</td>
-                            <td className="px-3 py-2">{formatDateTime(session?.startedAt)}</td>
-                            <td className="px-3 py-2">{formatDateTime(session?.endedAt)}</td>
-                            <td className="px-3 py-2">{formatDateTime(session?.endedAt)}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'meeting' && (
-            meetingAppointment ? (
+        {activeTab === "meeting" &&
+          (meetingAppointment ? (
             <div className="grid gap-4 xl:grid-cols-[320px_1.7fr]">
               <aside className="appointment-panel p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <h2 className="text-base font-semibold text-primary">Meeting Details</h2>
+                  <h2 className="text-base font-semibold text-primary">
+                    Meeting Details
+                  </h2>
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveTab('queue')
-                      setSelectedAppointmentId(null)
+                      setActiveTab("queue");
+                      setSelectedAppointmentId(null);
                     }}
                     className="rounded-lg border border-text-secondary/20 p-1.5 text-text-secondary hover:text-primary"
                     title="Close meeting window"
@@ -398,12 +459,35 @@ export function PatientTelemedicineCenter() {
                 </div>
 
                 <div className="mt-3 space-y-2 text-sm">
-                  <p><span className="font-medium text-primary">Title:</span> {meetingTitle(meetingAppointment)}</p>
-                  <p><span className="font-medium text-primary">Doctor:</span> {meetingAppointment.doctorName ?? meetingAppointment.doctorId}</p>
-                  <p><span className="font-medium text-primary">Scheduled:</span> {appointmentDateTime(meetingAppointment)}</p>
-                  <p><span className="font-medium text-primary">Status:</span> {queueStatus(meetingAppointment, meetingSession)}</p>
-                  <p><span className="font-medium text-primary">End Time:</span> {formatDateTime(meetingSession?.endedAt)}</p>
-                  <p><span className="font-medium text-primary">Availability:</span> {roomJoinable ? 'Available now' : joinAvailability(meetingAppointment)}</p>
+                  <p>
+                    <span className="font-medium text-primary">Title:</span>{" "}
+                    {meetingTitle(meetingAppointment)}
+                  </p>
+                  <p>
+                    <span className="font-medium text-primary">Doctor:</span>{" "}
+                    {meetingAppointment.doctorName ??
+                      meetingAppointment.doctorId}
+                  </p>
+                  <p>
+                    <span className="font-medium text-primary">Scheduled:</span>{" "}
+                    {appointmentDateTime(meetingAppointment)}
+                  </p>
+                  <p>
+                    <span className="font-medium text-primary">Status:</span>{" "}
+                    {queueStatus(meetingAppointment, meetingSession)}
+                  </p>
+                  <p>
+                    <span className="font-medium text-primary">End Time:</span>{" "}
+                    {formatDateTime(meetingSession?.endedAt)}
+                  </p>
+                  <p>
+                    <span className="font-medium text-primary">
+                      Availability:
+                    </span>{" "}
+                    {roomJoinable
+                      ? "Available now"
+                      : joinAvailability(meetingAppointment)}
+                  </p>
                 </div>
 
                 <div className="mt-4 grid gap-2">
@@ -412,14 +496,20 @@ export function PatientTelemedicineCenter() {
                     onClick={toggleFullScreen}
                     className="inline-flex items-center justify-center gap-2 rounded-lg border border-text-secondary/20 px-3 py-2 text-sm font-medium text-text-secondary transition hover:text-primary"
                   >
-                    {fullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                    {fullScreen ? 'Exit Full Screen' : 'Full Screen'}
+                    {fullScreen ? (
+                      <Minimize2 className="h-4 w-4" />
+                    ) : (
+                      <Maximize2 className="h-4 w-4" />
+                    )}
+                    {fullScreen ? "Exit Full Screen" : "Full Screen"}
                   </button>
-
                 </div>
               </aside>
 
-              <section ref={meetingPanelRef} className="appointment-panel overflow-hidden p-0">
+              <section
+                ref={meetingPanelRef}
+                className="appointment-panel overflow-hidden p-0"
+              >
                 {roomJoinable && meetingSession?.sessionUrl ? (
                   <iframe
                     title={meetingTitle(meetingAppointment)}
@@ -435,9 +525,12 @@ export function PatientTelemedicineCenter() {
                       className="h-44 w-auto max-w-full object-contain"
                     />
                     <div className="space-y-1">
-                      <h2 className="text-xl font-semibold text-primary">Room is not open yet</h2>
+                      <h2 className="text-xl font-semibold text-primary">
+                        Room is not open yet
+                      </h2>
                       <p className="max-w-lg text-sm text-text-secondary">
-                        Your meeting link becomes active 1 hour before the appointment time after confirmation.
+                        Your meeting link becomes active 1 hour before the
+                        appointment time after confirmation.
                       </p>
                     </div>
                     <Video className="h-8 w-8 text-primary-light" />
@@ -445,14 +538,13 @@ export function PatientTelemedicineCenter() {
                 )}
               </section>
             </div>
-            ) : (
-              <div className="appointment-panel p-6 text-sm text-text-secondary">
-                No meeting selected. Open one from the Video Queue when appointments are available.
-              </div>
-            )
-          )}
-        </div>
-
+          ) : (
+            <div className="appointment-panel p-6 text-sm text-text-secondary">
+              No meeting selected. Open one from the Video Queue when
+              appointments are available.
+            </div>
+          ))}
+      </div>
     </div>
-  )
+  );
 }

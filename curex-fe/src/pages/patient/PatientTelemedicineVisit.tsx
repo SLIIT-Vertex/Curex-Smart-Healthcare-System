@@ -1,74 +1,85 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { ExternalLink, RefreshCcw, Video } from 'lucide-react'
-import { getAppointmentById } from '../../services/appointmentService'
-import { getTelemedicineSession } from '../../services/telemedicineService'
-import type { AppointmentRecord } from '../../types/appointment'
-import type { TelemedicineSessionRecord } from '../../types/telemedicine'
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { ExternalLink, RefreshCcw, Video } from "lucide-react";
+import { getAppointmentById } from "../../services/appointmentService";
+import { getTelemedicineSession } from "../../services/telemedicineService";
+import type { AppointmentRecord } from "../../types/appointment";
+import type { TelemedicineSessionRecord } from "../../types/telemedicine";
 
 function formatDateTime(value: string): string {
-  const date = new Date(value)
-  return `${date.toLocaleDateString('en-GB')} ${date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })}`
+  const date = new Date(value);
+  return `${date.toLocaleDateString("en-GB")} ${date.toLocaleTimeString(
+    "en-GB",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+    },
+  )}`;
 }
 
 function canJoin(
   appointment: AppointmentRecord | null,
-  session: TelemedicineSessionRecord | null
+  session: TelemedicineSessionRecord | null,
 ): boolean {
   if (!appointment || !session?.sessionUrl) {
-    return false
+    return false;
   }
 
-  if (appointment.type !== 'TELEMEDICINE') {
-    return false
+  if (appointment.type !== "TELEMEDICINE") {
+    return false;
   }
 
   const statusEligible =
-    appointment.status === 'CONFIRMED' || appointment.status === 'IN_SESSION'
-  const timeReached = new Date(appointment.appointmentTime).getTime() <= Date.now()
-  return statusEligible && timeReached
+    appointment.status === "CONFIRMED" || appointment.status === "IN_SESSION";
+  const timeReached =
+    new Date(appointment.appointmentTime).getTime() <= Date.now();
+  return statusEligible && timeReached;
 }
 
 export function PatientTelemedicineVisit() {
-  const { appointmentId } = useParams<{ appointmentId: string }>()
-  const [appointment, setAppointment] = useState<AppointmentRecord | null>(null)
-  const [session, setSession] = useState<TelemedicineSessionRecord | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { appointmentId } = useParams<{ appointmentId: string }>();
+  const [appointment, setAppointment] = useState<AppointmentRecord | null>(
+    null,
+  );
+  const [session, setSession] = useState<TelemedicineSessionRecord | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const isJoinable = useMemo(() => canJoin(appointment, session), [appointment, session])
+  const isJoinable = useMemo(
+    () => canJoin(appointment, session),
+    [appointment, session],
+  );
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!appointmentId) {
-      setError('Appointment ID is missing.')
-      setLoading(false)
-      return
+      setError("Appointment ID is missing.");
+      setLoading(false);
+      return;
     }
 
     try {
-      setLoading(true)
-      setError(null)
+      setLoading(true);
+      setError(null);
 
       const [appointmentData, sessionData] = await Promise.all([
         getAppointmentById(appointmentId),
         getTelemedicineSession(appointmentId),
-      ])
+      ]);
 
-      setAppointment(appointmentData)
-      setSession(sessionData)
+      setAppointment(appointmentData);
+      setSession(sessionData);
     } catch {
-      setError('Could not load telemedicine session details right now.')
+      setError("Could not load telemedicine session details right now.");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  }, [appointmentId]);
 
   useEffect(() => {
-    load()
-  }, [appointmentId])
+    load();
+  }, [load]);
 
   return (
     <div className="space-y-6">
@@ -76,7 +87,8 @@ export function PatientTelemedicineVisit() {
         <div>
           <h1 className="section-heading">Telemedicine Session</h1>
           <p className="section-subtext mt-1">
-            Join your video consultation when the appointment is confirmed and time is reached.
+            Join your video consultation when the appointment is confirmed and
+            time is reached.
           </p>
         </div>
 
@@ -99,9 +111,13 @@ export function PatientTelemedicineVisit() {
       </div>
 
       {loading ? (
-        <div className="appointment-panel p-5 text-sm text-text-secondary">Loading telemedicine room...</div>
+        <div className="appointment-panel p-5 text-sm text-text-secondary">
+          Loading telemedicine room...
+        </div>
       ) : error ? (
-        <div className="appointment-panel border border-error/30 bg-error/10 p-5 text-sm text-primary">{error}</div>
+        <div className="appointment-panel border border-error/30 bg-error/10 p-5 text-sm text-primary">
+          {error}
+        </div>
       ) : (
         <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
           <div className="appointment-panel overflow-hidden p-0">
@@ -115,26 +131,48 @@ export function PatientTelemedicineVisit() {
             ) : (
               <div className="flex h-[68vh] min-h-[480px] flex-col items-center justify-center gap-3 bg-background/60 px-6 text-center">
                 <Video className="h-12 w-12 text-primary-light" />
-                <h2 className="text-xl font-semibold text-primary">Room access is not open yet</h2>
+                <h2 className="text-xl font-semibold text-primary">
+                  Room access is not open yet
+                </h2>
                 <p className="max-w-lg text-sm text-text-secondary">
-                  The telemedicine room becomes available once the appointment is confirmed and the scheduled time has started.
+                  The telemedicine room becomes available once the appointment
+                  is confirmed and the scheduled time has started.
                 </p>
               </div>
             )}
           </div>
 
           <aside className="appointment-panel p-5">
-            <h2 className="text-base font-semibold text-primary">Session details</h2>
+            <h2 className="text-base font-semibold text-primary">
+              Session details
+            </h2>
             <div className="mt-4 space-y-2 text-sm">
-              <p><span className="font-medium text-primary">Appointment:</span> {appointment?.id}</p>
-              <p><span className="font-medium text-primary">Doctor:</span> {appointment?.doctorName ?? appointment?.doctorId}</p>
-              <p><span className="font-medium text-primary">Specialty:</span> {appointment?.doctorSpecialty ?? '-'}</p>
               <p>
-                <span className="font-medium text-primary">Scheduled:</span>{' '}
-                {appointment ? formatDateTime(appointment.appointmentTime) : '-'}
+                <span className="font-medium text-primary">Appointment:</span>{" "}
+                {appointment?.id}
               </p>
-              <p><span className="font-medium text-primary">Status:</span> {appointment?.status ?? '-'}</p>
-              <p><span className="font-medium text-primary">Room:</span> {session?.roomName ?? 'Pending creation'}</p>
+              <p>
+                <span className="font-medium text-primary">Doctor:</span>{" "}
+                {appointment?.doctorName ?? appointment?.doctorId}
+              </p>
+              <p>
+                <span className="font-medium text-primary">Specialty:</span>{" "}
+                {appointment?.doctorSpecialty ?? "-"}
+              </p>
+              <p>
+                <span className="font-medium text-primary">Scheduled:</span>{" "}
+                {appointment
+                  ? formatDateTime(appointment.appointmentTime)
+                  : "-"}
+              </p>
+              <p>
+                <span className="font-medium text-primary">Status:</span>{" "}
+                {appointment?.status ?? "-"}
+              </p>
+              <p>
+                <span className="font-medium text-primary">Room:</span>{" "}
+                {session?.roomName ?? "Pending creation"}
+              </p>
             </div>
 
             <div className="mt-5 space-y-2">
@@ -156,7 +194,8 @@ export function PatientTelemedicineVisit() {
 
               {!isJoinable && (
                 <p className="rounded-lg border border-accent-peach/30 bg-accent-peach/20 px-3 py-2 text-xs text-primary">
-                  Join is enabled only after confirmation and at the appointment time.
+                  Join is enabled only after confirmation and at the appointment
+                  time.
                 </p>
               )}
             </div>
@@ -164,5 +203,5 @@ export function PatientTelemedicineVisit() {
         </div>
       )}
     </div>
-  )
+  );
 }

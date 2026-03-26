@@ -1,26 +1,26 @@
-import { Link } from 'react-router-dom'
-import { useIsAuthenticated, useRole, useAuthActions } from '../../store/hooks'
-import { ROLE_HOME } from '../auth/ProtectedRoute'
+import { Link } from "react-router-dom";
+import { useIsAuthenticated, useRole, useAuthActions } from "../../store/hooks";
+import { ROLE_HOME } from "../auth/roleHome";
 
-const LOGO_SRC = '/logo.svg'
+const LOGO_SRC = "/logo.svg";
 
 const navLinks = [
-  { href: '#features', label: 'What we offer' },
-  { href: '#how-it-works', label: 'How it works' },
-  { href: '#roles', label: 'Who it\u2019s for' },
-] as const
+  { href: "#features", label: "What we offer" },
+  { href: "#how-it-works", label: "How it works" },
+  { href: "#roles", label: "Who it\u2019s for" },
+] as const;
 
 export function Header() {
-  const isAuthenticated = useIsAuthenticated()
-  const role = useRole()
-  const { logout } = useAuthActions()
+  const isAuthenticated = useIsAuthenticated();
+  const role = useRole();
+  const { logout } = useAuthActions();
 
-  const dashboardPath = role ? ROLE_HOME[role] : '/patient/dashboard'
+  const dashboardPath = role ? ROLE_HOME[role] : "/patient/dashboard";
 
   return (
     <header
       className="sticky top-0 z-50 border-b border-text-secondary/10 bg-surface/95 backdrop-blur-md"
-      style={{ boxShadow: 'var(--shadow-header)' }}
+      style={{ boxShadow: "var(--shadow-header)" }}
     >
       <div className="layout-content flex h-16 items-center justify-between gap-4 sm:h-[4.25rem]">
         <Link
@@ -54,7 +54,10 @@ export function Header() {
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           {isAuthenticated ? (
             <>
-              <Link to={dashboardPath} className="link-subtle hidden text-sm font-medium no-underline sm:inline">
+              <Link
+                to={dashboardPath}
+                className="link-subtle hidden text-sm font-medium no-underline sm:inline"
+              >
                 Dashboard
               </Link>
               <button
@@ -67,7 +70,10 @@ export function Header() {
             </>
           ) : (
             <>
-              <Link to="/login" className="link-subtle hidden text-sm font-medium no-underline sm:inline">
+              <Link
+                to="/login"
+                className="link-subtle hidden text-sm font-medium no-underline sm:inline"
+              >
                 Sign in
               </Link>
               <Link to="/register" className="btn-primary text-xs sm:text-sm">
@@ -78,5 +84,5 @@ export function Header() {
         </div>
       </div>
     </header>
-  )
+  );
 }

@@ -1,10 +1,10 @@
-import { useCallback, type ChangeEvent } from 'react'
-import { Heart, Award, Upload, FileText, X, Loader2 } from 'lucide-react'
-import { useAppDispatch, useAppSelector } from '../../../store/hooks'
-import { setField } from '../../../store/slices/registerSlice'
-import { useDocumentUpload } from '../../../hooks/useDocumentUpload'
-import { Field } from '../Field'
-import { NavButtons } from './NavButtons'
+import { useCallback, type ChangeEvent } from "react";
+import { Heart, Award, Upload, FileText, X, Loader2 } from "lucide-react";
+import { useAppDispatch, useAppSelector } from "../../../store/hooks";
+import { setField } from "../../../store/slices/registerSlice";
+import { useDocumentUpload } from "../../../hooks/useDocumentUpload";
+import { Field } from "../Field";
+import { NavButtons } from "./NavButtons";
 
 /**
  * Step 3 — role-specific profile.
@@ -12,25 +12,30 @@ import { NavButtons } from './NavButtons'
  * Zero-param: reads and writes Redux.
  */
 export const DetailsStep = () => {
-  const dispatch = useAppDispatch()
-  const form     = useAppSelector(s => s.register)
+  const dispatch = useAppDispatch();
+  const form = useAppSelector((s) => s.register);
 
   const handleChange = useCallback(
     (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-      const key = e.target.dataset.field
-      if (!key) return
-      dispatch(setField({ key: key as keyof typeof form, value: e.target.value }))
+      const key = e.target.dataset.field;
+      if (!key) return;
+      dispatch(
+        setField({ key: key as keyof typeof form, value: e.target.value }),
+      );
     },
-    [dispatch, form],
-  )
+    [dispatch],
+  );
 
   const toggleFillHealth = useCallback(() => {
-    dispatch(setField({ key: 'fillHealthNow', value: !form.fillHealthNow }))
-  }, [dispatch, form.fillHealthNow])
+    dispatch(setField({ key: "fillHealthNow", value: !form.fillHealthNow }));
+  }, [dispatch, form.fillHealthNow]);
 
-  const handleDocsChanged = useCallback((urlsCsv: string) => {
-    dispatch(setField({ key: 'proofDocumentUrls', value: urlsCsv }))
-  }, [dispatch])
+  const handleDocsChanged = useCallback(
+    (urlsCsv: string) => {
+      dispatch(setField({ key: "proofDocumentUrls", value: urlsCsv }));
+    },
+    [dispatch],
+  );
 
   const {
     docs,
@@ -41,13 +46,15 @@ export const DetailsStep = () => {
     uploading,
     accept,
     maxFiles,
-  } = useDocumentUpload(form.proofDocumentUrls, handleDocsChanged)
+  } = useDocumentUpload(form.proofDocumentUrls, handleDocsChanged);
 
-  if (form.role === 'PATIENT') {
+  if (form.role === "PATIENT") {
     return (
       <div className="flex flex-col gap-5">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-primary">Health profile</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-primary">
+            Health profile
+          </h1>
           <p className="mt-1.5 text-sm text-text-secondary">
             Help us personalise your care. You can always update this later.
           </p>
@@ -58,23 +65,31 @@ export const DetailsStep = () => {
           onClick={toggleFillHealth}
           className={`flex items-center gap-3 rounded-xl border-2 p-4 text-left transition-all ${
             form.fillHealthNow
-              ? 'border-primary-light bg-primary-light/6'
-              : 'border-text-secondary/15 bg-surface'
+              ? "border-primary-light bg-primary-light/6"
+              : "border-text-secondary/15 bg-surface"
           }`}
           data-testid="register-fill-health-toggle"
         >
           <Heart
-            className={`h-5 w-5 shrink-0 ${form.fillHealthNow ? 'text-primary-light' : 'text-text-secondary'}`}
+            className={`h-5 w-5 shrink-0 ${form.fillHealthNow ? "text-primary-light" : "text-text-secondary"}`}
             strokeWidth={1.5}
           />
           <div>
-            <p className={`text-sm font-semibold ${form.fillHealthNow ? 'text-primary' : 'text-text-secondary'}`}>
+            <p
+              className={`text-sm font-semibold ${form.fillHealthNow ? "text-primary" : "text-text-secondary"}`}
+            >
               Fill in my health details now
             </p>
-            <p className="text-xs text-text-secondary mt-0.5">Recommended for a personalised experience</p>
+            <p className="text-xs text-text-secondary mt-0.5">
+              Recommended for a personalised experience
+            </p>
           </div>
-          <div className={`ml-auto h-5 w-9 rounded-full border-2 transition-colors relative shrink-0 ${form.fillHealthNow ? 'border-primary-light bg-primary-light' : 'border-text-secondary/30 bg-surface'}`}>
-            <div className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-surface shadow transition-all ${form.fillHealthNow ? 'left-3.5' : 'left-0.5'}`} />
+          <div
+            className={`ml-auto h-5 w-9 rounded-full border-2 transition-colors relative shrink-0 ${form.fillHealthNow ? "border-primary-light bg-primary-light" : "border-text-secondary/30 bg-surface"}`}
+          >
+            <div
+              className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-surface shadow transition-all ${form.fillHealthNow ? "left-3.5" : "left-0.5"}`}
+            />
           </div>
         </button>
 
@@ -90,9 +105,11 @@ export const DetailsStep = () => {
                   data-testid="register-blood-group-select"
                 >
                   <option value="">Unknown</option>
-                  {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(g => (
-                    <option key={g}>{g}</option>
-                  ))}
+                  {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(
+                    (g) => (
+                      <option key={g}>{g}</option>
+                    ),
+                  )}
                 </select>
               </Field>
               <Field label="Known allergies">
@@ -119,7 +136,9 @@ export const DetailsStep = () => {
               />
             </Field>
             <div className="rounded-xl bg-accent-sky/10 border border-accent-sky/25 px-4 py-3">
-              <p className="text-xs font-semibold text-primary mb-2">Emergency contact</p>
+              <p className="text-xs font-semibold text-primary mb-2">
+                Emergency contact
+              </p>
               <div className="grid grid-cols-2 gap-3">
                 <input
                   type="text"
@@ -146,7 +165,7 @@ export const DetailsStep = () => {
 
         <NavButtons />
       </div>
-    )
+    );
   }
 
   // ── DOCTOR path ────────────────────────────────────────────────────────────
@@ -162,7 +181,10 @@ export const DetailsStep = () => {
       </div>
 
       <div className="flex items-center gap-3 rounded-xl bg-primary/5 border border-primary/12 px-4 py-3">
-        <Award className="h-5 w-5 text-primary-light shrink-0" strokeWidth={1.5} />
+        <Award
+          className="h-5 w-5 text-primary-light shrink-0"
+          strokeWidth={1.5}
+        />
         <p className="text-xs text-text-secondary leading-relaxed">
           Upload your documents carefully — they speed up verification.
         </p>
@@ -207,7 +229,14 @@ export const DetailsStep = () => {
         </Field>
       </div>
 
-      <Field label={<>Certifications <span className="font-normal text-text-secondary">(optional)</span></>}>
+      <Field
+        label={
+          <>
+            Certifications{" "}
+            <span className="font-normal text-text-secondary">(optional)</span>
+          </>
+        }
+      >
         <input
           type="text"
           value={form.certifications}
@@ -224,7 +253,9 @@ export const DetailsStep = () => {
         <p className="text-sm font-semibold text-primary mb-2 flex items-center gap-1.5">
           <Upload className="h-4 w-4" strokeWidth={1.5} />
           Upload proof documents
-          <span className="font-normal text-text-secondary text-xs">(optional)</span>
+          <span className="font-normal text-text-secondary text-xs">
+            (optional)
+          </span>
         </p>
 
         {/* Uploaded files list */}
@@ -235,7 +266,10 @@ export const DetailsStep = () => {
                 key={doc.url}
                 className="flex items-center gap-3 rounded-lg border border-text-secondary/15 bg-surface px-3 py-2"
               >
-                <FileText className="h-4 w-4 shrink-0 text-primary-light" strokeWidth={1.5} />
+                <FileText
+                  className="h-4 w-4 shrink-0 text-primary-light"
+                  strokeWidth={1.5}
+                />
                 <a
                   href={doc.url}
                   target="_blank"
@@ -280,17 +314,29 @@ export const DetailsStep = () => {
           >
             {uploading ? (
               <>
-                <Loader2 className="h-8 w-8 text-primary-light animate-spin" strokeWidth={1} />
-                <p className="text-sm text-primary-light font-medium">Uploading…</p>
+                <Loader2
+                  className="h-8 w-8 text-primary-light animate-spin"
+                  strokeWidth={1}
+                />
+                <p className="text-sm text-primary-light font-medium">
+                  Uploading…
+                </p>
               </>
             ) : (
               <>
-                <Upload className="h-8 w-8 text-text-secondary/40" strokeWidth={1} />
+                <Upload
+                  className="h-8 w-8 text-text-secondary/40"
+                  strokeWidth={1}
+                />
                 <p className="text-sm text-text-secondary">
-                  Click to browse, or <span className="text-primary-light font-medium">choose files</span>
+                  Click to browse, or{" "}
+                  <span className="text-primary-light font-medium">
+                    choose files
+                  </span>
                 </p>
                 <p className="text-xs text-text-secondary/60">
-                  PDF, JPG, PNG — up to 5 MB each · {maxFiles - docs.length} remaining
+                  PDF, JPG, PNG — up to 5 MB each · {maxFiles - docs.length}{" "}
+                  remaining
                 </p>
               </>
             )}
@@ -300,5 +346,5 @@ export const DetailsStep = () => {
 
       <NavButtons />
     </div>
-  )
-}
+  );
+};

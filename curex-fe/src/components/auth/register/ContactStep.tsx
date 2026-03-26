@@ -1,36 +1,45 @@
-import { useCallback, type ChangeEvent } from 'react'
-import { Phone, Mail } from 'lucide-react'
-import { useAppDispatch, useAppSelector } from '../../../store/hooks'
-import { setField } from '../../../store/slices/registerSlice'
-import { Field } from '../Field'
-import { NavButtons } from './NavButtons'
+import { useCallback, type ChangeEvent } from "react";
+import { Phone, Mail } from "lucide-react";
+import { useAppDispatch, useAppSelector } from "../../../store/hooks";
+import { setField } from "../../../store/slices/registerSlice";
+import { Field } from "../Field";
+import { NavButtons } from "./NavButtons";
 
 /** Step 4 — phone (required) and email (required). Zero-param: reads and writes Redux. */
 export const ContactStep = () => {
-  const dispatch = useAppDispatch()
-  const form     = useAppSelector(s => s.register)
-  const errors   = form.errors
+  const dispatch = useAppDispatch();
+  const form = useAppSelector((s) => s.register);
+  const errors = form.errors;
 
   const handleChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
-      const key = e.target.dataset.field
-      if (!key) return
-      dispatch(setField({ key: key as keyof typeof form, value: e.target.value }))
+      const key = e.target.dataset.field;
+      if (!key) return;
+      dispatch(
+        setField({ key: key as keyof typeof form, value: e.target.value }),
+      );
     },
-    [dispatch, form],
-  )
+    [dispatch],
+  );
 
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-primary">Contact information</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-primary">
+          Contact information
+        </h1>
         <p className="mt-1.5 text-sm text-text-secondary">
           Both phone and email are required and will be verified via OTP.
         </p>
       </div>
 
       <Field
-        label={<><Phone className="h-3.5 w-3.5 inline mr-1.5" />Phone number</>}
+        label={
+          <>
+            <Phone className="h-3.5 w-3.5 inline mr-1.5" />
+            Phone number
+          </>
+        }
         error={errors.phone}
       >
         <input
@@ -43,7 +52,9 @@ export const ContactStep = () => {
           className="auth-input"
           data-testid="register-phone-input"
         />
-        <p className="text-xs text-text-secondary">Required — used for SMS OTP verification</p>
+        <p className="text-xs text-text-secondary">
+          Required — used for SMS OTP verification
+        </p>
       </Field>
 
       <Field
@@ -65,10 +76,12 @@ export const ContactStep = () => {
           className="auth-input"
           data-testid="register-email-input"
         />
-        <p className="text-xs text-text-secondary">Required — used for email OTP verification</p>
+        <p className="text-xs text-text-secondary">
+          Required — used for email OTP verification
+        </p>
       </Field>
 
       <NavButtons />
     </div>
-  )
-}
+  );
+};

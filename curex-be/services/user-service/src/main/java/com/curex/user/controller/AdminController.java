@@ -70,7 +70,7 @@ public class AdminController {
     public ResponseEntity<UserResponse> updateUserStatus(
             @PathVariable String userId,
             @Valid @RequestBody UserApprovalRequest request,
-            @RequestHeader("X-Admin-Id") String adminId) {
+            @RequestHeader("X-User-Id") String adminId) {
 
         return ResponseEntity.ok(adminService.updateUserStatus(userId, request, adminId));
     }
@@ -78,7 +78,7 @@ public class AdminController {
     @PutMapping("/users/bulk-status")
     public ResponseEntity<List<UserResponse>> bulkUpdateUserStatus(
             @Valid @RequestBody BulkStatusRequest request,
-            @RequestHeader("X-Admin-Id") String adminId) {
+            @RequestHeader("X-User-Id") String adminId) {
 
         UserApprovalRequest approvalRequest = new UserApprovalRequest(request.action(), request.notes());
         return ResponseEntity.ok(adminService.bulkUpdateUsers(request.userIds(), approvalRequest, adminId));
@@ -100,7 +100,7 @@ public class AdminController {
     @DeleteMapping("/users/{userId}")
     public ResponseEntity<Map<String, String>> suspendUser(
             @PathVariable String userId,
-            @RequestHeader("X-Admin-Id") String adminId) {
+            @RequestHeader("X-User-Id") String adminId) {
 
         adminService.suspendUser(userId, adminId);
         return ResponseEntity.ok(Map.of("message", "User account suspended successfully"));

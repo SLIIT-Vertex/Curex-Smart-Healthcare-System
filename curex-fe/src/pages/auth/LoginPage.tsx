@@ -1,21 +1,25 @@
 import {
-  useState, useRef, useEffect, useCallback,
-  type ChangeEvent, type KeyboardEvent,
-} from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react'
-import { authService } from '../../services/authService'
-import { useAppDispatch, useAppSelector, useToast } from '../../store/hooks'
-import { setCredentials, setLoading } from '../../store/slices/authSlice'
-import { ROLE_HOME } from '../../components/auth/ProtectedRoute'
-import { LoginBrandPanel } from '../../components/auth/LoginBrandPanel'
-import type { Role } from '../../types/auth'
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  type ChangeEvent,
+  type KeyboardEvent,
+} from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Eye, EyeOff, ArrowRight, ArrowLeft, Loader2 } from "lucide-react";
+import { authService } from "../../services/authService";
+import { useAppDispatch, useAppSelector, useToast } from "../../store/hooks";
+import { setCredentials, setLoading } from "../../store/slices/authSlice";
+import { ROLE_HOME } from "../../components/auth/roleHome";
+import { LoginBrandPanel } from "../../components/auth/LoginBrandPanel";
+import type { Role } from "../../types/auth";
 
-type LoginStep = 'email' | 'password'
+type LoginStep = "email" | "password";
 
 /** Basic email format check. */
 const isValidEmail = (email: string) =>
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
 /**
  * Two-step login wizard (email → password).
@@ -25,83 +29,113 @@ const isValidEmail = (email: string) =>
  *   because it only matters for this single session and resets on navigate.
  */
 export const LoginPage = () => {
-  const dispatch  = useAppDispatch()
-  const navigate  = useNavigate()
-  const location  = useLocation()
-  const { toast } = useToast()
-  const isLoading = useAppSelector(s => s.auth.isLoading)
+  const dispatch = useAppDispatch();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { toast } = useToast();
+  const isLoading = useAppSelector((s) => s.auth.isLoading);
 
-  const [step, setStep]                 = useState<LoginStep>('email')
-  const [animDir, setAnimDir]           = useState<'forward' | 'back'>('forward')
-  const [email, setEmail]               = useState('')
-  const [password, setPassword]         = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [fieldError, setFieldError]     = useState<string | null>(null)
-  const [animKey, setAnimKey]           = useState(0)
+  const [step, setStep] = useState<LoginStep>("email");
+  const [animDir, setAnimDir] = useState<"forward" | "back">("forward");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [fieldError, setFieldError] = useState<string | null>(null);
+  const [animKey, setAnimKey] = useState(0);
 
-  const emailRef    = useRef<HTMLInputElement>(null)
-  const passwordRef = useRef<HTMLInputElement>(null)
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname
+  const from = (location.state as { from?: { pathname: string } })?.from
+    ?.pathname;
 
   useEffect(() => {
-    if (step === 'email') emailRef.current?.focus()
-    else passwordRef.current?.focus()
-  }, [step])
+    if (step === "email") emailRef.current?.focus();
+    else passwordRef.current?.focus();
+  }, [step]);
 
   const goToPassword = useCallback(() => {
-    if (!isValidEmail(email)) { setFieldError('Please enter a valid email address.'); return }
-    setFieldError(null)
-    setAnimDir('forward')
-    setAnimKey(k => k + 1)
-    setStep('password')
-  }, [email])
+    if (!isValidEmail(email)) {
+      setFieldError("Please enter a valid email address.");
+      return;
+    }
+    setFieldError(null);
+    setAnimDir("forward");
+    setAnimKey((k) => k + 1);
+    setStep("password");
+  }, [email]);
 
   const goBackToEmail = useCallback(() => {
-    setFieldError(null)
-    setAnimDir('back')
-    setAnimKey(k => k + 1)
-    setStep('email')
-  }, [])
+    setFieldError(null);
+    setAnimDir("back");
+    setAnimKey((k) => k + 1);
+    setStep("email");
+  }, []);
 
-  const handleEmailChange    = useCallback((e: ChangeEvent<HTMLInputElement>) => setEmail(e.target.value), [])
-  const handlePasswordChange = useCallback((e: ChangeEvent<HTMLInputElement>) => setPassword(e.target.value), [])
-  const toggleShowPassword   = useCallback(() => setShowPassword(v => !v), [])
+  const handleEmailChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => setEmail(e.target.value),
+    [],
+  );
+  const handlePasswordChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => setPassword(e.target.value),
+    [],
+  );
+  const toggleShowPassword = useCallback(() => setShowPassword((v) => !v), []);
 
-  const handleEmailKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') { e.preventDefault(); goToPassword() }
-  }, [goToPassword])
+  const handleEmailKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        goToPassword();
+      }
+    },
+    [goToPassword],
+  );
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (step === 'email') { goToPassword(); return }
-    if (!password) { setFieldError('Please enter your password.'); return }
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (step === "email") {
+        goToPassword();
+        return;
+      }
+      if (!password) {
+        setFieldError("Please enter your password.");
+        return;
+      }
 
-    setFieldError(null)
-    dispatch(setLoading(true))
-    try {
-      const response = await authService.login({ email: email.trim(), password })
-      dispatch(setCredentials(response))
-      toast('Welcome back!', 'success')
+      setFieldError(null);
+      dispatch(setLoading(true));
+      try {
+        const response = await authService.login({
+          email: email.trim(),
+          password,
+        });
+        dispatch(setCredentials(response));
+        toast("Welcome back!", "success");
 
-      // PENDING doctors should see the approval status page, not the dashboard.
-      const dest =
-        response.user.role === 'DOCTOR' && response.user.accountStatus === 'PENDING'
-          ? '/doctor/pending'
-          : from ?? ROLE_HOME[response.user.role as Role]
-      navigate(dest, { replace: true })
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message ?? 'Invalid email or password.'
-      setFieldError(msg)
-      toast(msg, 'error')
-    } finally {
-      dispatch(setLoading(false))
-    }
-  }, [step, password, email, from, dispatch, navigate, toast, goToPassword])
+        // PENDING doctors should see the approval status page, not the dashboard.
+        const dest =
+          response.user.role === "DOCTOR" &&
+          response.user.accountStatus === "PENDING"
+            ? "/doctor/pending"
+            : (from ?? ROLE_HOME[response.user.role as Role]);
+        navigate(dest, { replace: true });
+      } catch (err: unknown) {
+        const msg =
+          (err as { response?: { data?: { message?: string } } })?.response
+            ?.data?.message ?? "Invalid email or password.";
+        setFieldError(msg);
+        toast(msg, "error");
+      } finally {
+        dispatch(setLoading(false));
+      }
+    },
+    [step, password, email, from, dispatch, navigate, toast, goToPassword],
+  );
 
-  const animClass = animDir === 'forward' ? 'auth-step-enter-forward' : 'auth-step-enter-back'
+  const animClass =
+    animDir === "forward" ? "auth-step-enter-forward" : "auth-step-enter-back";
 
   return (
     <div className="flex min-h-dvh bg-background">
@@ -109,22 +143,30 @@ export const LoginPage = () => {
 
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
         {/* Mobile logo */}
-        <a href="/" className="mb-10 flex items-center gap-2.5 no-underline lg:hidden">
+        <a
+          href="/"
+          className="mb-10 flex items-center gap-2.5 no-underline lg:hidden"
+        >
           <img src="/logo.svg" alt="" className="h-8 w-8" />
-          <span className="text-lg font-bold tracking-tight text-primary">Curex</span>
+          <span className="text-lg font-bold tracking-tight text-primary">
+            Curex
+          </span>
         </a>
 
         <div className="w-full max-w-[360px]">
           {/* Step progress bar */}
           <div className="auth-step-bar gap-1.5">
-            {(['email', 'password'] as LoginStep[]).map((s, i) => (
+            {(["email", "password"] as LoginStep[]).map((s, i) => (
               <div
                 key={s}
                 className={`auth-step-segment ${
-                  step === 'email'    && i === 0 ? 'active'
-                  : step === 'password' && i === 0 ? 'done'
-                  : step === 'password' && i === 1 ? 'active'
-                  : 'todo'
+                  step === "email" && i === 0
+                    ? "active"
+                    : step === "password" && i === 0
+                      ? "done"
+                      : step === "password" && i === 1
+                        ? "active"
+                        : "todo"
                 }`}
               />
             ))}
@@ -137,20 +179,30 @@ export const LoginPage = () => {
             noValidate
             data-testid="login-form"
           >
-            {step === 'email' ? (
+            {step === "email" ? (
               <>
                 <div>
-                  <h1 className="text-2xl font-bold tracking-tight text-primary">Sign in to Curex</h1>
+                  <h1 className="text-2xl font-bold tracking-tight text-primary">
+                    Sign in to Curex
+                  </h1>
                   <p className="mt-1.5 text-sm text-text-secondary">
-                    Don't have an account?{' '}
-                    <Link to="/register" className="font-semibold text-primary-light hover:underline">
+                    Don't have an account?{" "}
+                    <Link
+                      to="/register"
+                      className="font-semibold text-primary-light hover:underline"
+                    >
                       Create one
                     </Link>
                   </p>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="email" className="text-sm font-semibold text-primary">Email address</label>
+                  <label
+                    htmlFor="email"
+                    className="text-sm font-semibold text-primary"
+                  >
+                    Email address
+                  </label>
                   <input
                     ref={emailRef}
                     id="email"
@@ -166,7 +218,12 @@ export const LoginPage = () => {
                 </div>
 
                 {fieldError && (
-                  <p role="alert" className="rounded-xl bg-error/10 px-3 py-2.5 text-sm text-error">{fieldError}</p>
+                  <p
+                    role="alert"
+                    className="rounded-xl bg-error/10 px-3 py-2.5 text-sm text-error"
+                  >
+                    {fieldError}
+                  </p>
                 )}
 
                 <button
@@ -200,13 +257,22 @@ export const LoginPage = () => {
                     </div>
                   </div>
 
-                  <h1 className="mt-3 text-2xl font-bold tracking-tight text-primary">Enter your password</h1>
-                  <p className="mt-1 text-sm text-text-secondary">Sign in to your Curex account</p>
+                  <h1 className="mt-3 text-2xl font-bold tracking-tight text-primary">
+                    Enter your password
+                  </h1>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    Sign in to your Curex account
+                  </p>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
-                    <label htmlFor="password" className="text-sm font-semibold text-primary">Password</label>
+                    <label
+                      htmlFor="password"
+                      className="text-sm font-semibold text-primary"
+                    >
+                      Password
+                    </label>
                     <span className="text-xs text-text-secondary hover:text-primary cursor-pointer transition-colors">
                       Forgot password?
                     </span>
@@ -215,7 +281,7 @@ export const LoginPage = () => {
                     <input
                       ref={passwordRef}
                       id="password"
-                      type={showPassword ? 'text' : 'password'}
+                      type={showPassword ? "text" : "password"}
                       autoComplete="current-password"
                       value={password}
                       onChange={handlePasswordChange}
@@ -226,18 +292,20 @@ export const LoginPage = () => {
                     <button
                       type="button"
                       onClick={toggleShowPassword}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      aria-label={
+                        showPassword ? "Hide password" : "Show password"
+                      }
                       className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-secondary transition-colors hover:text-primary"
                       data-testid="login-toggle-password"
                     >
-                      {showPassword
-                        ? <EyeOff className="h-4 w-4" strokeWidth={1.5} />
-                        : <Eye    className="h-4 w-4" strokeWidth={1.5} />
-                      }
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" strokeWidth={1.5} />
+                      ) : (
+                        <Eye className="h-4 w-4" strokeWidth={1.5} />
+                      )}
                     </button>
                   </div>
                 </div>
-
 
                 <button
                   type="submit"
@@ -245,8 +313,10 @@ export const LoginPage = () => {
                   className="btn-primary mt-1 w-full justify-center gap-2.5 py-3 text-base disabled:opacity-60"
                   data-testid="login-submit-button"
                 >
-                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  {isLoading ? 'Signing in…' : 'Sign in'}
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  {isLoading ? "Signing in…" : "Sign in"}
                 </button>
               </>
             )}
@@ -254,5 +324,5 @@ export const LoginPage = () => {
         </div>
       </div>
     </div>
-  )
-}
+  );
+};

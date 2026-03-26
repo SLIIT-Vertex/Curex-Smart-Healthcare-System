@@ -30,7 +30,8 @@ public class AdminService {
     public Page<UserResponse> getAllUsers(int page, int size, User.Role role,
                                          User.AccountStatus status, String searchTerm) {
         Pageable pageable = PageRequest.of(page, size);
-        return userRepository.searchUsers(role, status, searchTerm, pageable)
+        String normalizedSearch = searchTerm == null ? "" : searchTerm.trim();
+        return userRepository.searchUsers(role, status, normalizedSearch, pageable)
                 .map(UserResponse::new);
     }
 

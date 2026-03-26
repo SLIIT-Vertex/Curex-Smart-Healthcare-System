@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useAppDispatch, useAuth, useToast } from '../store/hooks'
-import { updateUser } from '../store/slices/authSlice'
-import { userService } from '../services/userService'
-import type { UserResponse, UpdateProfileRequest } from '../types/auth'
+import { useState, useEffect, useCallback } from "react";
+import { useAppDispatch, useAuth, useToast } from "../store/hooks";
+import { updateUser } from "../store/slices/authSlice";
+import { userService } from "../services/userService";
+import type { UserResponse, UpdateProfileRequest } from "../types/auth";
 
 /**
  * Fetches the authenticated user's full profile on mount and provides a
@@ -18,22 +18,29 @@ import type { UserResponse, UpdateProfileRequest } from '../types/auth'
  * }
  */
 export const useMyProfile = () => {
-  const dispatch    = useAppDispatch()
-  const { user }    = useAuth()
-  const { toast }   = useToast()
+  const dispatch = useAppDispatch();
+  const { user } = useAuth();
+  const { toast } = useToast();
 
-  const [profile, setProfile]   = useState<UserResponse | null>(null)
-  const [loading, setLoading]   = useState(true)
-  const [saving, setSaving]     = useState(false)
+  const [profile, setProfile] = useState<UserResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    let cancelled = false
-    userService.getMyProfile()
-      .then((data) => { if (!cancelled) setProfile(data) })
+    let cancelled = false;
+    userService
+      .getMyProfile()
+      .then((data) => {
+        if (!cancelled) setProfile(data);
+      })
       .catch(() => {})
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [])
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /**
    * Sends a PATCH-style update (only non-undefined keys are sent).
@@ -41,33 +48,35 @@ export const useMyProfile = () => {
    */
   const saveProfile = useCallback(
     async (data: UpdateProfileRequest): Promise<UserResponse | null> => {
-      setSaving(true)
+      setSaving(true);
       try {
-        const updated = await userService.updateMyProfile(data)
-        setProfile(updated)
+        const updated = await userService.updateMyProfile(data);
+        setProfile(updated);
 
         // Merge lean fields that TopBars / headers depend on into the current Redux user.
         if (user) {
-          dispatch(updateUser({
-            ...user,
-            firstName:       updated.firstName,
-            lastName:        updated.lastName,
-            phoneNumber:     updated.phoneNumber,
-            profileImageUrl: updated.profileImageUrl,
-          }))
+          dispatch(
+            updateUser({
+              ...user,
+              firstName: updated.firstName,
+              lastName: updated.lastName,
+              phoneNumber: updated.phoneNumber,
+              profileImageUrl: updated.profileImageUrl,
+            }),
+          );
         }
 
-        toast('Profile updated successfully', 'success')
-        return updated
+        toast("Profile updated successfully", "success");
+        return updated;
       } catch {
-        toast('Failed to save profile. Please try again.', 'error')
-        return null
+        toast("Failed to save profile. Please try again.", "error");
+        return null;
       } finally {
-        setSaving(false)
+        setSaving(false);
       }
     },
-    [dispatch, toast],
-  )
+    [dispatch, toast, user],
+  );
 
-  return { profile, setProfile, loading, saving, saveProfile }
-}
+  return { profile, setProfile, loading, saving, saveProfile };
+};

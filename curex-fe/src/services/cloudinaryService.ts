@@ -50,8 +50,9 @@ export const cloudinaryService = {
   },
 
   /**
-   * Uploads any file (PDF, JPG, PNG, etc.) using the `auto` resource type.
-   * Used for proof documents that may be PDFs or images.
+   * Uploads any file (PDF, JPG, PNG, etc.) using the `raw` resource type.
+   * Used for proof documents — raw ensures files are stored as-is (not
+   * processed as images) so PDFs open and download correctly.
    */
   async uploadFile(
     file: File,
@@ -63,7 +64,7 @@ export const cloudinaryService = {
     body.append('folder', folder)
 
     const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/raw/upload`,
       { method: 'POST', body },
     )
 
