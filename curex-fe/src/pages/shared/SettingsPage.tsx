@@ -337,7 +337,6 @@ export function SettingsPage() {
                   }))
                 }
               >
-                <option value="12">12-hour</option>
                 <option value="24">24-hour</option>
               </select>
             </Field>

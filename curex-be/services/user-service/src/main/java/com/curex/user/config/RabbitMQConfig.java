@@ -20,6 +20,8 @@ public class RabbitMQConfig {
     public static final String STATUS_KEY          = "user.status.*";
     public static final String OTP_QUEUE           = "user.otp.queue";
     public static final String OTP_KEY             = "user.otp.send";
+    public static final String PASSWORD_CHANGED_QUEUE = "user.password.queue";
+    public static final String PASSWORD_CHANGED_KEY   = "user.password.changed";
 
     @Bean
     public TopicExchange userExchange() {
@@ -42,6 +44,11 @@ public class RabbitMQConfig {
     }
 
     @Bean
+    public Queue passwordChangedQueue() {
+        return new Queue(PASSWORD_CHANGED_QUEUE, true);
+    }
+
+    @Bean
     public Binding registrationBinding(Queue registrationQueue, TopicExchange userExchange) {
         return BindingBuilder.bind(registrationQueue).to(userExchange).with(REGISTRATION_KEY);
     }
@@ -54,6 +61,11 @@ public class RabbitMQConfig {
     @Bean
     public Binding otpBinding(Queue otpQueue, TopicExchange userExchange) {
         return BindingBuilder.bind(otpQueue).to(userExchange).with(OTP_KEY);
+    }
+
+    @Bean
+    public Binding passwordChangedBinding(Queue passwordChangedQueue, TopicExchange userExchange) {
+        return BindingBuilder.bind(passwordChangedQueue).to(userExchange).with(PASSWORD_CHANGED_KEY);
     }
 
     @Bean

@@ -27,6 +27,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -166,6 +167,8 @@ public class AuthService {
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
         log.info("Password changed for user: {}", user.getEmail());
+
+        publishPasswordChangedEvent(user);
     }
 
     public boolean validateToken(String token) {
@@ -236,6 +239,21 @@ public class AuthService {
             log.debug("Published registration event for user: {}", user.getEmail());
         } catch (Exception e) {
             log.warn("Failed to publish registration event for {}: {}", user.getEmail(), e.getMessage());
+        }
+    }
+
+    private void publishPasswordChangedEvent(User user) {
+        try {
+            Map<String, Object> event = new HashMap<>();
+            event.put("userId", user.getId());
+            event.put("email", user.getEmail());
+            event.put("firstName", user.getFirstName());
+            event.put("changedAt", LocalDateTime.now().toString());
+
+            rabbitTemplate.convertAndSend("user.exchange", "user.password.changed", event);
+            log.debug("Published password-changed event for user: {}", user.getEmail());
+        } catch (Exception e) {
+            log.warn("Failed to publish password-changed event for {}: {}", user.getEmail(), e.getMessage());
         }
     }
 }

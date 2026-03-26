@@ -111,6 +111,32 @@ public class NotificationEventConsumer {
         }
     }
 
+    @RabbitListener(queues = "user.password.queue")
+    public void handleUserPasswordChanged(Map<String, Object> event) {
+        try {
+            String userId = (String) event.get("userId");
+            String email = (String) event.get("email");
+            String firstName = (String) event.get("firstName");
+            String changedAt = (String) event.get("changedAt");
+
+            if (email == null || email.isBlank()) {
+                log.warn("Skipping password-changed notification because email is missing for userId={}", userId);
+                return;
+            }
+
+            notificationService.sendNotificationAsync(NotificationRequest.builder()
+                    .userId(userId)
+                    .recipientEmail(email)
+                    .type(Notification.NotificationType.PASSWORD_RESET)
+                    .channel(Notification.NotificationChannel.EMAIL)
+                    .subject("Security Alert: Password Changed")
+                    .content(buildPasswordChangedEmailContent(firstName, changedAt))
+                    .build());
+        } catch (Exception e) {
+            log.error("Failed to process user.password.changed event: {}", e.getMessage(), e);
+        }
+    }
+
     // ── OTP delivery ──────────────────────────────────────────────────────────
 
     /**
@@ -388,5 +414,18 @@ public class NotificationEventConsumer {
                 <p>If you need help, please contact Curex support.</p>
                 <p>Best regards,<br>The Curex Healthcare Team</p>
                 """, safeName, safeRole, safeAction, safeStatus, safeNotes);
+    }
+
+    private String buildPasswordChangedEmailContent(String firstName, String changedAt) {
+        String safeName = (firstName == null || firstName.isBlank()) ? "User" : HtmlUtils.htmlEscape(firstName);
+        String safeTime = (changedAt == null || changedAt.isBlank()) ? "just now" : HtmlUtils.htmlEscape(changedAt);
+
+        return String.format("""
+                <p>Hi %s,</p>
+                <p>Your Curex account password was changed at <strong>%s</strong>.</p>
+                <p>If this was you, no action is required.</p>
+                <p>If this was not you, please reset your password immediately and contact support.</p>
+                <p>Regards,<br>The Curex Security Team</p>
+                """, safeName, safeTime);
     }
 }

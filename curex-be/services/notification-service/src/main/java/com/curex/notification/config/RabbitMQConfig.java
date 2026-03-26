@@ -21,6 +21,7 @@ public class RabbitMQConfig {
     // Queue names
     public static final String USER_REGISTRATION_QUEUE = "user.registration.queue";
     public static final String USER_STATUS_CHANGED_QUEUE = "user.status.queue";
+    public static final String USER_PASSWORD_CHANGED_QUEUE = "user.password.queue";
     public static final String APPOINTMENT_BOOKING_QUEUE = "appointment.booking.queue";
     public static final String PAYMENT_CONFIRMATION_QUEUE = "payment.confirmation.queue";
     public static final String PRESCRIPTION_ISSUED_QUEUE = "prescription.issued.queue";
@@ -28,6 +29,7 @@ public class RabbitMQConfig {
     // Routing keys
     public static final String USER_REGISTRATION_ROUTING_KEY = "user.registration";
     public static final String USER_STATUS_ROUTING_KEY = "user.status.*";
+    public static final String USER_PASSWORD_CHANGED_ROUTING_KEY = "user.password.changed";
     public static final String APPOINTMENT_BOOKING_ROUTING_KEY = "appointment.booking";
     public static final String PAYMENT_CONFIRMATION_ROUTING_KEY = "payment.confirmation";
     public static final String PRESCRIPTION_ISSUED_ROUTING_KEY = "prescription.issued";
@@ -87,6 +89,19 @@ public class RabbitMQConfig {
                 .bind(userStatusChangedQueue())
                 .to(userExchange())
                 .with(USER_STATUS_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue userPasswordChangedQueue() {
+        return QueueBuilder.durable(USER_PASSWORD_CHANGED_QUEUE).build();
+    }
+
+    @Bean
+    public Binding userPasswordChangedBinding() {
+        return BindingBuilder
+                .bind(userPasswordChangedQueue())
+                .to(userExchange())
+                .with(USER_PASSWORD_CHANGED_ROUTING_KEY);
     }
 
     // === APPOINTMENT EVENTS ===
