@@ -20,16 +20,18 @@ public class RabbitMQConfig {
 
     // Queue names
     public static final String USER_REGISTRATION_QUEUE = "user.registration.queue";
+    public static final String USER_STATUS_CHANGED_QUEUE = "user.status.queue";
+    public static final String USER_PASSWORD_CHANGED_QUEUE = "user.password.queue";
     public static final String APPOINTMENT_BOOKING_QUEUE = "appointment.booking.queue";
     public static final String PAYMENT_CONFIRMATION_QUEUE = "payment.confirmation.queue";
-    public static final String DOCTOR_APPROVAL_QUEUE = "doctor.approval.queue";
     public static final String PRESCRIPTION_ISSUED_QUEUE = "prescription.issued.queue";
 
     // Routing keys
     public static final String USER_REGISTRATION_ROUTING_KEY = "user.registration";
+    public static final String USER_STATUS_ROUTING_KEY = "user.status.*";
+    public static final String USER_PASSWORD_CHANGED_ROUTING_KEY = "user.password.changed";
     public static final String APPOINTMENT_BOOKING_ROUTING_KEY = "appointment.booking";
     public static final String PAYMENT_CONFIRMATION_ROUTING_KEY = "payment.confirmation";
-    public static final String DOCTOR_APPROVAL_ROUTING_KEY = "doctor.approval";
     public static final String PRESCRIPTION_ISSUED_ROUTING_KEY = "prescription.issued";
 
     // Message converter for JSON
@@ -76,6 +78,32 @@ public class RabbitMQConfig {
                 .with(USER_REGISTRATION_ROUTING_KEY);
     }
 
+    @Bean
+    public Queue userStatusChangedQueue() {
+        return QueueBuilder.durable(USER_STATUS_CHANGED_QUEUE).build();
+    }
+
+    @Bean
+    public Binding userStatusChangedBinding() {
+        return BindingBuilder
+                .bind(userStatusChangedQueue())
+                .to(userExchange())
+                .with(USER_STATUS_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue userPasswordChangedQueue() {
+        return QueueBuilder.durable(USER_PASSWORD_CHANGED_QUEUE).build();
+    }
+
+    @Bean
+    public Binding userPasswordChangedBinding() {
+        return BindingBuilder
+                .bind(userPasswordChangedQueue())
+                .to(userExchange())
+                .with(USER_PASSWORD_CHANGED_ROUTING_KEY);
+    }
+
     // === APPOINTMENT EVENTS ===
     @Bean
     public TopicExchange appointmentExchange() {
@@ -118,19 +146,6 @@ public class RabbitMQConfig {
     @Bean
     public TopicExchange doctorExchange() {
         return new TopicExchange(DOCTOR_EXCHANGE, true, false);
-    }
-
-    @Bean
-    public Queue doctorApprovalQueue() {
-        return QueueBuilder.durable(DOCTOR_APPROVAL_QUEUE).build();
-    }
-
-    @Bean
-    public Binding doctorApprovalBinding() {
-        return BindingBuilder
-                .bind(doctorApprovalQueue())
-                .to(doctorExchange())
-                .with(DOCTOR_APPROVAL_ROUTING_KEY);
     }
 
     // === PRESCRIPTION EVENTS (from doctor-service) ===

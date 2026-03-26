@@ -1,6 +1,11 @@
 package com.curex.user.controller;
 
 import com.curex.user.dto.AuthResponse;
+import com.curex.user.dto.ChangePasswordRequest;
+import com.curex.user.dto.ForgotPasswordResetRequest;
+import com.curex.user.dto.ForgotPasswordSendOtpRequest;
+import com.curex.user.dto.ForgotPasswordVerifyOtpRequest;
+import com.curex.user.dto.ForgotPasswordVerifyOtpResponse;
 import com.curex.user.dto.LoginRequest;
 import com.curex.user.dto.RegisterRequest;
 import com.curex.user.dto.SendOtpRequest;
@@ -66,6 +71,33 @@ public class AuthController {
     @PostMapping("/logout")
     public ResponseEntity<Map<String, String>> logout() {
         return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<Map<String, String>> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        UserDetails userDetails = (UserDetails) auth.getPrincipal();
+        authService.changePassword(userDetails.getUsername(), request);
+        return ResponseEntity.ok(Map.of("message", "Password updated successfully"));
+    }
+
+    @PostMapping("/forgot-password/otp/send")
+    public ResponseEntity<Map<String, String>> sendForgotPasswordOtp(@Valid @RequestBody ForgotPasswordSendOtpRequest request) {
+        authService.sendForgotPasswordOtp(request);
+        return ResponseEntity.ok(Map.of("message", "OTP sent successfully", "expiresInMinutes", "5"));
+    }
+
+    @PostMapping("/forgot-password/otp/verify")
+    public ResponseEntity<ForgotPasswordVerifyOtpResponse> verifyForgotPasswordOtp(
+            @Valid @RequestBody ForgotPasswordVerifyOtpRequest request
+    ) {
+        return ResponseEntity.ok(authService.verifyForgotPasswordOtp(request));
+    }
+
+    @PostMapping("/forgot-password/reset")
+    public ResponseEntity<Map<String, String>> resetForgotPassword(@Valid @RequestBody ForgotPasswordResetRequest request) {
+        authService.resetForgottenPassword(request);
+        return ResponseEntity.ok(Map.of("message", "Password reset successfully"));
     }
 
     @GetMapping("/health")

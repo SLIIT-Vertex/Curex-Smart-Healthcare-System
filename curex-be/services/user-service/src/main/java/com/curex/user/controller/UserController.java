@@ -2,6 +2,8 @@ package com.curex.user.controller;
 
 import com.curex.user.dto.UpdateProfileRequest;
 import com.curex.user.dto.UserResponse;
+import com.curex.user.dto.NotificationPreferencesRequest;
+import com.curex.user.dto.NotificationPreferencesResponse;
 import com.curex.user.entity.User;
 import com.curex.user.service.UserProfileService;
 import com.curex.user.service.UserQueryService;
@@ -12,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -78,6 +81,30 @@ public class UserController {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         UserDetails userDetails = (UserDetails) auth.getPrincipal();
         return ResponseEntity.ok(userProfileService.updateProfile(userDetails.getUsername(), request));
+    }
+
+    @GetMapping("/api/users/me/preferences/notifications")
+    public ResponseEntity<NotificationPreferencesResponse> getMyNotificationPreferences() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        UserDetails userDetails = (UserDetails) auth.getPrincipal();
+        return ResponseEntity.ok(userProfileService.getNotificationPreferencesByEmail(userDetails.getUsername()));
+    }
+
+    @PutMapping("/api/users/me/preferences/notifications")
+    public ResponseEntity<NotificationPreferencesResponse> updateMyNotificationPreferences(
+            @RequestBody NotificationPreferencesRequest request
+    ) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        UserDetails userDetails = (UserDetails) auth.getPrincipal();
+        return ResponseEntity.ok(userProfileService.updateNotificationPreferences(userDetails.getUsername(), request));
+    }
+
+    @DeleteMapping("/api/users/me/account")
+    public ResponseEntity<Map<String, String>> deleteMyAccount() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        UserDetails userDetails = (UserDetails) auth.getPrincipal();
+        userProfileService.deleteOwnAccount(userDetails.getUsername());
+        return ResponseEntity.ok(Map.of("message", "Account deleted successfully"));
     }
 
     // ── Approved-user endpoints ──────────────────────────────────────────────
@@ -157,6 +184,11 @@ public class UserController {
     @GetMapping("/api/internal/users/{id}")
     public ResponseEntity<UserResponse> getInternalUserById(@PathVariable String id) {
         return ResponseEntity.ok(userQueryService.getAnyUserById(id));
+    }
+
+    @GetMapping("/api/internal/users/{id}/preferences/notifications")
+    public ResponseEntity<NotificationPreferencesResponse> getInternalNotificationPreferences(@PathVariable String id) {
+        return ResponseEntity.ok(userProfileService.getNotificationPreferencesByUserId(id));
     }
 
     /** Look up any user by email regardless of status (for other microservices). */

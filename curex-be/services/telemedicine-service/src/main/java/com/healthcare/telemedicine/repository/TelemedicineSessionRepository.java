@@ -19,4 +19,8 @@ public interface TelemedicineSessionRepository extends JpaRepository<Telemedicin
     List<TelemedicineSession> findByDoctorIdOrderByCreatedAtDesc(String doctorId);
 
     List<TelemedicineSession> findByPatientIdOrderByCreatedAtDesc(String patientId);
+
+    long deleteByPatientId(String patientId);
+
+    long deleteByDoctorId(String doctorId);
 }

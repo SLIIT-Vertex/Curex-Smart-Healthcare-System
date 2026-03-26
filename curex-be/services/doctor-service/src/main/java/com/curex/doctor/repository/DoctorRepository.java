@@ -20,4 +20,6 @@ public interface DoctorRepository extends JpaRepository<Doctor, String> {
     boolean existsByEmail(String email);
 
     boolean existsByUserId(String userId);
+
+    long deleteByUserId(String userId);
 }

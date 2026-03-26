@@ -14,4 +14,6 @@ public interface PatientRepository extends JpaRepository<Patient, String> {
     boolean existsByEmail(String email);
 
     boolean existsByUserId(String userId);
+
+    long deleteByUserId(String userId);
 }

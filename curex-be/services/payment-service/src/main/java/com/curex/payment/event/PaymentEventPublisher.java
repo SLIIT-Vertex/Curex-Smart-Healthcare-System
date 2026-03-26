@@ -18,9 +18,26 @@ public class PaymentEventPublisher {
      * so other services can consume without Java serialization.
      */
     public void publishPaymentConfirmed(PaymentConfirmedEvent event) {
+        // Existing route used by appointment-service.
         rabbitTemplate.convertAndSend(
                 RabbitMQConfig.HEALTHCARE_EXCHANGE,
                 RabbitMQConfig.PAYMENT_CONFIRMED_ROUTING_KEY,
                 event);
+
+        rabbitTemplate.convertAndSend(
+            RabbitMQConfig.NOTIFICATION_PAYMENT_EXCHANGE,
+            RabbitMQConfig.NOTIFICATION_PAYMENT_CONFIRMATION_ROUTING_KEY,
+                toPaymentConfirmationNotificationEvent(event));
+    }
+
+    private PaymentConfirmationNotificationEvent toPaymentConfirmationNotificationEvent(PaymentConfirmedEvent event) {
+        return PaymentConfirmationNotificationEvent.builder()
+                .paymentId(event.getPaymentId() != null ? event.getPaymentId().toString() : null)
+                .appointmentId(event.getAppointmentId())
+                .patientId(event.getPatientId())
+                .amount(event.getAmount() != null ? event.getAmount().toPlainString() : null)
+                .currency(event.getCurrency())
+                .status(event.getStatus() != null ? event.getStatus().name() : null)
+                .build();
     }
 }

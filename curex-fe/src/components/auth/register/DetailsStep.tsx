@@ -14,16 +14,33 @@ import { NavButtons } from "./NavButtons";
 export const DetailsStep = () => {
   const dispatch = useAppDispatch();
   const form = useAppSelector((s) => s.register);
+  const errors = form.errors;
+
+  const sanitizePhoneInput = useCallback((value: string) => {
+    const trimmed = value.trim();
+    const hasLeadingPlus = trimmed.startsWith("+");
+    const digitsOnly = value.replace(/\D/g, "");
+    return hasLeadingPlus ? `+${digitsOnly}` : digitsOnly;
+  }, []);
 
   const handleChange = useCallback(
     (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
       const key = e.target.dataset.field;
       if (!key) return;
-      dispatch(
-        setField({ key: key as keyof typeof form, value: e.target.value }),
-      );
+      const rawValue = e.target.value;
+      let value = rawValue;
+
+      if (key === "yearsOfExperience") {
+        value = rawValue.replace(/\D/g, "");
+      }
+
+      if (key === "emergencyContactPhone") {
+        value = sanitizePhoneInput(rawValue);
+      }
+
+      dispatch(setField({ key: key as keyof typeof form, value }));
     },
-    [dispatch],
+    [dispatch, sanitizePhoneInput],
   );
 
   const toggleFillHealth = useCallback(() => {
@@ -149,15 +166,23 @@ export const DetailsStep = () => {
                   className="auth-input text-xs py-2"
                   data-testid="register-emergency-name-input"
                 />
-                <input
-                  type="tel"
-                  value={form.emergencyContactPhone}
-                  data-field="emergencyContactPhone"
-                  onChange={handleChange}
-                  placeholder="Phone number"
-                  className="auth-input text-xs py-2"
-                  data-testid="register-emergency-phone-input"
-                />
+                <div>
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    value={form.emergencyContactPhone}
+                    data-field="emergencyContactPhone"
+                    onChange={handleChange}
+                    placeholder="+94770000000"
+                    className="auth-input text-xs py-2"
+                    data-testid="register-emergency-phone-input"
+                  />
+                  {errors.emergencyContactPhone && (
+                    <p className="mt-1 text-[11px] font-medium text-error">
+                      {errors.emergencyContactPhone}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -214,9 +239,10 @@ export const DetailsStep = () => {
             data-testid="register-license-input"
           />
         </Field>
-        <Field label="Years of experience">
+        <Field label="Years of experience" error={errors.yearsOfExperience}>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
             min="0"
             max="60"
             value={form.yearsOfExperience}

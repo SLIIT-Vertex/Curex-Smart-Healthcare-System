@@ -17,6 +17,10 @@ public class RabbitMQConfig {
     public static final String PAYMENT_CONFIRMED_QUEUE = "payment.confirmed.queue";
     public static final String PAYMENT_CONFIRMED_ROUTING_KEY = "payment.confirmed";
 
+    // Notification-service routing (aligned contract)
+    public static final String NOTIFICATION_PAYMENT_EXCHANGE = "payment.exchange";
+    public static final String NOTIFICATION_PAYMENT_CONFIRMATION_ROUTING_KEY = "payment.confirmation";
+
     @Bean
     public TopicExchange healthcareExchange() {
         return new TopicExchange(HEALTHCARE_EXCHANGE);

@@ -18,6 +18,8 @@ public interface UserRepository extends JpaRepository<User, String> {
 
     Optional<User> findByEmail(String email);
 
+    Optional<User> findFirstByPhoneNumber(String phoneNumber);
+
     boolean existsByEmail(String email);
 
     @Query("SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END FROM User u WHERE u.email = :email AND u.accountStatus = 'REJECTED'")

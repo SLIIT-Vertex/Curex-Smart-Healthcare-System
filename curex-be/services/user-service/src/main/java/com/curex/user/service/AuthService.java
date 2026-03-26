@@ -1,6 +1,12 @@
 package com.curex.user.service;
 
 import com.curex.user.dto.AuthResponse;
+import com.curex.user.dto.ChangePasswordRequest;
+import com.curex.user.dto.ForgotPasswordChannel;
+import com.curex.user.dto.ForgotPasswordResetRequest;
+import com.curex.user.dto.ForgotPasswordSendOtpRequest;
+import com.curex.user.dto.ForgotPasswordVerifyOtpRequest;
+import com.curex.user.dto.ForgotPasswordVerifyOtpResponse;
 import com.curex.user.dto.LoginRequest;
 import com.curex.user.dto.RegisterRequest;
 import com.curex.user.entity.User;
@@ -8,6 +14,7 @@ import com.curex.user.exception.AccountNotActiveException;
 import com.curex.user.exception.AdminRegistrationForbiddenException;
 import com.curex.user.exception.EmailAlreadyExistsException;
 import com.curex.user.exception.InvalidCredentialsException;
+import com.curex.user.exception.InvalidPasswordChangeException;
 import com.curex.user.exception.PhoneVerificationRequiredException;
 import com.curex.user.exception.UserNotFoundException;
 import com.curex.user.repository.UserRepository;
@@ -25,6 +32,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -149,6 +157,72 @@ public class AuthService {
                 new AuthResponse.UserInfo(user));
     }
 
+    public void changePassword(String email, ChangePasswordRequest request) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException(email));
+
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+            throw new InvalidPasswordChangeException("Current password is incorrect");
+        }
+
+        if (request.getCurrentPassword().equals(request.getNewPassword())) {
+            throw new InvalidPasswordChangeException("New password must be different from current password");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+        log.info("Password changed for user: {}", user.getEmail());
+
+        publishPasswordChangedEvent(user);
+    }
+
+    public void sendForgotPasswordOtp(ForgotPasswordSendOtpRequest request) {
+        User user = resolveUserByChannel(request.getIdentifier(), request.getChannel());
+
+        if (request.getChannel() == ForgotPasswordChannel.EMAIL) {
+            otpService.sendEmailOtp(user.getEmail());
+        } else {
+            otpService.sendPhoneOtp(user.getPhoneNumber());
+        }
+    }
+
+    public ForgotPasswordVerifyOtpResponse verifyForgotPasswordOtp(ForgotPasswordVerifyOtpRequest request) {
+        User user = resolveUserByChannel(request.getIdentifier(), request.getChannel());
+
+        String token;
+        if (request.getChannel() == ForgotPasswordChannel.EMAIL) {
+            token = otpService.verifyEmailOtp(user.getEmail(), request.getOtpCode());
+        } else {
+            token = otpService.verifyPhoneOtp(user.getPhoneNumber(), request.getOtpCode());
+        }
+
+        return new ForgotPasswordVerifyOtpResponse(token, "OTP verified successfully");
+    }
+
+    public void resetForgottenPassword(ForgotPasswordResetRequest request) {
+        User user = resolveUserByChannel(request.getIdentifier(), request.getChannel());
+
+        boolean verified;
+        if (request.getChannel() == ForgotPasswordChannel.EMAIL) {
+            verified = otpService.isEmailVerified(user.getEmail(), request.getVerificationToken());
+            if (!verified) {
+                throw new InvalidPasswordChangeException("OTP verification token is invalid or expired");
+            }
+            otpService.consumeEmailVerificationToken(request.getVerificationToken());
+        } else {
+            verified = otpService.isPhoneVerified(user.getPhoneNumber(), request.getVerificationToken());
+            if (!verified) {
+                throw new InvalidPasswordChangeException("OTP verification token is invalid or expired");
+            }
+            otpService.consumePhoneVerificationToken(request.getVerificationToken());
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+        log.info("Password reset completed for user: {}", user.getEmail());
+        publishPasswordChangedEvent(user);
+    }
+
     public boolean validateToken(String token) {
         return jwtTokenUtil.validateToken(token);
     }
@@ -218,5 +292,30 @@ public class AuthService {
         } catch (Exception e) {
             log.warn("Failed to publish registration event for {}: {}", user.getEmail(), e.getMessage());
         }
+    }
+
+    private void publishPasswordChangedEvent(User user) {
+        try {
+            Map<String, Object> event = new HashMap<>();
+            event.put("userId", user.getId());
+            event.put("email", user.getEmail());
+            event.put("firstName", user.getFirstName());
+            event.put("changedAt", LocalDateTime.now().toString());
+
+            rabbitTemplate.convertAndSend("user.exchange", "user.password.changed", event);
+            log.debug("Published password-changed event for user: {}", user.getEmail());
+        } catch (Exception e) {
+            log.warn("Failed to publish password-changed event for {}: {}", user.getEmail(), e.getMessage());
+        }
+    }
+
+    private User resolveUserByChannel(String identifier, ForgotPasswordChannel channel) {
+        if (channel == ForgotPasswordChannel.EMAIL) {
+            return userRepository.findByEmail(identifier)
+                    .orElseThrow(() -> new UserNotFoundException(identifier));
+        }
+
+        return userRepository.findFirstByPhoneNumber(identifier)
+                .orElseThrow(() -> new UserNotFoundException(identifier));
     }
 }

@@ -21,7 +21,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 
@@ -154,6 +156,27 @@ public class TelemedicineSessionService {
 
         publishSessionEnded(saved);
         return toResponse(saved);
+    }
+
+    @Transactional
+    public Map<String, Long> purgeUserData(String userId) {
+        String normalizedUserId = trimToNull(userId);
+        if (normalizedUserId == null) {
+            Map<String, Long> empty = new LinkedHashMap<>();
+            empty.put("deletedAsPatient", 0L);
+            empty.put("deletedAsDoctor", 0L);
+            empty.put("totalDeleted", 0L);
+            return empty;
+        }
+
+        long deletedAsPatient = telemedicineSessionRepository.deleteByPatientId(normalizedUserId);
+        long deletedAsDoctor = telemedicineSessionRepository.deleteByDoctorId(normalizedUserId);
+
+        Map<String, Long> result = new LinkedHashMap<>();
+        result.put("deletedAsPatient", deletedAsPatient);
+        result.put("deletedAsDoctor", deletedAsDoctor);
+        result.put("totalDeleted", deletedAsPatient + deletedAsDoctor);
+        return result;
     }
 
     private String buildSessionUrl(String roomName) {

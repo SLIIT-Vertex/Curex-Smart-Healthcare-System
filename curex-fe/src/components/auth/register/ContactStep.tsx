@@ -11,15 +11,22 @@ export const ContactStep = () => {
   const form = useAppSelector((s) => s.register);
   const errors = form.errors;
 
+  const sanitizePhoneInput = useCallback((value: string) => {
+    const trimmed = value.trim();
+    const hasLeadingPlus = trimmed.startsWith("+");
+    const digitsOnly = value.replace(/\D/g, "");
+    return hasLeadingPlus ? `+${digitsOnly}` : digitsOnly;
+  }, []);
+
   const handleChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
       const key = e.target.dataset.field;
       if (!key) return;
-      dispatch(
-        setField({ key: key as keyof typeof form, value: e.target.value }),
-      );
+      const rawValue = e.target.value;
+      const value = key === "phone" ? sanitizePhoneInput(rawValue) : rawValue;
+      dispatch(setField({ key: key as keyof typeof form, value }));
     },
-    [dispatch],
+    [dispatch, sanitizePhoneInput],
   );
 
   return (
@@ -44,11 +51,12 @@ export const ContactStep = () => {
       >
         <input
           type="tel"
+          inputMode="tel"
           autoComplete="tel"
           value={form.phone}
           data-field="phone"
           onChange={handleChange}
-          placeholder="+94 77 000 0000"
+          placeholder="+94770000000"
           className="auth-input"
           data-testid="register-phone-input"
         />
