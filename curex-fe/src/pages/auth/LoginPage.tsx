@@ -4,6 +4,7 @@ import {
   useEffect,
   useCallback,
   type ChangeEvent,
+  type FormEvent,
   type KeyboardEvent,
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -13,9 +14,11 @@ import { useAppDispatch, useAppSelector, useToast } from "../../store/hooks";
 import { setCredentials, setLoading } from "../../store/slices/authSlice";
 import { ROLE_HOME } from "../../components/auth/roleHome";
 import { LoginBrandPanel } from "../../components/auth/LoginBrandPanel";
-import type { Role } from "../../types/auth";
+import type { ForgotPasswordChannel, Role } from "../../types/auth";
 
 type LoginStep = "email" | "password";
+type PageMode = "login" | "forgot";
+type ForgotStep = "channel" | "otp" | "reset";
 
 /** Basic email format check. */
 const isValidEmail = (email: string) =>
@@ -42,6 +45,16 @@ export const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [animKey, setAnimKey] = useState(0);
+  const [mode, setMode] = useState<PageMode>("login");
+  const [forgotStep, setForgotStep] = useState<ForgotStep>("channel");
+  const [forgotChannel, setForgotChannel] = useState<ForgotPasswordChannel>("EMAIL");
+  const [forgotIdentifier, setForgotIdentifier] = useState("");
+  const [forgotOtp, setForgotOtp] = useState("");
+  const [forgotVerificationToken, setForgotVerificationToken] = useState("");
+  const [forgotNewPassword, setForgotNewPassword] = useState("");
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -50,9 +63,10 @@ export const LoginPage = () => {
     ?.pathname;
 
   useEffect(() => {
+    if (mode === "forgot") return;
     if (step === "email") emailRef.current?.focus();
     else passwordRef.current?.focus();
-  }, [step]);
+  }, [mode, step]);
 
   const goToPassword = useCallback(() => {
     if (!isValidEmail(email)) {
@@ -93,7 +107,7 @@ export const LoginPage = () => {
   );
 
   const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
+    async (e: FormEvent) => {
       e.preventDefault();
       if (step === "email") {
         goToPassword();
@@ -134,6 +148,142 @@ export const LoginPage = () => {
     [step, password, email, from, dispatch, navigate, toast, goToPassword],
   );
 
+  const startForgotFlow = useCallback(() => {
+    setMode("forgot");
+    setForgotStep("channel");
+    setForgotError(null);
+    setForgotLoading(false);
+    setForgotOtp("");
+    setForgotVerificationToken("");
+    setForgotNewPassword("");
+    setForgotConfirmPassword("");
+    setForgotIdentifier((prev) => (prev || email || "").trim());
+  }, [email]);
+
+  const backToLogin = useCallback(() => {
+    setMode("login");
+    setForgotStep("channel");
+    setForgotError(null);
+    setForgotLoading(false);
+    setForgotOtp("");
+    setForgotVerificationToken("");
+    setForgotNewPassword("");
+    setForgotConfirmPassword("");
+  }, []);
+
+  const sendForgotOtp = useCallback(async () => {
+    const identifier = forgotIdentifier.trim();
+    if (!identifier) {
+      setForgotError(
+        forgotChannel === "EMAIL"
+          ? "Please enter your email address."
+          : "Please enter your phone number.",
+      );
+      return;
+    }
+
+    setForgotError(null);
+    setForgotLoading(true);
+    try {
+      await authService.sendForgotPasswordOtp({
+        identifier,
+        channel: forgotChannel,
+      });
+      toast("OTP sent successfully", "success");
+      setForgotStep("otp");
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? "Failed to send OTP.";
+      setForgotError(msg);
+      toast(msg, "error");
+    } finally {
+      setForgotLoading(false);
+    }
+  }, [forgotChannel, forgotIdentifier, toast]);
+
+  const verifyForgotOtp = useCallback(async () => {
+    const identifier = forgotIdentifier.trim();
+    if (!forgotOtp || forgotOtp.trim().length !== 6) {
+      setForgotError("Please enter the 6-digit OTP.");
+      return;
+    }
+
+    setForgotError(null);
+    setForgotLoading(true);
+    try {
+      const res = await authService.verifyForgotPasswordOtp({
+        identifier,
+        channel: forgotChannel,
+        otpCode: forgotOtp.trim(),
+      });
+      setForgotVerificationToken(res.verificationToken);
+      setForgotStep("reset");
+      toast("OTP verified", "success");
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? "OTP verification failed.";
+      setForgotError(msg);
+      toast(msg, "error");
+    } finally {
+      setForgotLoading(false);
+    }
+  }, [forgotChannel, forgotIdentifier, forgotOtp, toast]);
+
+  const resetForgotPassword = useCallback(async () => {
+    const identifier = forgotIdentifier.trim();
+    if (forgotNewPassword.length < 8) {
+      setForgotError("Password must be at least 8 characters.");
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setForgotError("Passwords do not match.");
+      return;
+    }
+    if (!forgotVerificationToken) {
+      setForgotError("Session expired. Please verify OTP again.");
+      setForgotStep("otp");
+      return;
+    }
+
+    setForgotError(null);
+    setForgotLoading(true);
+    try {
+      await authService.resetForgotPassword({
+        identifier,
+        channel: forgotChannel,
+        verificationToken: forgotVerificationToken,
+        newPassword: forgotNewPassword,
+      });
+      toast("Password changed successfully", "success");
+      backToLogin();
+      setStep("email");
+      setPassword("");
+      if (forgotChannel === "EMAIL") {
+        setEmail(identifier);
+      }
+      navigate("/login", { replace: true });
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? "Failed to reset password.";
+      setForgotError(msg);
+      toast(msg, "error");
+    } finally {
+      setForgotLoading(false);
+    }
+  }, [
+    forgotNewPassword,
+    forgotConfirmPassword,
+    forgotVerificationToken,
+    forgotIdentifier,
+    forgotChannel,
+    toast,
+    backToLogin,
+    navigate,
+  ]);
+
   const animClass =
     animDir === "forward" ? "auth-step-enter-forward" : "auth-step-enter-back";
 
@@ -172,14 +322,15 @@ export const LoginPage = () => {
             ))}
           </div>
 
-          <form
-            key={animKey}
-            className={`${animClass} flex flex-col gap-5`}
-            onSubmit={handleSubmit}
-            noValidate
-            data-testid="login-form"
-          >
-            {step === "email" ? (
+          {mode === "login" && (
+            <form
+              key={animKey}
+              className={`${animClass} flex flex-col gap-5`}
+              onSubmit={handleSubmit}
+              noValidate
+              data-testid="login-form"
+            >
+              {step === "email" ? (
               <>
                 <div>
                   <h1 className="text-2xl font-bold tracking-tight text-primary">
@@ -235,7 +386,7 @@ export const LoginPage = () => {
                   Continue <ArrowRight className="h-4 w-4" strokeWidth={2} />
                 </button>
               </>
-            ) : (
+              ) : (
               <>
                 <div>
                   <div className="mb-4">
@@ -273,9 +424,13 @@ export const LoginPage = () => {
                     >
                       Password
                     </label>
-                    <span className="text-xs text-text-secondary hover:text-primary cursor-pointer transition-colors">
+                    <button
+                      type="button"
+                      onClick={startForgotFlow}
+                      className="text-xs text-text-secondary hover:text-primary cursor-pointer transition-colors"
+                    >
                       Forgot password?
-                    </span>
+                    </button>
                   </div>
                   <div className="relative">
                     <input
@@ -319,8 +474,169 @@ export const LoginPage = () => {
                   {isLoading ? "Signing in…" : "Sign in"}
                 </button>
               </>
-            )}
-          </form>
+              )}
+            </form>
+          )}
+
+          {mode === "forgot" && (
+            <div className="flex flex-col gap-5" data-testid="forgot-password-flow">
+              <div>
+                <button
+                  type="button"
+                  onClick={backToLogin}
+                  className="mb-4 flex items-center gap-1.5 text-sm text-text-secondary hover:text-primary transition-colors"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" /> Back to sign in
+                </button>
+                <h1 className="text-2xl font-bold tracking-tight text-primary">
+                  {forgotStep === "channel" && "Forgot Password"}
+                  {forgotStep === "otp" && "Verify OTP"}
+                  {forgotStep === "reset" && "Set New Password"}
+                </h1>
+                <p className="mt-1 text-sm text-text-secondary">
+                  {forgotStep === "channel" &&
+                    "Choose where to receive your verification code."}
+                  {forgotStep === "otp" &&
+                    "Enter the OTP to verify your identity."}
+                  {forgotStep === "reset" &&
+                    "Create a new password for your account."}
+                </p>
+              </div>
+
+              {forgotStep === "channel" && (
+                <>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setForgotChannel("EMAIL")}
+                      className={`rounded-lg px-3 py-2 text-sm font-medium border ${
+                        forgotChannel === "EMAIL"
+                          ? "border-primary-light bg-primary-light/10 text-primary"
+                          : "border-text-secondary/20 text-text-secondary"
+                      }`}
+                    >
+                      Email
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForgotChannel("SMS")}
+                      className={`rounded-lg px-3 py-2 text-sm font-medium border ${
+                        forgotChannel === "SMS"
+                          ? "border-primary-light bg-primary-light/10 text-primary"
+                          : "border-text-secondary/20 text-text-secondary"
+                      }`}
+                    >
+                      Phone
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-semibold text-primary">
+                      {forgotChannel === "EMAIL" ? "Email address" : "Phone number"}
+                    </label>
+                    <input
+                      type={forgotChannel === "EMAIL" ? "email" : "text"}
+                      value={forgotIdentifier}
+                      onChange={(e) => setForgotIdentifier(e.target.value)}
+                      placeholder={
+                        forgotChannel === "EMAIL" ? "you@example.com" : "+94 77 123 4567"
+                      }
+                      className="auth-input"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={sendForgotOtp}
+                    disabled={forgotLoading}
+                    className="btn-primary w-full justify-center gap-2.5 py-3 text-base mt-1 disabled:opacity-60"
+                  >
+                    {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    {forgotLoading ? "Sending..." : "Send OTP"}
+                  </button>
+                </>
+              )}
+
+              {forgotStep === "otp" && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-semibold text-primary">OTP code</label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={forgotOtp}
+                      onChange={(e) => setForgotOtp(e.target.value.replace(/\D/g, ""))}
+                      placeholder="Enter 6-digit OTP"
+                      className="auth-input"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setForgotStep("channel")}
+                      className="btn-secondary flex-1 justify-center"
+                    >
+                      Change channel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={verifyForgotOtp}
+                      disabled={forgotLoading}
+                      className="btn-primary flex-1 justify-center disabled:opacity-60"
+                    >
+                      {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify OTP"}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {forgotStep === "reset" && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-semibold text-primary">New password</label>
+                    <input
+                      type="password"
+                      value={forgotNewPassword}
+                      onChange={(e) => setForgotNewPassword(e.target.value)}
+                      placeholder="At least 8 characters"
+                      className="auth-input"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-sm font-semibold text-primary">Confirm password</label>
+                    <input
+                      type="password"
+                      value={forgotConfirmPassword}
+                      onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                      placeholder="Re-enter password"
+                      className="auth-input"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={resetForgotPassword}
+                    disabled={forgotLoading}
+                    className="btn-primary w-full justify-center gap-2.5 py-3 text-base disabled:opacity-60"
+                  >
+                    {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    {forgotLoading ? "Changing..." : "Change password"}
+                  </button>
+                </>
+              )}
+
+              {forgotError && (
+                <p
+                  role="alert"
+                  className="rounded-xl bg-error/10 px-3 py-2.5 text-sm text-error"
+                >
+                  {forgotError}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

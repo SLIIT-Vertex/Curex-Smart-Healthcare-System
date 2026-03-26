@@ -2,6 +2,10 @@ import api from "./axiosInstance";
 import type {
   AuthResponse,
   ChangePasswordRequest,
+  ForgotPasswordResetRequest,
+  ForgotPasswordSendOtpRequest,
+  ForgotPasswordVerifyOtpRequest,
+  ForgotPasswordVerifyOtpResponse,
   LoginRequest,
   RegisterRequest,
   SendOtpRequest,
@@ -41,6 +45,24 @@ export const authService = {
     return api
       .post<{ message: string }>(`${AUTH}/change-password`, data)
       .then((r) => r.data);
+  },
+
+  sendForgotPasswordOtp(
+    data: ForgotPasswordSendOtpRequest,
+  ): Promise<{ message: string; expiresInMinutes: string }> {
+    return api.post(`${AUTH}/forgot-password/otp/send`, data).then((r) => r.data);
+  },
+
+  verifyForgotPasswordOtp(
+    data: ForgotPasswordVerifyOtpRequest,
+  ): Promise<ForgotPasswordVerifyOtpResponse> {
+    return api
+      .post<ForgotPasswordVerifyOtpResponse>(`${AUTH}/forgot-password/otp/verify`, data)
+      .then((r) => r.data);
+  },
+
+  resetForgotPassword(data: ForgotPasswordResetRequest): Promise<{ message: string }> {
+    return api.post<{ message: string }>(`${AUTH}/forgot-password/reset`, data).then((r) => r.data);
   },
 
   /**

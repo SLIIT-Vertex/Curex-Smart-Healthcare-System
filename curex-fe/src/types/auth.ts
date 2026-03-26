@@ -49,6 +49,31 @@ export interface UpdateNotificationPreferencesRequest {
   emailDigest?: boolean;
 }
 
+export type ForgotPasswordChannel = "EMAIL" | "SMS";
+
+export interface ForgotPasswordSendOtpRequest {
+  identifier: string;
+  channel: ForgotPasswordChannel;
+}
+
+export interface ForgotPasswordVerifyOtpRequest {
+  identifier: string;
+  channel: ForgotPasswordChannel;
+  otpCode: string;
+}
+
+export interface ForgotPasswordVerifyOtpResponse {
+  verificationToken: string;
+  message: string;
+}
+
+export interface ForgotPasswordResetRequest {
+  identifier: string;
+  channel: ForgotPasswordChannel;
+  verificationToken: string;
+  newPassword: string;
+}
+
 export interface RegisterRequest {
   // Required identity
   email: string;
