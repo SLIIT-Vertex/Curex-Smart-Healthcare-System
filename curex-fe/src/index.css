@@ -68,7 +68,7 @@
 @layer components {
   /* Shared content width — use with Tailwind: max-w-content */
   .layout-content {
-    @apply mx-auto w-full max-w-[var(--width-content)] px-4 sm:px-6 lg:px-8;
+    @apply mx-auto w-full max-w-(--width-content) px-4 sm:px-6 lg:px-8;
   }
 
   .link-subtle {
@@ -120,7 +120,7 @@
 @layer components {
   /* ── Registration step indicator ─────────────────────────────────────────── */
   .register-step-dot {
-    @apply flex-shrink-0 h-7 w-7 rounded-full flex items-center justify-center
+    @apply shrink-0 h-7 w-7 rounded-full flex items-center justify-center
            text-[11px] font-semibold transition-all duration-300;
   }
   .register-step-dot.done   { @apply bg-primary-light text-surface; }
