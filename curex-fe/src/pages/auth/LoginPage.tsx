@@ -24,6 +24,9 @@ type ForgotStep = "channel" | "otp" | "reset";
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
+/** Phone number should contain digits only with a practical length range. */
+const isValidPhone = (phone: string) => /^\d{7,15}$/.test(phone.trim());
+
 /**
  * Two-step login wizard (email → password).
  *
@@ -172,14 +175,53 @@ export const LoginPage = () => {
     setForgotConfirmPassword("");
   }, []);
 
+  const validateForgotIdentifier = useCallback(
+    (identifier: string) => {
+      if (!identifier) {
+        return forgotChannel === "EMAIL"
+          ? "Please enter your email address."
+          : "Please enter your phone number.";
+      }
+
+      if (forgotChannel === "EMAIL" && !isValidEmail(identifier)) {
+        return "Please enter a valid email address.";
+      }
+
+      if (forgotChannel === "SMS" && !isValidPhone(identifier)) {
+        return "Please enter a valid phone number (7-15 digits).";
+      }
+
+      return null;
+    },
+    [forgotChannel],
+  );
+
+  const handleForgotChannelChange = useCallback(
+    (channel: ForgotPasswordChannel) => {
+      if (channel === forgotChannel) return;
+      setForgotChannel(channel);
+      setForgotIdentifier("");
+      setForgotError(null);
+    },
+    [forgotChannel],
+  );
+
+  const handleForgotIdentifierChange = useCallback(
+    (value: string) => {
+      if (forgotChannel === "SMS") {
+        setForgotIdentifier(value.replace(/\D/g, ""));
+        return;
+      }
+      setForgotIdentifier(value);
+    },
+    [forgotChannel],
+  );
+
   const sendForgotOtp = useCallback(async () => {
     const identifier = forgotIdentifier.trim();
-    if (!identifier) {
-      setForgotError(
-        forgotChannel === "EMAIL"
-          ? "Please enter your email address."
-          : "Please enter your phone number.",
-      );
+    const identifierError = validateForgotIdentifier(identifier);
+    if (identifierError) {
+      setForgotError(identifierError);
       return;
     }
 
@@ -201,10 +243,17 @@ export const LoginPage = () => {
     } finally {
       setForgotLoading(false);
     }
-  }, [forgotChannel, forgotIdentifier, toast]);
+  }, [forgotIdentifier, toast, validateForgotIdentifier]);
 
   const verifyForgotOtp = useCallback(async () => {
     const identifier = forgotIdentifier.trim();
+    const identifierError = validateForgotIdentifier(identifier);
+    if (identifierError) {
+      setForgotError(identifierError);
+      setForgotStep("channel");
+      return;
+    }
+
     if (!forgotOtp || forgotOtp.trim().length !== 6) {
       setForgotError("Please enter the 6-digit OTP.");
       return;
@@ -230,10 +279,23 @@ export const LoginPage = () => {
     } finally {
       setForgotLoading(false);
     }
-  }, [forgotChannel, forgotIdentifier, forgotOtp, toast]);
+  }, [
+    forgotChannel,
+    forgotIdentifier,
+    forgotOtp,
+    toast,
+    validateForgotIdentifier,
+  ]);
 
   const resetForgotPassword = useCallback(async () => {
     const identifier = forgotIdentifier.trim();
+    const identifierError = validateForgotIdentifier(identifier);
+    if (identifierError) {
+      setForgotError(identifierError);
+      setForgotStep("channel");
+      return;
+    }
+
     if (forgotNewPassword.length < 8) {
       setForgotError("Password must be at least 8 characters.");
       return;
@@ -283,6 +345,7 @@ export const LoginPage = () => {
     toast,
     backToLogin,
     navigate,
+    validateForgotIdentifier,
   ]);
 
   const animClass =
@@ -512,7 +575,7 @@ export const LoginPage = () => {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setForgotChannel("EMAIL")}
+                      onClick={() => handleForgotChannelChange("EMAIL")}
                       className={`rounded-lg px-3 py-2 text-sm font-medium border ${
                         forgotChannel === "EMAIL"
                           ? "border-primary-light bg-primary-light/10 text-primary"
@@ -523,7 +586,7 @@ export const LoginPage = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setForgotChannel("SMS")}
+                      onClick={() => handleForgotChannelChange("SMS")}
                       className={`rounded-lg px-3 py-2 text-sm font-medium border ${
                         forgotChannel === "SMS"
                           ? "border-primary-light bg-primary-light/10 text-primary"
@@ -541,13 +604,18 @@ export const LoginPage = () => {
                         : "Phone number"}
                     </label>
                     <input
-                      type={forgotChannel === "EMAIL" ? "email" : "text"}
+                      type={forgotChannel === "EMAIL" ? "email" : "tel"}
+                      inputMode={
+                        forgotChannel === "EMAIL" ? "email" : "numeric"
+                      }
                       value={forgotIdentifier}
-                      onChange={(e) => setForgotIdentifier(e.target.value)}
+                      onChange={(e) =>
+                        handleForgotIdentifierChange(e.target.value)
+                      }
                       placeholder={
                         forgotChannel === "EMAIL"
                           ? "you@example.com"
-                          : "+94 77 123 4567"
+                          : "0771234567"
                       }
                       className="auth-input"
                     />
