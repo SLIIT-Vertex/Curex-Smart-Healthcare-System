@@ -3,6 +3,8 @@ import {
   LayoutDashboard,
   Users,
   UserCheck,
+  CalendarDays,
+  CreditCard,
   Settings,
   LogOut,
   ShieldCheck,
@@ -15,6 +17,8 @@ const navLinks = [
   { to: "/admin/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/admin/users", icon: Users, label: "Users" },
   { to: "/admin/doctor-approval", icon: UserCheck, label: "Doctor Approval" },
+  { to: "/admin/appointments", icon: CalendarDays, label: "Appointments" },
+  { to: "/admin/payments", icon: CreditCard, label: "Payments" },
 ] as const;
 
 interface AdminSidebarProps {

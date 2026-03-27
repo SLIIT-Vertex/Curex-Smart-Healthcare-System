@@ -537,3 +537,21 @@ export async function getAppointmentById(
   );
   return data;
 }
+
+export async function getAdminAppointments(): Promise<AppointmentRecord[]> {
+  const { data } = await api.get<AppointmentRecord[]>("/api/appointments");
+  return Array.isArray(data) ? data : [];
+}
+
+export async function adminCancelAppointment(
+  appointmentId: string,
+  reason: string,
+): Promise<AppointmentRecord> {
+  const { data } = await api.delete<AppointmentRecord>(
+    `/api/appointments/${appointmentId}`,
+    {
+      params: { reason },
+    },
+  );
+  return data;
+}

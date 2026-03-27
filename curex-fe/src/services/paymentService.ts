@@ -1,37 +1,57 @@
-import api from './axiosInstance'
-import type { ApiResponse } from '../types/common.ts'
+import api from "./axiosInstance";
+import type { ApiResponse } from "../types/common.ts";
 
 export interface CreatePaymentRequest {
-  patientId: string
-  amount: number
-  currency: string
-  successUrl: string
-  cancelUrl: string
+  patientId: string;
+  amount: number;
+  currency: string;
+  successUrl: string;
+  cancelUrl: string;
 }
 
 export interface StripeCheckoutResponse {
-  paymentId: string
-  appointmentId: string
-  patientId: string
-  amount: number
-  currency: string
-  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED'
-  stripeSessionId: string
-  checkoutUrl: string
+  paymentId: string;
+  appointmentId: string;
+  patientId: string;
+  amount: number;
+  currency: string;
+  status: "PENDING" | "SUCCESS" | "FAILED" | "CANCELLED";
+  stripeSessionId: string;
+  checkoutUrl: string;
 }
 
 export interface PaymentRecord {
-  id: string
-  appointmentId: string
-  patientId: string
-  amount: number
-  currency: string
-  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED'
-  stripePaymentIntentId?: string
-  stripeSessionId?: string
-  paymentMethod?: string
-  createdAt: string
-  updatedAt: string
+  id: string;
+  appointmentId: string;
+  patientId: string;
+  amount: number;
+  currency: string;
+  status: "PENDING" | "SUCCESS" | "FAILED" | "CANCELLED" | "COMPLETED";
+  stripePaymentIntentId?: string;
+  stripeSessionId?: string;
+  paymentMethod?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminPaymentsQuery {
+  status?: string;
+  patientId?: string;
+  appointmentId?: string;
+}
+
+type ApiEnvelope<T> = {
+  payload?: T;
+  data?: T;
+};
+
+function unwrapEnvelope<T>(value: T | ApiEnvelope<T>): T {
+  if (value && typeof value === "object") {
+    const envelope = value as ApiEnvelope<T>;
+    if (envelope.payload !== undefined) return envelope.payload;
+    if (envelope.data !== undefined) return envelope.data;
+  }
+  return value as T;
 }
 
 type FlexibleApiResponse<T> = ApiResponse<T> & { data?: T }
@@ -46,33 +66,25 @@ function unwrapApiData<T>(response: FlexibleApiResponse<T>): T {
 
 export async function createCheckoutSession(
   appointmentId: string,
-  request: CreatePaymentRequest
+  request: CreatePaymentRequest,
 ): Promise<StripeCheckoutResponse> {
   const { data } = await api.post<FlexibleApiResponse<StripeCheckoutResponse>>(
     `/api/payments/appointments/${appointmentId}`,
     request
   )
-  return unwrapApiData(data)
+  return data.payload
 }
 
 export async function getPaymentDetails(id: string): Promise<PaymentRecord> {
-  const { data } = await api.get<FlexibleApiResponse<PaymentRecord>>(
+  const { data } = await api.get<ApiResponse<PaymentRecord>>(
     `/api/payments/${id}`
   )
-  return unwrapApiData(data)
-}
-
-export async function confirmPayment(id: string): Promise<PaymentRecord> {
-  const { data } = await api.post<FlexibleApiResponse<PaymentRecord>>(
-    `/api/payments/${id}/confirm`
-  )
-  return unwrapApiData(data)
+  return data.payload
 }
 
 export async function getPatientPayments(patientId: string): Promise<PaymentRecord[]> {
-  const { data } = await api.get<FlexibleApiResponse<PaymentRecord[]>>(
+  const { data } = await api.get<ApiResponse<PaymentRecord[]>>(
     `/api/payments/patients/${patientId}`
   )
-  const records = unwrapApiData(data)
-  return Array.isArray(records) ? records : []
+  return data.payload
 }
