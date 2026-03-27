@@ -10,7 +10,6 @@
 ##
 
 services:
-
   # Infrastructure
 
   postgres:
@@ -22,12 +21,13 @@ services:
       POSTGRES_USER: ${DB_USERNAME:-curex_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-curex_password}
     ports:
-      - "5433:5432"   # host:5433 → container:5432 (avoids clash with local Postgres)
+      - "5433:5432" # host:5433 → container:5432 (avoids clash with local Postgres)
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-curex_user} -d curex_main"]
+      test:
+        ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-curex_user} -d curex_main"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,7 +41,7 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
     ports:
       - "5672:5672"
-      - "15672:15672"   # management UI
+      - "15672:15672" # management UI
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -83,13 +83,21 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-900000}
       JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-604800000}
+      SERVICES_APPOINTMENT_URL: ${SERVICES_APPOINTMENT_URL}
+      SERVICES_DOCTOR_URL: ${SERVICES_DOCTOR_URL}
+      SERVICES_PATIENT_URL: ${SERVICES_PATIENT_URL}
+      SERVICES_PAYMENT_URL: ${SERVICES_PAYMENT_URL}
+      SERVICES_NOTIFICATION_URL: ${SERVICES_NOTIFICATION_URL}
+      SERVICES_REPORT_URL: ${SERVICES_REPORT_URL}
+      SERVICES_TELEMEDICINE_URL: ${SERVICES_TELEMEDICINE_URL}
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -124,7 +132,8 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health || exit 1"]
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -155,7 +164,8 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8089/actuator/health || exit 1"]
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:8089/actuator/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -180,7 +190,8 @@ services:
       doctor-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -211,7 +222,8 @@ services:
       user-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8084/actuator/health || exit 1"]
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:8084/actuator/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -271,7 +283,8 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8087/actuator/health || exit 1"]
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:8087/actuator/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -290,7 +303,8 @@ services:
       AI_PROVIDER: ${AI_PROVIDER:-groq}
       AI_MODEL: ${AI_MODEL:-llama-3.1-8b-instant}
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8085/actuator/health || exit 1"]
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:8085/actuator/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -317,7 +331,8 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8086/actuator/health || exit 1"]
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:8086/actuator/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -332,7 +347,7 @@ services:
     expose:
       - "8080"
     ports:
-      - "8080:8080"   # remove in production (traffic only via nginx)
+      - "8080:8080" # remove in production (traffic only via nginx)
     environment:
       JWT_SECRET: ${JWT_SECRET}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
@@ -356,7 +371,8 @@ services:
       report-service:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

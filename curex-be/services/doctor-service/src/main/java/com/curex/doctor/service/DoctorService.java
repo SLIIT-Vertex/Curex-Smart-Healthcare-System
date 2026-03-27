@@ -15,13 +15,16 @@ import com.curex.doctor.feign.UserServiceClient;
 import com.curex.doctor.feign.dto.ApprovedUserFeignDto;
 import com.curex.doctor.repository.DoctorAvailabilityRepository;
 import com.curex.doctor.repository.DoctorRepository;
+import com.curex.doctor.repository.PrescriptionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -32,6 +35,7 @@ public class DoctorService {
 
     private final DoctorRepository doctorRepository;
     private final DoctorAvailabilityRepository availabilityRepository;
+    private final PrescriptionRepository prescriptionRepository;
     private final UserServiceClient userServiceClient;
 
     @Transactional
@@ -172,6 +176,29 @@ public class DoctorService {
         slot.setBooked(true);
         availabilityRepository.save(slot);
         log.info("Marked slot {} as booked for doctor {}", slotId, doctorId);
+    }
+
+    @Transactional
+    public Map<String, Long> purgeUserData(String userId) {
+        String normalizedUserId = userId == null ? "" : userId.trim();
+
+        long deletedPatientPrescriptions = prescriptionRepository.deleteByPatientId(normalizedUserId);
+        long deletedDoctorPrescriptions = 0;
+        long deletedDoctorProfiles = 0;
+
+        Doctor doctor = doctorRepository.findByUserId(normalizedUserId).orElse(null);
+        if (doctor != null) {
+            deletedDoctorPrescriptions = prescriptionRepository.deleteByDoctor_Id(doctor.getId());
+            doctorRepository.delete(doctor);
+            deletedDoctorProfiles = 1;
+        }
+
+        Map<String, Long> result = new LinkedHashMap<>();
+        result.put("deletedDoctorProfiles", deletedDoctorProfiles);
+        result.put("deletedDoctorPrescriptions", deletedDoctorPrescriptions);
+        result.put("deletedPatientPrescriptions", deletedPatientPrescriptions);
+        result.put("totalDeleted", deletedDoctorProfiles + deletedDoctorPrescriptions + deletedPatientPrescriptions);
+        return result;
     }
 
     private BookableDoctorResponse toBookableDoctorResponse(Doctor doctor) {

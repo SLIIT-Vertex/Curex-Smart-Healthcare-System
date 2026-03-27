@@ -121,6 +121,15 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
+    public long purgeUserData(String userId) {
+        if (!StringUtils.hasText(userId)) {
+            throw new PaymentException("userId is required");
+        }
+        return paymentRepository.deleteByPatientId(userId.trim());
+    }
+
+    @Override
+    @Transactional
     public void handleStripeWebhook(String payload, String signatureHeader) {
         Event event = stripeService.verifyAndConstructEvent(payload, signatureHeader);
 

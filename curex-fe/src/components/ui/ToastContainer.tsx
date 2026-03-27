@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react'
-import { X, CheckCircle2, XCircle, Info, AlertTriangle } from 'lucide-react'
-import { useToast } from '../../store/hooks'
-import type { ToastVariant } from '../../store/slices/toastSlice'
+import { useEffect, useRef } from "react";
+import { X, CheckCircle2, XCircle, Info, AlertTriangle } from "lucide-react";
+import { useToast } from "../../store/hooks";
+import type { ToastVariant } from "../../store/slices/toastSlice";
 
 const VARIANT_CONFIG: Record<
   ToastVariant,
@@ -9,50 +9,56 @@ const VARIANT_CONFIG: Record<
 > = {
   success: {
     icon: CheckCircle2,
-    bg: 'bg-surface',
-    border: 'border-accent-mint/50',
-    iconCls: 'text-status-healthy',
+    bg: "bg-surface",
+    border: "border-accent-mint/50",
+    iconCls: "text-status-healthy",
   },
   error: {
     icon: XCircle,
-    bg: 'bg-surface',
-    border: 'border-error/40',
-    iconCls: 'text-error',
+    bg: "bg-surface",
+    border: "border-error/40",
+    iconCls: "text-error",
   },
   warning: {
     icon: AlertTriangle,
-    bg: 'bg-surface',
-    border: 'border-accent-peach/50',
-    iconCls: 'text-status-attention',
+    bg: "bg-surface",
+    border: "border-accent-peach/50",
+    iconCls: "text-status-attention",
   },
   info: {
     icon: Info,
-    bg: 'bg-surface',
-    border: 'border-accent-sky/40',
-    iconCls: 'text-status-info',
+    bg: "bg-surface",
+    border: "border-accent-sky/40",
+    iconCls: "text-status-info",
   },
-}
+};
 
 interface ToastItemProps {
-  id: string
-  message: string
-  variant: ToastVariant
-  duration: number
-  onDismiss: (id: string) => void
+  id: string;
+  message: string;
+  variant: ToastVariant;
+  duration: number;
+  onDismiss: (id: string) => void;
 }
 
-function ToastItem({ id, message, variant, duration, onDismiss }: ToastItemProps) {
-  const { icon: Icon, bg, border, iconCls } = VARIANT_CONFIG[variant]
-  const progressRef = useRef<HTMLDivElement>(null)
+function ToastItem({
+  id,
+  message,
+  variant,
+  duration,
+  onDismiss,
+}: ToastItemProps) {
+  const { icon: Icon, bg, border, iconCls } = VARIANT_CONFIG[variant];
+  const progressRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const el = progressRef.current
-    if (!el || duration <= 0) return
-    el.style.transition = `width ${duration}ms linear`
+    const el = progressRef.current;
+    if (!el || duration <= 0) return;
+    el.style.transition = `width ${duration}ms linear`;
     // Trigger reflow then start shrinking
-    void el.offsetWidth
-    el.style.width = '0%'
-  }, [duration])
+    void el.offsetWidth;
+    el.style.width = "0%";
+  }, [duration]);
 
   return (
     <div
@@ -64,7 +70,10 @@ function ToastItem({ id, message, variant, duration, onDismiss }: ToastItemProps
         animate-[slideInRight_0.25s_ease-out]
       `}
     >
-      <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${iconCls}`} strokeWidth={1.75} />
+      <Icon
+        className={`mt-0.5 h-5 w-5 shrink-0 ${iconCls}`}
+        strokeWidth={1.75}
+      />
       <p className="flex-1 text-sm leading-snug text-text-primary">{message}</p>
       <button
         type="button"
@@ -85,22 +94,22 @@ function ToastItem({ id, message, variant, duration, onDismiss }: ToastItemProps
         </div>
       )}
     </div>
-  )
+  );
 }
 
 export function ToastContainer() {
-  const { items, dismiss } = useToast()
+  const { items, dismiss } = useToast();
 
-  if (items.length === 0) return null
+  if (items.length === 0) return null;
 
   return (
     <div
       aria-label="Notifications"
-      className="fixed bottom-5 right-5 z-[200] flex flex-col gap-2.5"
+      className="fixed bottom-5 right-5 z-200 flex flex-col gap-2.5"
     >
       {items.map((item) => (
         <ToastItem key={item.id} {...item} onDismiss={dismiss} />
       ))}
     </div>
-  )
+  );
 }

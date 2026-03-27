@@ -68,6 +68,10 @@ notification:
     from: ${NOTIFICATION_EMAIL_FROM:noreply@curex.com}
     from-name: ${NOTIFICATION_EMAIL_FROM_NAME:Curex}
 
+services:
+  user-service:
+    base-url: ${USER_SERVICE_BASE_URL:http://localhost:8081}
+
 management:
   endpoints:
     web:

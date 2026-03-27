@@ -17,6 +17,9 @@ public class RabbitMQConfig {
     //  Routing keys (publishers)
     public static final String APPOINTMENT_BOOKED_KEY   = "appointment.booked";
     public static final String APPOINTMENT_CANCELLED_KEY = "appointment.cancelled";
+    
+    public static final String NOTIFICATION_APPOINTMENT_EXCHANGE = "appointment.exchange";
+    public static final String NOTIFICATION_APPOINTMENT_BOOKING_KEY = "appointment.booking";
 
     //  Queue names (what this service CONSUMES) 
     public static final String PAYMENT_CONFIRMED_QUEUE  = "payment.confirmed.queue";

@@ -55,25 +55,48 @@ public class NotificationService {
     public Page<NotificationResponse> getUserNotifications(
             String userId,
             Notification.NotificationReadStatus readStatus,
+            Notification.NotificationChannel channel,
             int page,
             int size) {
         Pageable pageable = PageRequest.of(page, size);
-        Page<Notification> notifications = (readStatus == null)
-                ? notificationRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable)
-                : notificationRepository.findByUserIdAndReadStatusOrderByCreatedAtDesc(
-                        userId,
-                        readStatus,
-                        pageable);
+        Page<Notification> notifications;
+
+        if (readStatus == null && channel == null) {
+            notifications = notificationRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+        } else if (readStatus == null) {
+            notifications = notificationRepository.findByUserIdAndChannelOrderByCreatedAtDesc(
+                    userId,
+                    channel,
+                    pageable);
+        } else if (channel == null) {
+            notifications = notificationRepository.findByUserIdAndReadStatusOrderByCreatedAtDesc(
+                    userId,
+                    readStatus,
+                    pageable);
+        } else {
+            notifications = notificationRepository.findByUserIdAndReadStatusAndChannelOrderByCreatedAtDesc(
+                    userId,
+                    readStatus,
+                    channel,
+                    pageable);
+        }
 
         return notifications
                 .map(NotificationResponse::new);
     }
 
     @Transactional(readOnly = true)
-    public long getUnreadCount(String userId) {
-        return notificationRepository.countByUserIdAndReadStatus(
+    public long getUnreadCount(String userId, Notification.NotificationChannel channel) {
+        if (channel == null) {
+            return notificationRepository.countByUserIdAndReadStatus(
+                    userId,
+                    Notification.NotificationReadStatus.UNREAD);
+        }
+
+        return notificationRepository.countByUserIdAndReadStatusAndChannel(
                 userId,
-                Notification.NotificationReadStatus.UNREAD);
+                Notification.NotificationReadStatus.UNREAD,
+                channel);
     }
 
     @Transactional
@@ -91,8 +114,12 @@ public class NotificationService {
     }
 
     @Transactional
-    public int markAllAsRead(String userId) {
-        return notificationRepository.markAllAsRead(userId, LocalDateTime.now());
+    public int markAllAsRead(String userId, Notification.NotificationChannel channel) {
+        if (channel == null) {
+            return notificationRepository.markAllAsRead(userId, LocalDateTime.now());
+        }
+
+        return notificationRepository.markAllAsReadByChannel(userId, channel, LocalDateTime.now());
     }
 
     @Transactional(readOnly = true)
@@ -153,6 +180,14 @@ public class NotificationService {
         LocalDateTime cutoff = LocalDateTime.now().minusDays(daysOld);
         notificationRepository.deleteOldNotifications(cutoff);
         log.info("Cleaned up notifications older than {} days", daysOld);
+    }
+
+    @Transactional
+    public long purgeUserData(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return 0;
+        }
+        return notificationRepository.deleteByUserId(userId.trim());
     }
 
     //  private helpers 

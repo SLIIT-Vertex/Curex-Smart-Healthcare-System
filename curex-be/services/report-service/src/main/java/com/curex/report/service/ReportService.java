@@ -17,4 +17,6 @@ public interface ReportService {
     List<Report> getFilesByOwnerAndCategory(String ownerId, String category);
 
     void deleteFile(UUID id);
+
+    int purgeUserData(String ownerId);
 }

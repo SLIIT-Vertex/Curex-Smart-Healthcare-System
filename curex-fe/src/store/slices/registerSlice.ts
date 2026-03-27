@@ -1,101 +1,124 @@
-import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
+import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
 // ─── Error key union ─────────────────────────────────────────────────────────
 
 /** Union of all field keys that can carry a validation error. */
 export type RegisterErrorKey =
-  | 'firstName' | 'lastName' | 'dob' | 'gender' | 'profileImageUrl'
-  | 'phone' | 'email'
-  | 'phoneOtp' | 'emailOtp'
-  | 'password' | 'confirmPassword'
+  | "firstName"
+  | "lastName"
+  | "dob"
+  | "gender"
+  | "profileImageUrl"
+  | "phone"
+  | "email"
+  | "yearsOfExperience"
+  | "emergencyContactPhone"
+  | "phoneOtp"
+  | "emailOtp"
+  | "password"
+  | "confirmPassword";
 
-export type RegisterErrors = Partial<Record<RegisterErrorKey, string>>
+export type RegisterErrors = Partial<Record<RegisterErrorKey, string>>;
 
 // ─── Form state shape ─────────────────────────────────────────────────────────
 
 export interface RegisterFormState {
   // Step 1 — role
-  role: 'PATIENT' | 'DOCTOR'
+  role: "PATIENT" | "DOCTOR";
   // Step 2 — personal
-  firstName: string
-  lastName: string
-  dob: string
-  gender: string
-  address: string
+  firstName: string;
+  lastName: string;
+  dob: string;
+  gender: string;
+  address: string;
   // Step 3a — patient health
-  fillHealthNow: boolean
-  bloodGroup: string
-  allergies: string
-  chronicConditions: string
-  emergencyContactName: string
-  emergencyContactPhone: string
+  fillHealthNow: boolean;
+  bloodGroup: string;
+  allergies: string;
+  chronicConditions: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
   // Step 3b — doctor qualifications
-  specialty: string
-  medicalLicenseNumber: string
-  yearsOfExperience: string
-  certifications: string
-  proofDocumentUrls: string  // comma-separated Cloudinary URLs
+  specialty: string;
+  medicalLicenseNumber: string;
+  yearsOfExperience: string;
+  certifications: string;
+  proofDocumentUrls: string; // comma-separated Cloudinary URLs
   // Step 4 — contact
-  phone: string
-  email: string
+  phone: string;
+  email: string;
   // Step 5 — OTP
-  phoneOtp: string
-  emailOtp: string
-  phoneVerified: boolean
-  emailVerified: boolean
+  phoneOtp: string;
+  emailOtp: string;
+  phoneVerified: boolean;
+  emailVerified: boolean;
   /** Token returned by POST /api/auth/otp/verify — proves phone ownership. */
-  phoneVerificationToken: string
+  phoneVerificationToken: string;
   /** Token returned by POST /api/auth/otp/verify — proves email ownership. */
-  emailVerificationToken: string
+  emailVerificationToken: string;
   // Step 5 — security (password + optional avatar)
-  profileImageUrl: string
-  password: string
-  confirmPassword: string
+  profileImageUrl: string;
+  password: string;
+  confirmPassword: string;
   // ── Wizard meta ─────────────────────────────────────────────────────────
-  currentStep: number
-  otpSent: boolean
+  currentStep: number;
+  otpSent: boolean;
   // ── UI state (moved from component local state) ──────────────────────────
   /** Direction the step animation plays. */
-  animDir: 'forward' | 'back'
+  animDir: "forward" | "back";
   /** Incremented on each step change to re-key the animation container. */
-  animKey: number
+  animKey: number;
   /** Per-field validation errors for the current step. */
-  errors: RegisterErrors
+  errors: RegisterErrors;
   /** Top-level error shown during final form submission. */
-  globalError: string | null
+  globalError: string | null;
   /** Loading flag for async OTP send / verify calls. */
-  otpLoading: boolean
+  otpLoading: boolean;
   /** True after a DOCTOR completes registration — shows the pending section inline. */
-  doctorPending: boolean
+  doctorPending: boolean;
 }
 
 const initialState: RegisterFormState = {
-  role: 'PATIENT',
-  firstName: '', lastName: '', dob: '', gender: '', address: '',
+  role: "PATIENT",
+  firstName: "",
+  lastName: "",
+  dob: "",
+  gender: "",
+  address: "",
   fillHealthNow: false,
-  bloodGroup: '', allergies: '', chronicConditions: '',
-  emergencyContactName: '', emergencyContactPhone: '',
-  specialty: '', medicalLicenseNumber: '', yearsOfExperience: '', certifications: '',
-  proofDocumentUrls: '',
-  phone: '', email: '',
-  profileImageUrl: '',
-  phoneOtp: '', emailOtp: '',
-  phoneVerified: false, emailVerified: false,
-  phoneVerificationToken: '',
-  emailVerificationToken: '',
-  password: '', confirmPassword: '',
+  bloodGroup: "",
+  allergies: "",
+  chronicConditions: "",
+  emergencyContactName: "",
+  emergencyContactPhone: "",
+  specialty: "",
+  medicalLicenseNumber: "",
+  yearsOfExperience: "",
+  certifications: "",
+  proofDocumentUrls: "",
+  phone: "",
+  email: "",
+  profileImageUrl: "",
+  phoneOtp: "",
+  emailOtp: "",
+  phoneVerified: false,
+  emailVerified: false,
+  phoneVerificationToken: "",
+  emailVerificationToken: "",
+  password: "",
+  confirmPassword: "",
   currentStep: 1,
   otpSent: false,
   doctorPending: false,
-  animDir: 'forward',
+  animDir: "forward",
   animKey: 0,
   errors: {},
   globalError: null,
   otpLoading: false,
-}
+};
 
 const registerSlice = createSlice({
-  name: 'register',
+  name: "register",
   initialState,
   reducers: {
     /**
@@ -105,75 +128,75 @@ const registerSlice = createSlice({
       state: RegisterFormState,
       action: PayloadAction<{ key: K; value: RegisterFormState[K] }>,
     ) {
-      const { key, value } = action.payload
-      Object.assign(state, { [key]: value })
+      const { key, value } = action.payload;
+      Object.assign(state, { [key]: value });
       // Auto-clear the validation error for this field (if any).
-      const errors = state.errors as Record<string, string | undefined>
-      delete errors[key as string]
+      const errors = state.errors as Record<string, string | undefined>;
+      delete errors[key as string];
     },
 
     setStep(state, action: PayloadAction<number>) {
-      state.currentStep = action.payload
+      state.currentStep = action.payload;
     },
 
     setErrors(state, action: PayloadAction<RegisterErrors>) {
-      state.errors = action.payload
+      state.errors = action.payload;
     },
 
     clearError(state, action: PayloadAction<RegisterErrorKey>) {
-      delete state.errors[action.payload]
+      delete state.errors[action.payload];
     },
 
     setGlobalError(state, action: PayloadAction<string | null>) {
-      state.globalError = action.payload
+      state.globalError = action.payload;
     },
 
-    setAnimDir(state, action: PayloadAction<'forward' | 'back'>) {
-      state.animDir = action.payload
+    setAnimDir(state, action: PayloadAction<"forward" | "back">) {
+      state.animDir = action.payload;
     },
 
     incrementAnimKey(state) {
-      state.animKey += 1
+      state.animKey += 1;
     },
 
     setOtpLoading(state, action: PayloadAction<boolean>) {
-      state.otpLoading = action.payload
+      state.otpLoading = action.payload;
     },
 
     markOtpSent(state) {
-      state.otpSent = true
+      state.otpSent = true;
     },
 
     verifyPhone(state) {
-      state.phoneVerified = true
+      state.phoneVerified = true;
     },
 
     verifyEmail(state) {
-      state.emailVerified = true
+      state.emailVerified = true;
     },
 
     /** Resets all OTP-related state when the user navigates back to the Contact step. */
     resetOtpState(state) {
-      state.phoneOtp = ''
-      state.emailOtp = ''
-      state.phoneVerified = false
-      state.emailVerified = false
-      state.phoneVerificationToken = ''
-      state.emailVerificationToken = ''
-      state.otpSent = false
-      state.otpLoading = false
-      state.errors = {}
+      state.phoneOtp = "";
+      state.emailOtp = "";
+      state.phoneVerified = false;
+      state.emailVerified = false;
+      state.phoneVerificationToken = "";
+      state.emailVerificationToken = "";
+      state.otpSent = false;
+      state.otpLoading = false;
+      state.errors = {};
     },
 
     setDoctorPending(state, action: PayloadAction<boolean>) {
-      state.doctorPending = action.payload
+      state.doctorPending = action.payload;
     },
 
     resetRegisterForm() {
-      return initialState
+      return initialState;
     },
   },
-})
+});
 
 export const {
   setField,
@@ -190,6 +213,6 @@ export const {
   resetOtpState,
   setDoctorPending,
   resetRegisterForm,
-} = registerSlice.actions
+} = registerSlice.actions;
 
-export default registerSlice.reducer
+export default registerSlice.reducer;

@@ -96,6 +96,18 @@ public class User {
     @Column(name = "emergency_contact_phone", length = 30)
     private String emergencyContactPhone;
 
+    @Column(name = "notify_appointment_reminders", nullable = false)
+    private Boolean notifyAppointmentReminders = true;
+
+    @Column(name = "notify_prescription_alerts", nullable = false)
+    private Boolean notifyPrescriptionAlerts = true;
+
+    @Column(name = "notify_payment_alerts", nullable = false)
+    private Boolean notifyPaymentAlerts = true;
+
+    @Column(name = "notify_email_digest", nullable = false)
+    private Boolean notifyEmailDigest = false;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;

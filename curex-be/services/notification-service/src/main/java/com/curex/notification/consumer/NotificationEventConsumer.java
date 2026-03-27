@@ -1,5 +1,6 @@
 package com.curex.notification.consumer;
 
+import com.curex.notification.client.UserPreferenceClient;
 import com.curex.notification.dto.NotificationRequest;
 import com.curex.notification.entity.Notification;
 import com.curex.notification.service.NotificationService;
@@ -27,6 +28,7 @@ import java.util.Map;
 public class NotificationEventConsumer {
 
     private final NotificationService notificationService;
+    private final UserPreferenceClient userPreferenceClient;
 
     // ── User registration ─────────────────────────────────────────────────────
 
@@ -63,6 +65,75 @@ public class NotificationEventConsumer {
             }
         } catch (Exception e) {
             log.error("Failed to process user.registration event: {}", e.getMessage(), e);
+        }
+    }
+
+    // ── Admin user status changes ────────────────────────────────────────────
+
+    @RabbitListener(queues = "user.status.queue")
+    public void handleUserStatusChanged(Map<String, Object> event) {
+        try {
+            String userId = (String) event.get("userId");
+            String email = (String) event.get("email");
+            String firstName = (String) event.get("firstName");
+            String role = (String) event.get("role");
+            String status = (String) event.get("status");
+            String action = (String) event.get("action");
+            String notes = (String) event.get("notes");
+
+            String subject = "Account Status Updated - Curex Healthcare";
+            String inAppMessage = String.format(
+                    "Your %s account status has been updated to %s.",
+                    HtmlUtils.htmlEscape(role == null ? "user" : role.toLowerCase()),
+                    HtmlUtils.htmlEscape(status == null ? "UPDATED" : status)
+            );
+
+            if (email != null && !email.isBlank()) {
+                notificationService.sendNotificationAsync(NotificationRequest.builder()
+                        .userId(userId)
+                        .recipientEmail(email)
+                        .type(Notification.NotificationType.SYSTEM_ALERT)
+                        .channel(Notification.NotificationChannel.EMAIL)
+                        .subject(subject)
+                        .content(buildStatusChangedEmailContent(firstName, role, status, action, notes))
+                        .build());
+            }
+
+            notificationService.sendNotificationAsync(NotificationRequest.builder()
+                    .userId(userId)
+                    .type(Notification.NotificationType.SYSTEM_ALERT)
+                    .channel(Notification.NotificationChannel.IN_APP)
+                    .subject("Account Status Updated")
+                    .content(inAppMessage)
+                    .build());
+        } catch (Exception e) {
+            log.error("Failed to process user.status.changed event: {}", e.getMessage(), e);
+        }
+    }
+
+    @RabbitListener(queues = "user.password.queue")
+    public void handleUserPasswordChanged(Map<String, Object> event) {
+        try {
+            String userId = (String) event.get("userId");
+            String email = (String) event.get("email");
+            String firstName = (String) event.get("firstName");
+            String changedAt = (String) event.get("changedAt");
+
+            if (email == null || email.isBlank()) {
+                log.warn("Skipping password-changed notification because email is missing for userId={}", userId);
+                return;
+            }
+
+            notificationService.sendNotificationAsync(NotificationRequest.builder()
+                    .userId(userId)
+                    .recipientEmail(email)
+                    .type(Notification.NotificationType.PASSWORD_RESET)
+                    .channel(Notification.NotificationChannel.EMAIL)
+                    .subject("Security Alert: Password Changed")
+                    .content(buildPasswordChangedEmailContent(firstName, changedAt))
+                    .build());
+        } catch (Exception e) {
+            log.error("Failed to process user.password.changed event: {}", e.getMessage(), e);
         }
     }
 
@@ -127,14 +198,34 @@ public class NotificationEventConsumer {
             String appointmentTime = (String) event.get("appointmentTime");
             String patientPhone    = (String) event.get("patientPhone");
 
-            notificationService.sendNotificationAsync(NotificationRequest.builder()
+            UserPreferenceClient.NotificationPreferences preferences =
+                    userPreferenceClient.getNotificationPreferences(patientId);
+            if (!preferences.isAppointmentRemindersEnabled()) {
+                log.info("Skipping appointment notification for user {} due to preference", patientId);
+                return;
+            }
+
+                if (patientEmail != null && !patientEmail.isBlank()) {
+                notificationService.sendNotificationAsync(NotificationRequest.builder()
                     .userId(patientId)
                     .recipientEmail(patientEmail)
                     .type(Notification.NotificationType.APPOINTMENT_CONFIRMATION)
                     .channel(Notification.NotificationChannel.EMAIL)
                     .subject("Appointment Confirmation - Curex Healthcare")
                     .content(buildAppointmentConfirmationContent(patientName, doctorName,
-                            appointmentDate, appointmentTime))
+                        appointmentDate, appointmentTime))
+                    .build());
+                }
+
+                notificationService.sendNotificationAsync(NotificationRequest.builder()
+                    .userId(patientId)
+                    .type(Notification.NotificationType.APPOINTMENT_CONFIRMATION)
+                    .channel(Notification.NotificationChannel.IN_APP)
+                    .subject("Appointment Confirmed")
+                    .content(String.format("Appointment with Dr. %s confirmed for %s at %s.",
+                        HtmlUtils.htmlEscape(doctorName),
+                        HtmlUtils.htmlEscape(appointmentDate),
+                        HtmlUtils.htmlEscape(appointmentTime)))
                     .build());
 
             if (patientPhone != null && !patientPhone.isBlank()) {
@@ -155,40 +246,6 @@ public class NotificationEventConsumer {
         }
     }
 
-    // ── Doctor approval ───────────────────────────────────────────────────────
-
-    @RabbitListener(queues = "doctor.approval.queue")
-    public void handleDoctorApproval(Map<String, Object> event) {
-        try {
-            log.info("Received doctor.approval event");
-
-            String doctorId  = (String) event.get("doctorId");
-            String email     = (String) event.get("email");
-            String firstName = (String) event.get("firstName");
-            String status    = (String) event.get("status");
-            String notes     = (String) event.get("notes");
-
-            boolean approved = "APPROVED".equals(status);
-
-            notificationService.sendNotificationAsync(NotificationRequest.builder()
-                    .userId(doctorId)
-                    .recipientEmail(email)
-                    .type(approved
-                            ? Notification.NotificationType.DOCTOR_APPROVAL
-                            : Notification.NotificationType.DOCTOR_REJECTION)
-                    .channel(Notification.NotificationChannel.EMAIL)
-                    .subject(approved
-                            ? "Congratulations! Your doctor account has been approved"
-                            : "Update on your doctor application")
-                    .content(approved
-                            ? buildDoctorApprovalContent(firstName)
-                            : buildDoctorRejectionContent(firstName, notes))
-                    .build());
-        } catch (Exception e) {
-            log.error("Failed to process doctor.approval event: {}", e.getMessage(), e);
-        }
-    }
-
     // ── Payment confirmation ──────────────────────────────────────────────────
 
     @RabbitListener(queues = "payment.confirmation.queue")
@@ -202,16 +259,81 @@ public class NotificationEventConsumer {
             String amount        = (String) event.get("amount");
             String appointmentId = (String) event.get("appointmentId");
 
+            UserPreferenceClient.NotificationPreferences preferences =
+                    userPreferenceClient.getNotificationPreferences(patientId);
+            if (!preferences.isPaymentAlertsEnabled()) {
+                log.info("Skipping payment notification for user {} due to preference", patientId);
+                return;
+            }
+
+            if (patientEmail != null && !patientEmail.isBlank()) {
+                notificationService.sendNotificationAsync(NotificationRequest.builder()
+                        .userId(patientId)
+                        .recipientEmail(patientEmail)
+                        .type(Notification.NotificationType.PAYMENT_CONFIRMATION)
+                        .channel(Notification.NotificationChannel.EMAIL)
+                        .subject("Payment Confirmation - Curex Healthcare")
+                        .content(buildPaymentConfirmationContent(patientName, amount, appointmentId))
+                        .build());
+            }
+
             notificationService.sendNotificationAsync(NotificationRequest.builder()
                     .userId(patientId)
-                    .recipientEmail(patientEmail)
                     .type(Notification.NotificationType.PAYMENT_CONFIRMATION)
-                    .channel(Notification.NotificationChannel.EMAIL)
-                    .subject("Payment Confirmation - Curex Healthcare")
-                    .content(buildPaymentConfirmationContent(patientName, amount, appointmentId))
+                    .channel(Notification.NotificationChannel.IN_APP)
+                    .subject("Payment Confirmed")
+                    .content(String.format("Payment of %s confirmed for appointment %s.",
+                            HtmlUtils.htmlEscape(amount),
+                            HtmlUtils.htmlEscape(appointmentId)))
                     .build());
         } catch (Exception e) {
             log.error("Failed to process payment.confirmation event: {}", e.getMessage(), e);
+        }
+    }
+
+    // ── Prescription issued ──────────────────────────────────────────────────
+
+    @RabbitListener(queues = "prescription.issued.queue")
+    public void handlePrescriptionIssued(Map<String, Object> event) {
+        try {
+            log.info("Received prescription.issued event");
+
+            String patientId      = (String) event.get("patientId");
+            String patientEmail   = (String) event.get("patientEmail");
+            String doctorName     = (String) event.get("doctorName");
+            String prescriptionId = (String) event.get("prescriptionId");
+
+            UserPreferenceClient.NotificationPreferences preferences =
+                    userPreferenceClient.getNotificationPreferences(patientId);
+            if (!preferences.isPrescriptionAlertsEnabled()) {
+                log.info("Skipping prescription notification for user {} due to preference", patientId);
+                return;
+            }
+
+            String content = String.format("A new prescription from Dr. %s is ready. Prescription ID: %s.",
+                    HtmlUtils.htmlEscape(doctorName),
+                    HtmlUtils.htmlEscape(prescriptionId));
+
+            if (patientEmail != null && !patientEmail.isBlank()) {
+                notificationService.sendNotificationAsync(NotificationRequest.builder()
+                        .userId(patientId)
+                        .recipientEmail(patientEmail)
+                        .type(Notification.NotificationType.PRESCRIPTION_READY)
+                        .channel(Notification.NotificationChannel.EMAIL)
+                        .subject("Prescription Ready - Curex Healthcare")
+                        .content("<p>" + content + "</p>")
+                        .build());
+            }
+
+            notificationService.sendNotificationAsync(NotificationRequest.builder()
+                    .userId(patientId)
+                    .type(Notification.NotificationType.PRESCRIPTION_READY)
+                    .channel(Notification.NotificationChannel.IN_APP)
+                    .subject("Prescription Ready")
+                    .content(content)
+                    .build());
+        } catch (Exception e) {
+            log.error("Failed to process prescription.issued event: {}", e.getMessage(), e);
         }
     }
 
@@ -247,38 +369,6 @@ public class NotificationEventConsumer {
                 HtmlUtils.htmlEscape(appointmentTime));
     }
 
-    private String buildDoctorApprovalContent(String firstName) {
-        return String.format("""
-                <p>Dear Dr. %s,</p>
-                <p>Congratulations! Your doctor account has been approved.</p>
-                <p>You can now log in and start:</p>
-                <ul>
-                    <li>Managing your appointment schedule</li>
-                    <li>Conducting video consultations</li>
-                    <li>Accessing patient records</li>
-                    <li>Issuing digital prescriptions</li>
-                </ul>
-                <p>Welcome to the Curex Healthcare family!</p>
-                """,
-                HtmlUtils.htmlEscape(firstName));
-    }
-
-    private String buildDoctorRejectionContent(String firstName, String notes) {
-        String escapedNotes = (notes != null && !notes.isBlank())
-                ? "<p><strong>Reason:</strong> " + HtmlUtils.htmlEscape(notes) + "</p>"
-                : "";
-        return String.format("""
-                <p>Dear Dr. %s,</p>
-                <p>Thank you for your interest in joining Curex Healthcare Platform.</p>
-                <p>After reviewing your application, we are unable to approve your account at this time.</p>
-                %s
-                <p>You are welcome to reapply once you meet our requirements.</p>
-                <p>If you have questions, please contact our support team.</p>
-                """,
-                HtmlUtils.htmlEscape(firstName),
-                escapedNotes);
-    }
-
     private String buildPaymentConfirmationContent(String patientName, String amount, String appointmentId) {
         return String.format("""
                 <div style="background:#d4edda;padding:15px;border-radius:5px;">
@@ -305,5 +395,37 @@ public class NotificationEventConsumer {
                 <p>If you did not request this code, please ignore this email.</p>
                 <p>Best regards,<br>The Curex Healthcare Team</p>
                 """, HtmlUtils.htmlEscape(otp));
+    }
+
+    private String buildStatusChangedEmailContent(String firstName, String role, String status, String action, String notes) {
+        String safeName = (firstName == null || firstName.isBlank()) ? "User" : HtmlUtils.htmlEscape(firstName);
+        String safeRole = (role == null || role.isBlank()) ? "account" : HtmlUtils.htmlEscape(role.toLowerCase());
+        String safeStatus = (status == null || status.isBlank()) ? "UPDATED" : HtmlUtils.htmlEscape(status);
+        String safeAction = (action == null || action.isBlank()) ? "updated" : HtmlUtils.htmlEscape(action.toLowerCase());
+        String safeNotes = (notes == null || notes.isBlank())
+                ? ""
+                : "<p><strong>Admin Note:</strong> " + HtmlUtils.htmlEscape(notes) + "</p>";
+
+        return String.format("""
+                <p>Dear %s,</p>
+                <p>Your %s status has been %s by an administrator.</p>
+                <p><strong>Current Status:</strong> %s</p>
+                %s
+                <p>If you need help, please contact Curex support.</p>
+                <p>Best regards,<br>The Curex Healthcare Team</p>
+                """, safeName, safeRole, safeAction, safeStatus, safeNotes);
+    }
+
+    private String buildPasswordChangedEmailContent(String firstName, String changedAt) {
+        String safeName = (firstName == null || firstName.isBlank()) ? "User" : HtmlUtils.htmlEscape(firstName);
+        String safeTime = (changedAt == null || changedAt.isBlank()) ? "just now" : HtmlUtils.htmlEscape(changedAt);
+
+        return String.format("""
+                <p>Hi %s,</p>
+                <p>Your Curex account password was changed at <strong>%s</strong>.</p>
+                <p>If this was you, no action is required.</p>
+                <p>If this was not you, please reset your password immediately and contact support.</p>
+                <p>Regards,<br>The Curex Security Team</p>
+                """, safeName, safeTime);
     }
 }

@@ -62,3 +62,19 @@ logging:
     org.hibernate.SQL: WARN
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+services:
+  appointment:
+    url: ${SERVICES_APPOINTMENT_URL}
+  doctor:
+    url: ${SERVICES_DOCTOR_URL}
+  patient:
+    url: ${SERVICES_PATIENT_URL}
+  payment:
+    url: ${SERVICES_PAYMENT_URL}
+  notification:
+    url: ${SERVICES_NOTIFICATION_URL}
+  report:
+    url: ${SERVICES_REPORT_URL}
+  telemedicine:
+    url: ${SERVICES_TELEMEDICINE_URL}

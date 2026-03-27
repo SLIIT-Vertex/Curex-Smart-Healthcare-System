@@ -1,10 +1,28 @@
-import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, CreditCard, ShieldCheck } from 'lucide-react'
-import { getAppointmentsByPatient } from '../../services/appointmentService'
-import { createCheckoutSession } from '../../services/paymentService'
-import type { AppointmentRecord } from '../../types/appointment.ts'
-import { useAuth } from '../../store/hooks'
+import { useEffect, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { ArrowLeft, CreditCard, ShieldCheck } from "lucide-react";
+import { getAppointmentsByPatient } from "../../services/appointmentService";
+import { createCheckoutSession } from "../../services/paymentService";
+import type { AppointmentRecord } from "../../types/appointment.ts";
+import { useAuth } from "../../store/hooks";
+
+const extractServerMessage = (err: unknown): string | undefined => {
+  const maybe = err as {
+    response?: { data?: { message?: unknown } };
+    message?: unknown;
+  };
+
+  const responseMessage = maybe.response?.data?.message;
+  if (typeof responseMessage === "string" && responseMessage.trim()) {
+    return responseMessage.trim();
+  }
+
+  if (typeof maybe.message === "string" && maybe.message.trim()) {
+    return maybe.message.trim();
+  }
+
+  return undefined;
+};
 
 const PENDING_PAYMENT_STORAGE_KEY = 'curex.pendingPayment'
 
@@ -13,21 +31,23 @@ const extractServerMessage = (err: unknown): string | undefined =>
     ?.message
 
 export function PatientCheckout() {
-  const { user } = useAuth()
-  const { appointmentId } = useParams<{ appointmentId: string }>()
-  const navigate = useNavigate()
-  const [appointment, setAppointment] = useState<AppointmentRecord | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [processing, setProcessing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { user } = useAuth();
+  const { appointmentId } = useParams<{ appointmentId: string }>();
+  const navigate = useNavigate();
+  const [appointment, setAppointment] = useState<AppointmentRecord | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadAppointment() {
-      if (!appointmentId || !user?.id) return
+      if (!appointmentId || !user?.id) return;
       try {
-        setLoading(true)
-        const apps = await getAppointmentsByPatient(user.id)
-        const found = apps.find(a => a.id === appointmentId)
+        setLoading(true);
+        const apps = await getAppointmentsByPatient(user.id);
+        const found = apps.find((a) => a.id === appointmentId);
         if (found) {
           setAppointment(found);
         } else {
@@ -39,11 +59,11 @@ export function PatientCheckout() {
         setLoading(false);
       }
     }
-    loadAppointment()
-  }, [appointmentId, user?.id])
+    loadAppointment();
+  }, [appointmentId, user?.id]);
 
   const handlePayment = async () => {
-    if (!appointment || !appointmentId || !user?.id) return
+    if (!appointment || !appointmentId || !user?.id) return;
     try {
       setProcessing(true);
       setError(null);
@@ -53,8 +73,8 @@ export function PatientCheckout() {
 
       const session = await createCheckoutSession(appointmentId, {
         patientId: user.id,
-        amount: 50.00, // Fixed demo amount
-        currency: 'usd',
+        amount: 50.0, // Fixed demo amount
+        currency: "usd",
         successUrl,
         cancelUrl,
       });

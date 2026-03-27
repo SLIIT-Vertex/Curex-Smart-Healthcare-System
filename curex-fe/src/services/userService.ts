@@ -1,5 +1,10 @@
-import api from './axiosInstance'
-import type { UpdateProfileRequest, UserResponse } from '../types/auth'
+import api from "./axiosInstance";
+import type {
+  NotificationPreferences,
+  UpdateNotificationPreferencesRequest,
+  UpdateProfileRequest,
+  UserResponse,
+} from "../types/auth";
 
 /**
  * User-service endpoints for authenticated profile operations.
@@ -13,7 +18,7 @@ export const userService = {
    * profile fields (dob, gender, address, doctor/patient specific data, etc.)
    */
   getMyProfile(): Promise<UserResponse> {
-    return api.get<UserResponse>('/api/users/me').then((r) => r.data)
+    return api.get<UserResponse>("/api/users/me").then((r) => r.data);
   },
 
   /**
@@ -21,6 +26,31 @@ export const userService = {
    * Only non-null fields in the request body are applied on the backend.
    */
   updateMyProfile(data: UpdateProfileRequest): Promise<UserResponse> {
-    return api.put<UserResponse>('/api/users/me/profile', data).then((r) => r.data)
+    return api
+      .put<UserResponse>("/api/users/me/profile", data)
+      .then((r) => r.data);
   },
-}
+
+  getMyNotificationPreferences(): Promise<NotificationPreferences> {
+    return api
+      .get<NotificationPreferences>("/api/users/me/preferences/notifications")
+      .then((r) => r.data);
+  },
+
+  updateMyNotificationPreferences(
+    data: UpdateNotificationPreferencesRequest,
+  ): Promise<NotificationPreferences> {
+    return api
+      .put<NotificationPreferences>(
+        "/api/users/me/preferences/notifications",
+        data,
+      )
+      .then((r) => r.data);
+  },
+
+  deleteMyAccount(): Promise<{ message: string }> {
+    return api
+      .delete<{ message: string }>("/api/users/me/account")
+      .then((r) => r.data);
+  },
+};

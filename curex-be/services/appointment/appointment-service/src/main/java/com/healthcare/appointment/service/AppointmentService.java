@@ -6,6 +6,7 @@ import com.healthcare.appointment.entity.Appointment;
 import com.healthcare.appointment.entity.AppointmentStatus;
 
 import com.healthcare.appointment.events.AppointmentBookedEvent;
+import com.healthcare.appointment.events.AppointmentBookingNotificationEvent;
 import com.healthcare.appointment.events.AppointmentCancelledEvent;
 import com.healthcare.appointment.events.PaymentConfirmedEvent;
 import com.healthcare.appointment.feign.DoctorClient;
@@ -27,7 +28,9 @@ import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Locale;
 import java.util.stream.Collectors;
@@ -282,11 +285,28 @@ public class AppointmentService {
                     RabbitMQConfig.EXCHANGE,
                     RabbitMQConfig.APPOINTMENT_BOOKED_KEY,
                     event);
+
+            rabbitTemplate.convertAndSend(
+                    RabbitMQConfig.NOTIFICATION_APPOINTMENT_EXCHANGE,
+                    RabbitMQConfig.NOTIFICATION_APPOINTMENT_BOOKING_KEY,
+                    toAppointmentBookingNotificationEvent(appt));
         } catch (Exception e) {
             // RabbitMQ might not be running during isolated testing – log and continue
             log.warn("Could not publish AppointmentBookedEvent: {}", e.getMessage());
         }
     }
+
+            private AppointmentBookingNotificationEvent toAppointmentBookingNotificationEvent(Appointment appt) {
+            return AppointmentBookingNotificationEvent.builder()
+                .appointmentId(appt.getId())
+                .patientId(appt.getPatientId())
+                .patientEmail(appt.getPatientEmail())
+                .patientName(appt.getPatientName())
+                .doctorName(appt.getDoctorName())
+                .appointmentDate(appt.getAppointmentTime().toLocalDate().toString())
+                .appointmentTime(appt.getAppointmentTime().toLocalTime().toString())
+                .build();
+            }
 
     private void publishAppointmentCancelled(Appointment appt) {
         try {
@@ -411,6 +431,28 @@ public class AppointmentService {
             return jwtUserId;
         }
     }
+
+        @Transactional
+        public Map<String, Long> purgeUserData(String userId) {
+            String normalizedUserId = userId == null ? "" : userId.trim();
+            long deletedAsPatient = appointmentRepository.deleteByPatientId(normalizedUserId);
+
+            long deletedAsDoctor = 0;
+            try {
+                BookableDoctorDto doctorProfile = doctorClient.getDoctorByUserId(normalizedUserId);
+                if (doctorProfile != null && doctorProfile.getId() != null && !doctorProfile.getId().isBlank()) {
+                    deletedAsDoctor = appointmentRepository.deleteByDoctorId(doctorProfile.getId().trim());
+                }
+            } catch (Exception ex) {
+                log.info("No doctor profile cleanup needed for user {}: {}", normalizedUserId, ex.getMessage());
+            }
+
+            Map<String, Long> result = new LinkedHashMap<>();
+            result.put("deletedAsPatient", deletedAsPatient);
+            result.put("deletedAsDoctor", deletedAsDoctor);
+            result.put("totalDeleted", deletedAsPatient + deletedAsDoctor);
+            return result;
+        }
 
     /**
      * Supports both slot UUID IDs and legacy date_slot keys (e.g. 2026-03-25_17:30).

@@ -11,4 +11,6 @@ public interface ReportRepository extends JpaRepository<Report, UUID> {
     List<Report> findByOwnerIdOrderByUploadedAtDesc(String ownerId);
     
     List<Report> findByOwnerIdAndCategoryOrderByUploadedAtDesc(String ownerId, String category);
+
+    long deleteByOwnerId(String ownerId);
 }

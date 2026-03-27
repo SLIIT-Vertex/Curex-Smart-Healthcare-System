@@ -49,9 +49,20 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
      */
     Page<Notification> findByUserIdOrderByCreatedAtDesc(String userId, Pageable pageable);
 
+    Page<Notification> findByUserIdAndChannelOrderByCreatedAtDesc(
+           String userId,
+           Notification.NotificationChannel channel,
+           Pageable pageable);
+
     Page<Notification> findByUserIdAndReadStatusOrderByCreatedAtDesc(
            String userId,
            Notification.NotificationReadStatus readStatus,
+           Pageable pageable);
+
+    Page<Notification> findByUserIdAndReadStatusAndChannelOrderByCreatedAtDesc(
+           String userId,
+           Notification.NotificationReadStatus readStatus,
+           Notification.NotificationChannel channel,
            Pageable pageable);
 
     Optional<Notification> findByIdAndUserId(String id, String userId);
@@ -83,7 +94,12 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
      */
     long countByUserIdAndStatus(String userId, Notification.NotificationStatus status);
 
-       long countByUserIdAndReadStatus(String userId, Notification.NotificationReadStatus readStatus);
+              long countByUserIdAndReadStatus(String userId, Notification.NotificationReadStatus readStatus);
+
+           long countByUserIdAndReadStatusAndChannel(
+                  String userId,
+                  Notification.NotificationReadStatus readStatus,
+                  Notification.NotificationChannel channel);
 
     /**
      * Find notifications created between dates
@@ -118,6 +134,13 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
     int markAllAsRead(@Param("userId") String userId,
                       @Param("readAt") LocalDateTime readAt);
 
+    @Modifying
+    @Query("UPDATE Notification n SET n.readStatus = 'READ', n.readAt = :readAt " +
+           "WHERE n.userId = :userId AND n.readStatus = 'UNREAD' AND n.channel = :channel")
+    int markAllAsReadByChannel(@Param("userId") String userId,
+                               @Param("channel") Notification.NotificationChannel channel,
+                               @Param("readAt") LocalDateTime readAt);
+
     /**
      * Get notification statistics
      */
@@ -128,4 +151,6 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
            "COUNT(CASE WHEN n.status = 'PENDING' THEN 1 END) as pending " +
            "FROM Notification n WHERE n.createdAt >= :fromDate")
     Object[] getNotificationStatistics(@Param("fromDate") LocalDateTime fromDate);
+
+       long deleteByUserId(String userId);
 }
