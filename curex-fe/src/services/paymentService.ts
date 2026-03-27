@@ -72,19 +72,35 @@ export async function createCheckoutSession(
     `/api/payments/appointments/${appointmentId}`,
     request
   )
-  return data.payload
+  return unwrapApiData(data)
 }
 
 export async function getPaymentDetails(id: string): Promise<PaymentRecord> {
-  const { data } = await api.get<ApiResponse<PaymentRecord>>(
+  const { data } = await api.get<FlexibleApiResponse<PaymentRecord>>(
     `/api/payments/${id}`
   )
-  return data.payload
+  return unwrapApiData(data)
 }
 
 export async function getPatientPayments(patientId: string): Promise<PaymentRecord[]> {
-  const { data } = await api.get<ApiResponse<PaymentRecord[]>>(
+  const { data } = await api.get<FlexibleApiResponse<PaymentRecord[]>>(
     `/api/payments/patients/${patientId}`
   )
-  return data.payload
+  return unwrapApiData(data)
+}
+
+export async function confirmPayment(id: string): Promise<PaymentRecord> {
+  const { data } = await api.post<FlexibleApiResponse<PaymentRecord>>(
+    `/api/payments/${id}/confirm`
+  )
+  return unwrapApiData(data)
+}
+
+export async function getAdminPayments(query: AdminPaymentsQuery = {}): Promise<PaymentRecord[]> {
+  const { data } = await api.get<FlexibleApiResponse<PaymentRecord[]>>(
+    `/api/payments/admin`,
+    { params: query }
+  )
+
+  return unwrapEnvelope(unwrapApiData(data))
 }

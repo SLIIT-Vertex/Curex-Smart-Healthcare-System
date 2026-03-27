@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { adminService } from "../../services/adminService";
 import { useToast } from "../../store/hooks";
-import type { AccountStatus, ApprovalAction, Role, UserResponse } from "../../types/auth";
+import type { AccountStatus, Role, UserResponse } from "../../types/auth";
 
 const ROLE_LABELS: Record<Role, string> = {
   PATIENT: "Patient",
