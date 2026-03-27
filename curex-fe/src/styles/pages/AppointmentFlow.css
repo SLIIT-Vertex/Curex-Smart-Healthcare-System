@@ -46,7 +46,15 @@
     @apply inline-flex h-10 w-10 items-center justify-center rounded-xl border border-primary-light/30 bg-primary-light/10 text-sm font-semibold text-primary;
   }
 
+  .doctor-card-photo {
+    @apply h-10 w-10 rounded-xl border border-primary-light/20 object-cover;
+  }
+
   .doctor-profile-avatar {
     @apply inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-primary-light/30 bg-primary-light/10 text-lg font-semibold text-primary;
+  }
+
+  .doctor-profile-photo {
+    @apply h-14 w-14 rounded-2xl border border-surface/35 object-cover;
   }
 }

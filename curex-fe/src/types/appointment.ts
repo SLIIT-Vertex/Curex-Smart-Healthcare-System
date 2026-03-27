@@ -28,11 +28,19 @@ export const DAY_LABELS: Record<DayOfWeek, string> = {
 };
 
 export interface DoctorDirectoryItem {
-  id: string;
-  profileId?: string;
-  name: string;
-  specialty: string;
-  hospital?: string;
+  id: string
+  profileId?: string
+  name: string
+  specialty: string
+  email?: string
+  phone?: string
+  gender?: string
+  age?: number
+  yearsOfExperience?: number
+  bio?: string
+  avatarUrl?: string
+  consultationFee?: number
+  hospital?: string
 }
 
 export type AppointmentStatus =

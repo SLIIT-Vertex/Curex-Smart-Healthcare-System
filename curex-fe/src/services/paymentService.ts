@@ -54,48 +54,53 @@ function unwrapEnvelope<T>(value: T | ApiEnvelope<T>): T {
   return value as T;
 }
 
+type FlexibleApiResponse<T> = ApiResponse<T> & { data?: T }
+
+function unwrapApiData<T>(response: FlexibleApiResponse<T>): T {
+  const value = response.payload ?? response.data
+  if (value === undefined || value === null) {
+    throw new Error('Invalid API response: missing payload/data')
+  }
+  return value
+}
+
 export async function createCheckoutSession(
   appointmentId: string,
   request: CreatePaymentRequest,
 ): Promise<StripeCheckoutResponse> {
-  const { data } = await api.post<ApiResponse<StripeCheckoutResponse>>(
+  const { data } = await api.post<FlexibleApiResponse<StripeCheckoutResponse>>(
     `/api/payments/appointments/${appointmentId}`,
-    request,
-  );
-  return data.payload;
+    request
+  )
+  return unwrapApiData(data)
 }
 
 export async function getPaymentDetails(id: string): Promise<PaymentRecord> {
-  const { data } = await api.get<ApiResponse<PaymentRecord>>(
-    `/api/payments/${id}`,
-  );
-  return data.payload;
+  const { data } = await api.get<FlexibleApiResponse<PaymentRecord>>(
+    `/api/payments/${id}`
+  )
+  return unwrapApiData(data)
 }
 
-export async function getPatientPayments(
-  patientId: string,
-): Promise<PaymentRecord[]> {
-  const { data } = await api.get<ApiResponse<PaymentRecord[]>>(
-    `/api/payments/patients/${patientId}`,
-  );
-  return data.payload;
-}
-
-export async function getAdminPayments(
-  params: AdminPaymentsQuery = {},
-): Promise<PaymentRecord[]> {
-  const { data } = await api.get<
-    | ApiResponse<PaymentRecord[]>
-    | ApiEnvelope<PaymentRecord[]>
-    | PaymentRecord[]
-  >("/api/payments/admin", { params });
-  const payload = unwrapEnvelope<PaymentRecord[] | PaymentRecord>(data);
-  return Array.isArray(payload) ? payload : [];
+export async function getPatientPayments(patientId: string): Promise<PaymentRecord[]> {
+  const { data } = await api.get<FlexibleApiResponse<PaymentRecord[]>>(
+    `/api/payments/patients/${patientId}`
+  )
+  return unwrapApiData(data)
 }
 
 export async function confirmPayment(id: string): Promise<PaymentRecord> {
-  const { data } = await api.post<
-    ApiResponse<PaymentRecord> | ApiEnvelope<PaymentRecord>
-  >(`/api/payments/${id}/confirm`);
-  return unwrapEnvelope<PaymentRecord>(data);
+  const { data } = await api.post<FlexibleApiResponse<PaymentRecord>>(
+    `/api/payments/${id}/confirm`
+  )
+  return unwrapApiData(data)
+}
+
+export async function getAdminPayments(query: AdminPaymentsQuery = {}): Promise<PaymentRecord[]> {
+  const { data } = await api.get<FlexibleApiResponse<PaymentRecord[]>>(
+    `/api/payments/admin`,
+    { params: query }
+  )
+
+  return unwrapEnvelope(unwrapApiData(data))
 }
