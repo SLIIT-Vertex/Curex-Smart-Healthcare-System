@@ -3,11 +3,11 @@ import { Link, useParams } from "react-router-dom";
 import {
   Copy,
   Eye,
+  ExternalLink,
   Maximize2,
   Mic,
   Minimize2,
   RefreshCcw,
-  Trash2,
   Video,
   X,
 } from "lucide-react";
@@ -39,7 +39,68 @@ declare global {
   interface Window {
     SpeechRecognition?: new () => SpeechRecognitionLike;
     webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+    JitsiMeetExternalAPI?: new (
+      domain: string,
+      options: {
+        roomName: string;
+        parentNode: HTMLElement;
+        userInfo?: { displayName?: string };
+        configOverwrite?: Record<string, unknown>;
+        interfaceConfigOverwrite?: Record<string, unknown>;
+      },
+    ) => {
+      dispose: () => void;
+      executeCommand?: (command: string) => void;
+    };
+    lastStart?: number;
+    lastError?: string;
   }
+}
+
+function parseJitsiSessionUrl(sessionUrl: string): {
+  domain: string;
+  roomName: string;
+} | null {
+  try {
+    const parsed = new URL(sessionUrl);
+    const roomName = parsed.pathname.replace(/^\/+/, "");
+    if (!roomName) {
+      return null;
+    }
+    return { domain: parsed.host, roomName };
+  } catch {
+    return null;
+  }
+}
+
+async function loadJitsiExternalApi(domain: string): Promise<void> {
+  const scriptId = `jitsi-external-api-${domain.replace(/[^a-z0-9]/gi, "-")}`;
+  const existing = document.getElementById(scriptId) as HTMLScriptElement | null;
+
+  if (existing) {
+    if (window.JitsiMeetExternalAPI) {
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener(
+        "error",
+        () => reject(new Error("Failed to load Jitsi external_api.js")),
+        { once: true },
+      );
+    });
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.id = scriptId;
+    script.async = true;
+    script.src = `https://${domain}/external_api.js`;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Failed to load Jitsi external_api.js"));
+    document.body.appendChild(script);
+  });
 }
 
 function canJoin(
@@ -143,6 +204,9 @@ export function PatientTelemedicineCenter() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const autoRestartRef = useRef(false);
   const meetingPanelRef = useRef<HTMLDivElement | null>(null);
+  const jitsiHostRef = useRef<HTMLDivElement | null>(null);
+  const jitsiApiRef = useRef<{ dispose: () => void; executeCommand?: (command: string) => void } | null>(null);
+  const [embeddedMeetingError, setEmbeddedMeetingError] = useState<string | null>(null);
 
   useEffect(() => {
     if (appointmentId) {
@@ -281,6 +345,100 @@ export function PatientTelemedicineCenter() {
     typeof window !== "undefined" &&
     Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
 
+  const openMeetingInNewTab = useCallback(() => {
+    if (!meetingSession?.sessionUrl) {
+      toast("Meeting URL is not available yet.", "warning");
+      return;
+    }
+
+    const popup = window.open(
+      meetingSession.sessionUrl,
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    if (!popup) {
+      window.location.assign(meetingSession.sessionUrl);
+      return;
+    }
+
+    popup.focus();
+    toast("Meeting opened in a new tab.", "info");
+  }, [meetingSession?.sessionUrl, toast]);
+
+  useEffect(() => {
+    if (
+      activeTab !== "meeting" ||
+      !roomJoinable ||
+      !meetingSession?.sessionUrl ||
+      !jitsiHostRef.current
+    ) {
+      return;
+    }
+
+    const parsed = parseJitsiSessionUrl(meetingSession.sessionUrl);
+    if (!parsed) {
+      setEmbeddedMeetingError("Invalid meeting URL received from telemedicine service.");
+      return;
+    }
+
+    let cancelled = false;
+    setEmbeddedMeetingError(null);
+
+    const mountEmbeddedMeeting = async () => {
+      try {
+        await loadJitsiExternalApi(parsed.domain);
+        if (cancelled || !jitsiHostRef.current || !window.JitsiMeetExternalAPI) {
+          return;
+        }
+
+        if (jitsiApiRef.current) {
+          jitsiApiRef.current.dispose();
+          jitsiApiRef.current = null;
+        }
+        jitsiHostRef.current.innerHTML = "";
+
+        const api = new window.JitsiMeetExternalAPI(parsed.domain, {
+          roomName: parsed.roomName,
+          parentNode: jitsiHostRef.current,
+          userInfo: {
+            displayName: "Curex Patient",
+          },
+          configOverwrite: {
+            prejoinPageEnabled: false,
+            disableDeepLinking: true,
+            enableWelcomePage: false,
+          },
+          interfaceConfigOverwrite: {
+            MOBILE_APP_PROMO: false,
+            SHOW_JITSI_WATERMARK: false,
+          },
+        });
+
+        jitsiApiRef.current = api;
+      } catch {
+        if (!cancelled) {
+          setEmbeddedMeetingError(
+            "Embedded meeting failed to initialize. Use 'Open in New Tab' once, then return here.",
+          );
+        }
+      }
+    };
+
+    mountEmbeddedMeeting();
+
+    return () => {
+      cancelled = true;
+      if (jitsiApiRef.current) {
+        jitsiApiRef.current.dispose();
+        jitsiApiRef.current = null;
+      }
+      if (jitsiHostRef.current) {
+        jitsiHostRef.current.innerHTML = "";
+      }
+    };
+  }, [activeTab, meetingSession?.sessionUrl, roomJoinable]);
+
   useEffect(() => {
     if (!transcriptSupported) {
       return;
@@ -298,40 +456,61 @@ export function PatientTelemedicineCenter() {
     recognition.lang = "en-US";
 
     recognition.onresult = (event) => {
-      let finalChunk = "";
       let interimChunk = "";
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const text = event.results[i][0]?.transcript ?? "";
         if (event.results[i].isFinal) {
-          finalChunk += `${text.trim()} `;
+          // Reliability Fix: Only add if not a duplicate of the previous final text
+          // (Browsers sometimes repeat the last final segment)
+          const cleanText = text.trim();
+          setTranscriptText((prev) => {
+            if (prev.endsWith(cleanText)) return prev;
+            // Add basic punctuation simulation
+            const punctuated = cleanText.charAt(0).toUpperCase() + cleanText.slice(1) + ". ";
+            const newText = `${prev} ${punctuated}`.trimStart();
+            return newText.length > 5000 ? newText.slice(-5000) : newText;
+          });
         } else {
-          interimChunk += text;
+          interimChunk = text;
         }
-      }
-
-      if (finalChunk) {
-        setTranscriptText((prev) => `${prev}${finalChunk}`.trimStart());
       }
       setInterimTranscript(interimChunk);
     };
 
-    recognition.onerror = (event) => {
-      if (event.error !== "aborted") {
-        toast(`Live transcript error: ${event.error}`, "warning");
+    recognition.onerror = (event: any) => {
+      const error = event.error;
+      // 'no-speech' is the most common reason transcripts stop working. 
+      // We now handle it silently and trigger an immediate restart.
+      if (error === "no-speech" || error === "audio-capture") {
+        if (autoRestartRef.current) {
+          try { recognition.stop(); } catch {}
+          return; // onend will handle the restart
+        }
+      }
+      
+      if (error !== "aborted") {
+        console.warn("Speech recognition error:", error);
       }
     };
 
     recognition.onend = () => {
       if (autoRestartRef.current) {
-        try {
-          recognition.start();
-          return;
-        } catch {
-          // Ignore restart failures.
-        }
+        // Heartbeat restart to keep the "Free Mode" alive indefinitely
+        const delay = window.lastError === "network" ? 5000 : 300;
+        setTimeout(() => {
+          if (autoRestartRef.current && recognitionRef.current) {
+            try { 
+              recognitionRef.current.start(); 
+              window.lastStart = Date.now();
+            } catch (e) {
+              console.error("Failed to restart transcript:", e);
+            }
+          }
+        }, delay);
+      } else {
+        setIsTranscribing(false);
       }
-      setIsTranscribing(false);
     };
 
     recognitionRef.current = recognition;
@@ -624,202 +803,211 @@ export function PatientTelemedicineCenter() {
 
         {activeTab === "meeting" &&
           (meetingAppointment ? (
-            <div className="grid gap-4 xl:grid-cols-[320px_1.7fr]">
-              <aside className="appointment-panel p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <h2 className="text-base font-semibold text-primary">
-                    Meeting Details
-                  </h2>
+            <div className="flex flex-col gap-6">
+              {/* Meeting Header Dashboard */}
+              <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-primary/95 to-primary p-6 text-white shadow-xl backdrop-blur-sm">
+                <div className="flex items-center gap-4">
+                  <div className="rounded-xl bg-white/10 p-3 ring-1 ring-white/20">
+                    <Video className="h-6 w-6 text-accent-mint" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold tracking-tight">
+                      {meetingTitle(meetingAppointment)}
+                    </h2>
+                    <p className="text-sm text-white/70">
+                      Doctor: <span className="font-semibold text-white">{meetingAppointment.doctorName ?? meetingAppointment.doctorId}</span> • {meetingAppointment.doctorSpecialty ?? "General"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="hidden flex-col items-end sm:flex">
+                    <span className="text-[10px] uppercase tracking-widest text-white/50">Session Status</span>
+                    <span className="flex items-center gap-1.5 font-semibold text-accent-mint">
+                      <span className="h-2 w-2 rounded-full bg-accent-mint animate-pulse" />
+                      {queueStatus(meetingAppointment, meetingSession)}
+                    </span>
+                  </div>
+                  <div className="h-8 w-[1px] bg-white/10 mx-2 hidden sm:block" />
                   <button
                     type="button"
                     onClick={() => {
                       setActiveTab("queue");
                       setSelectedAppointmentId(null);
                     }}
-                    className="rounded-lg border border-text-secondary/20 p-1.5 text-text-secondary hover:text-primary"
-                    title="Close meeting window"
+                    className="group flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold transition hover:bg-white/20"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-4 w-4 transition group-hover:rotate-90" />
+                    Leave Room
                   </button>
                 </div>
+              </div>
 
-                <div className="mt-3 space-y-2 text-sm">
-                  <p>
-                    <span className="font-medium text-primary">Title:</span>{" "}
-                    {meetingTitle(meetingAppointment)}
-                  </p>
-                  <p>
-                    <span className="font-medium text-primary">Doctor:</span>{" "}
-                    {meetingAppointment.doctorName ??
-                      meetingAppointment.doctorId}
-                  </p>
-                  <p>
-                    <span className="font-medium text-primary">Specialty:</span>{" "}
-                    {meetingAppointment.doctorSpecialty ?? "General"}
-                  </p>
-                  <p>
-                    <span className="font-medium text-primary">Scheduled:</span>{" "}
-                    {appointmentDateTime(meetingAppointment)}
-                  </p>
-                  <p>
-                    <span className="font-medium text-primary">Status:</span>{" "}
-                    {queueStatus(meetingAppointment, meetingSession)}
-                  </p>
-                  <p>
-                    <span className="font-medium text-primary">End Time:</span>{" "}
-                    {formatDateTime(meetingSession?.endedAt)}
-                  </p>
-                  <p>
-                    <span className="font-medium text-primary">
-                      Availability:
-                    </span>{" "}
-                    {roomJoinable
-                      ? "Available now"
-                      : joinAvailability(meetingAppointment)}
-                  </p>
-                </div>
-
-                <div className="mt-4 grid gap-2">
-                  <button
-                    type="button"
-                    onClick={toggleFullScreen}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-text-secondary/20 px-3 py-2 text-sm font-medium text-text-secondary transition hover:text-primary"
+              <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
+                {/* Left Side: Video & Transcript */}
+                <div className="space-y-6">
+                  {/* Main Video Card */}
+                  <section
+                    ref={meetingPanelRef}
+                    className="relative overflow-hidden rounded-3xl bg-black shadow-2xl ring-1 ring-white/10"
                   >
-                    {fullScreen ? (
-                      <Minimize2 className="h-4 w-4" />
-                    ) : (
-                      <Maximize2 className="h-4 w-4" />
-                    )}
-                    {fullScreen ? "Exit Full Screen" : "Full Screen"}
-                  </button>
-                </div>
+                    <div className="relative aspect-video w-full">
+                      {roomJoinable && meetingSession?.sessionUrl ? (
+                        <>
+                          <div
+                            ref={jitsiHostRef}
+                            className="h-full w-full"
+                          />
+                          {embeddedMeetingError && (
+                            <div className="absolute bottom-4 left-1/2 z-10 w-[90%] -translate-x-1/2 rounded-xl border border-accent-peach/30 bg-black/70 px-4 py-3 text-sm text-white backdrop-blur">
+                              <p>{embeddedMeetingError}</p>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-background/5 p-8 text-center">
+                          <img
+                            src={telemedImage}
+                            alt="Telemedicine"
+                            className="h-48 w-auto opacity-40 grayscale"
+                          />
+                          <div className="space-y-2">
+                            <h2 className="text-2xl font-bold text-white/90">
+                              Meeting Room is Closed
+                            </h2>
+                            <p className="max-w-md text-sm text-white/50">
+                              The video link will be accessible 1 hour before your scheduled time.
+                            </p>
+                          </div>
+                        </div>
+                      )}
 
-                <div className="mt-4 rounded-xl border border-text-secondary/15 bg-background/50 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
-                      <Mic className="h-4 w-4" />
-                      Live Transcript
-                    </h3>
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                        !transcriptSupported
-                          ? "bg-accent-peach/30 text-primary"
-                          : isTranscribing
-                            ? "bg-accent-mint/25 text-primary"
-                            : "bg-background text-text-secondary"
-                      }`}
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                      {transcriptSupported
-                        ? isTranscribing
-                          ? "Recording"
-                          : "Stopped"
-                        : "Unsupported"}
-                    </span>
-                  </div>
+                      {/* Video Controls Overlay */}
+                      {roomJoinable && (
+                        <div className="absolute right-4 top-4 flex gap-2">
+                           <button
+                            onClick={openMeetingInNewTab}
+                            className="rounded-lg bg-black/40 p-2 text-white backdrop-blur-md transition hover:bg-primary"
+                            title="Open in new tab"
+                          >
+                            <ExternalLink size={18} />
+                          </button>
+                          <button
+                            onClick={toggleFullScreen}
+                            className="rounded-lg bg-black/40 p-2 text-white backdrop-blur-md transition hover:bg-primary"
+                          >
+                            {fullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </section>
 
-                  <p className="mt-2 text-[11px] text-text-secondary">
-                    Speech from the meeting is transcribed live. You can copy,
-                    clear, or export at any time.
-                  </p>
+                  {/* New Dedicated Transcript Card */}
+                  <div className="overflow-hidden rounded-3xl border border-primary/10 bg-white p-6 shadow-lg shadow-primary/5 transition hover:shadow-xl">
+                    <div className="mb-4 flex items-center justify-between border-b border-gray-100 pb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-lg bg-accent-mint/10 p-2 text-accent-mint">
+                          <Mic className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-primary">Live Transcription</h3>
+                          <p className="text-[11px] text-text-secondary/70 uppercase font-semibold">Real-time medical captioning</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={isTranscribing ? stopTranscript : startTranscript}
+                          disabled={!transcriptSupported || !roomJoinable}
+                          className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold transition ${
+                            isTranscribing 
+                            ? "bg-accent-peach/10 text-accent-peach" 
+                            : "bg-accent-mint/10 text-accent-mint"
+                          }`}
+                        >
+                          <span className={`h-2 w-2 rounded-full ${isTranscribing ? "bg-accent-peach animate-pulse" : "bg-accent-mint"}`} />
+                          {isTranscribing ? "Stop Captions" : "Turn On Captions"}
+                        </button>
+                        <button 
+                          onClick={copyTranscript}
+                          className="rounded-full bg-gray-50 p-2 text-gray-500 hover:bg-gray-100 transition"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
 
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={startTranscript}
-                      disabled={!transcriptSupported || !roomJoinable || isTranscribing}
-                      className="rounded-lg border border-primary-light/30 bg-primary-light/10 px-2.5 py-1 text-xs font-semibold text-primary disabled:opacity-50"
-                    >
-                      Start
-                    </button>
-                    <button
-                      type="button"
-                      onClick={stopTranscript}
-                      disabled={!isTranscribing}
-                      className="rounded-lg border border-text-secondary/20 px-2.5 py-1 text-xs font-semibold text-text-secondary disabled:opacity-50"
-                    >
-                      Stop
-                    </button>
-                    <button
-                      type="button"
-                      onClick={exportTranscript}
-                      className="rounded-lg border border-primary/30 bg-primary px-2.5 py-1 text-xs font-semibold text-surface"
-                    >
-                      Export .txt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={copyTranscript}
-                      className="inline-flex items-center gap-1 rounded-lg border border-text-secondary/20 px-2.5 py-1 text-xs font-semibold text-text-secondary"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                      Copy
-                    </button>
-                    <button
-                      type="button"
-                      onClick={clearTranscript}
-                      className="inline-flex items-center gap-1 rounded-lg border border-text-secondary/20 px-2.5 py-1 text-xs font-semibold text-text-secondary"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Clear
-                    </button>
-                  </div>
-
-                  <div className="mt-2 flex items-center justify-between text-[11px] text-text-secondary">
-                    <span>Words: {transcriptWordCount}</span>
-                    <span>{isTranscribing ? "Listening..." : "Idle"}</span>
-                  </div>
-
-                  <div className="mt-3 max-h-56 overflow-y-auto rounded-lg border border-text-secondary/15 bg-surface px-3 py-3 text-sm leading-6 text-primary">
-                    {(transcriptText || interimTranscript).trim() ? (
-                      <>
-                        <p className="whitespace-pre-wrap">{transcriptText}</p>
-                        {interimTranscript && (
-                          <p className="mt-1 whitespace-pre-wrap text-text-secondary">
+                    <div className="min-h-[100px] rounded-2xl bg-gray-50/50 p-5 ring-1 ring-black/[0.02]">
+                      <div className="text-sm leading-relaxed text-slate-700">
+                        {interimTranscript ? (
+                          <span className="inline-flex items-center gap-2 italic text-primary/60">
                             {interimTranscript}
+                            <span className="inline-flex gap-0.5">
+                              <span className="h-1 w-1 rounded-full bg-primary/40 animate-bounce" />
+                              <span className="h-1 w-1 rounded-full bg-primary/40 animate-bounce [animation-delay:0.2s]" />
+                              <span className="h-1 w-1 rounded-full bg-primary/40 animate-bounce [animation-delay:0.4s]" />
+                            </span>
+                          </span>
+                        ) : (
+                          <p className="whitespace-pre-wrap">
+                            {transcriptText.length > 300 
+                              ? `...${transcriptText.slice(-300)}` 
+                              : (transcriptText || "Captions will appear here once audio is detected.")}
                           </p>
                         )}
-                      </>
-                    ) : (
-                      <p className="text-text-secondary">
-                        Transcript will appear here once meeting audio is captured.
-                      </p>
-                    )}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </aside>
 
-              <section
-                ref={meetingPanelRef}
-                className="appointment-panel overflow-hidden p-0"
-              >
-                {roomJoinable && meetingSession?.sessionUrl ? (
-                  <iframe
-                    title={meetingTitle(meetingAppointment)}
-                    src={meetingSession.sessionUrl}
-                    className="h-[78vh] min-h-[560px] w-full"
-                    allow="camera; microphone; fullscreen; display-capture"
-                  />
-                ) : (
-                  <div className="flex h-[78vh] min-h-[560px] flex-col items-center justify-center gap-4 bg-background/60 px-6 text-center">
-                    <img
-                      src={telemedImage}
-                      alt="Telemedicine"
-                      className="h-44 w-auto max-w-full object-contain"
-                    />
-                    <div className="space-y-1">
-                      <h2 className="text-xl font-semibold text-primary">
-                        Room is not open yet
-                      </h2>
-                      <p className="max-w-lg text-sm text-text-secondary">
-                        Your meeting link becomes active 1 hour before the
-                        appointment time after confirmation.
-                      </p>
+                {/* Right Side: Meeting Info Sidebar */}
+                <aside className="space-y-6">
+                  <div className="rounded-3xl border border-primary/10 bg-white p-6 shadow-lg shadow-primary/5">
+                    <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-text-secondary/60">Schedule Detail</h3>
+                    <div className="space-y-4 text-sm">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-text-secondary">Appt Time</span>
+                        <span className="font-semibold text-primary">{appointmentDateTime(meetingAppointment)}</span>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-text-secondary">Availability</span>
+                        <span className={`font-semibold ${roomJoinable ? "text-accent-mint" : "text-accent-peach"}`}>
+                          {roomJoinable ? "Active session" : joinAvailability(meetingAppointment)}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-0.5 pt-2 border-t border-gray-50">
+                        <span className="text-[10px] uppercase text-text-secondary/50 font-bold">Word Count</span>
+                        <span className="font-mono text-xs">{transcriptWordCount} words recorded</span>
+                      </div>
                     </div>
-                    <Video className="h-8 w-8 text-primary-light" />
+                    
+                    <div className="mt-8 space-y-3">
+                         <button
+                            type="button"
+                            onClick={exportTranscript}
+                            className="flex w-full items-center justify-center gap-3 rounded-2xl bg-primary py-3.5 text-sm font-bold text-white shadow-lg transition hover:scale-[1.02] active:scale-95"
+                          >
+                            Download Full Record
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearTranscript}
+                            className="flex w-full items-center justify-center gap-3 rounded-2xl bg-gray-50 border border-gray-100 py-3.5 text-sm font-bold text-text-secondary transition hover:bg-gray-100"
+                          >
+                            Clear History
+                          </button>
+                    </div>
                   </div>
-                )}
-              </section>
+
+                  <div className="rounded-3xl bg-accent-mint/10 p-6 border border-accent-mint/20">
+                    <p className="text-xs font-semibold text-accent-mint/80 uppercase mb-2">Patient Security</p>
+                    <p className="text-xs leading-relaxed text-primary/70">
+                      Curex uses end-to-end encryption for all video calls. Your medical transcripts are stored only locally in your session for your privacy.
+                    </p>
+                  </div>
+                </aside>
+              </div>
             </div>
           ) : (
             <div className="appointment-panel p-6 text-sm text-text-secondary">

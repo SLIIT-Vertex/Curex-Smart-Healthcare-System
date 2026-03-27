@@ -26,10 +26,6 @@ const extractServerMessage = (err: unknown): string | undefined => {
 
 const PENDING_PAYMENT_STORAGE_KEY = 'curex.pendingPayment'
 
-const extractServerMessage = (err: unknown): string | undefined =>
-  (err as { response?: { data?: { message?: string } } })?.response?.data
-    ?.message
-
 export function PatientCheckout() {
   const { user } = useAuth();
   const { appointmentId } = useParams<{ appointmentId: string }>();
