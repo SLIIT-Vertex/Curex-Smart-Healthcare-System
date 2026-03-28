@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   Copy,
   Eye,
@@ -8,6 +8,7 @@ import {
   Mic,
   Minimize2,
   RefreshCcw,
+  Search,
   Video,
   X,
 } from "lucide-react";
@@ -156,6 +157,10 @@ function meetingTitle(appointment: AppointmentRecord): string {
 }
 
 function joinAvailability(appointment: AppointmentRecord): string {
+  if (isCanceled(appointment.status)) {
+    return "Canceled";
+  }
+
   if (
     appointment.status !== "CONFIRMED" &&
     appointment.status !== "IN_SESSION"
@@ -182,20 +187,27 @@ function queueStatus(
   return String(appointment.status);
 }
 
+function isCanceled(status: string | null | undefined): boolean {
+  return status === "CANCELED" || status === "CANCELLED";
+}
+
 export function PatientTelemedicineCenter() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const { appointmentId } = useParams<{ appointmentId?: string }>();
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
-  const [activeTab, setActiveTab] = useState<"queue" | "meeting">(
-    appointmentId ? "meeting" : "queue",
-  );
+  const [activeTab, setActiveTab] = useState<"queue" | "meeting">("queue");
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<
     string | null
-  >(appointmentId ?? null);
+  >(null);
   const [sessions, setSessions] = useState<
     Record<string, TelemedicineSessionRecord | null>
   >({});
+  const [page, setPage] = useState(1);
+  const perPage = 10;
+  const [queueSearch, setQueueSearch] = useState("");
+  const [queueStatusFilter, setQueueStatusFilter] = useState<
+    "ALL" | "PENDING" | "CONFIRMED" | "IN_SESSION" | "COMPLETED" | "CANCELED"
+  >("ALL");
   const [fullScreen, setFullScreen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [transcriptText, setTranscriptText] = useState("");
@@ -207,13 +219,6 @@ export function PatientTelemedicineCenter() {
   const jitsiHostRef = useRef<HTMLDivElement | null>(null);
   const jitsiApiRef = useRef<{ dispose: () => void; executeCommand?: (command: string) => void } | null>(null);
   const [embeddedMeetingError, setEmbeddedMeetingError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (appointmentId) {
-      setSelectedAppointmentId(appointmentId);
-      setActiveTab("meeting");
-    }
-  }, [appointmentId]);
 
   const teleAppointments = useMemo(
     () =>
@@ -239,30 +244,73 @@ export function PatientTelemedicineCenter() {
     [teleAppointments, sessions],
   );
 
-  const selectedAppointment = useMemo(
+  const meetingAppointment = useMemo(
     () =>
       teleAppointments.find((appt) => appt.id === selectedAppointmentId) ??
-      teleAppointments[0] ??
       null,
     [teleAppointments, selectedAppointmentId],
   );
 
-  const nextUpcomingAppointment = useMemo(() => {
-    const now = Date.now();
-    return (
-      teleAppointments.find(
-        (appt) => new Date(appt.appointmentTime).getTime() >= now,
-      ) ?? null
-    );
-  }, [teleAppointments]);
+  const filteredActiveTeleAppointments = useMemo(() => {
+    const term = queueSearch.trim().toLowerCase();
+    return activeTeleAppointments.filter((appt) => {
+      const rawStatus = queueStatus(appt, sessions[appt.id] ?? null).toUpperCase();
+      const normalizedStatus = rawStatus === "CANCELLED" ? "CANCELED" : rawStatus;
 
-  const meetingAppointment = selectedAppointment ?? nextUpcomingAppointment;
+      if (queueStatusFilter !== "ALL" && normalizedStatus !== queueStatusFilter) {
+        return false;
+      }
+
+      if (!term) {
+        return true;
+      }
+
+      return [
+        appt.id,
+        appt.doctorName,
+        appt.doctorId,
+        appt.doctorSpecialty,
+        meetingTitle(appt),
+        normalizedStatus,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(term);
+    });
+  }, [activeTeleAppointments, queueSearch, queueStatusFilter, sessions]);
+
+  const queueTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredActiveTeleAppointments.length / perPage)),
+    [filteredActiveTeleAppointments.length, perPage],
+  );
+
+  const paginatedActiveTeleAppointments = useMemo(() => {
+    const start = (page - 1) * perPage;
+    return filteredActiveTeleAppointments.slice(start, start + perPage);
+  }, [filteredActiveTeleAppointments, page, perPage]);
 
   useEffect(() => {
-    if (!selectedAppointment && teleAppointments.length > 0) {
-      setSelectedAppointmentId(teleAppointments[0].id);
+    setPage(1);
+  }, [queueSearch, queueStatusFilter]);
+
+  useEffect(() => {
+    if (page > queueTotalPages) {
+      setPage(queueTotalPages);
     }
-  }, [teleAppointments, selectedAppointment]);
+  }, [page, queueTotalPages]);
+
+  useEffect(() => {
+    if (!meetingAppointment) {
+      return;
+    }
+
+    const session = sessions[meetingAppointment.id];
+    if (session?.status === "ENDED" || isCanceled(meetingAppointment.status)) {
+      setSelectedAppointmentId(null);
+      setActiveTab("queue");
+    }
+  }, [meetingAppointment, sessions]);
 
   const load = useCallback(async () => {
     try {
@@ -676,6 +724,39 @@ export function PatientTelemedicineCenter() {
             <h2 className="text-base font-semibold text-primary">
               My Video Appointments
             </h2>
+            <div className="mt-3 grid gap-3 md:flex md:items-center">
+              <label className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                <input
+                  value={queueSearch}
+                  onChange={(e) => setQueueSearch(e.target.value)}
+                  placeholder="Search by doctor, title, status"
+                  className="patient-page-input w-full pl-10"
+                />
+              </label>
+              <select
+                value={queueStatusFilter}
+                onChange={(e) =>
+                  setQueueStatusFilter(
+                    e.target.value as
+                      | "ALL"
+                      | "PENDING"
+                      | "CONFIRMED"
+                      | "IN_SESSION"
+                      | "COMPLETED"
+                      | "CANCELED",
+                  )
+                }
+                className="patient-page-input border-primary-light/30 bg-primary-light/5 font-medium text-primary outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+              >
+                <option value="ALL">📌 All Status</option>
+                <option value="PENDING">⏳ PENDING</option>
+                <option value="CONFIRMED">✅ CONFIRMED</option>
+                <option value="IN_SESSION">🔵 IN_SESSION</option>
+                <option value="COMPLETED">🏁 COMPLETED</option>
+                <option value="CANCELED">❌ CANCELED</option>
+              </select>
+            </div>
             <div className="mt-3 rounded-2xl border border-text-secondary/15 bg-background/40 p-3">
               <table className="w-full text-left text-sm">
                 <thead>
@@ -689,7 +770,7 @@ export function PatientTelemedicineCenter() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activeTeleAppointments.length === 0 && (
+                  {filteredActiveTeleAppointments.length === 0 && (
                     <tr>
                       <td
                         colSpan={6}
@@ -701,10 +782,12 @@ export function PatientTelemedicineCenter() {
                     </tr>
                   )}
 
-                  {activeTeleAppointments.map((appt) => {
+                  {paginatedActiveTeleAppointments.map((appt) => {
                     const session = sessions[appt.id] ?? null;
                     const joinable = canJoin(appt, session);
                     const ended = session?.status === "ENDED";
+                    const canceled = isCanceled(appt.status);
+                    const disabled = ended || canceled;
 
                     return (
                       <tr
@@ -736,9 +819,9 @@ export function PatientTelemedicineCenter() {
                                 setSelectedAppointmentId(appt.id);
                                 setActiveTab("meeting");
                               }}
-                              disabled={ended}
+                              disabled={disabled}
                               className="inline-flex items-center rounded-lg border border-primary-light/40 bg-primary-light/10 p-2 text-primary transition hover:bg-primary-light/20 disabled:cursor-not-allowed disabled:opacity-50"
-                              title={ended ? "Meeting ended" : "View meeting"}
+                              title={ended ? "Meeting ended" : canceled ? "Meeting canceled" : "View meeting"}
                             >
                               <Eye className="h-4 w-4" />
                             </button>
@@ -750,6 +833,32 @@ export function PatientTelemedicineCenter() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls */}
+            <div className="mt-3 flex items-center justify-between text-sm text-text-secondary">
+                <div>
+                  Showing {filteredActiveTeleAppointments.length === 0 ? 0 : (page - 1) * perPage + 1} - {Math.min(page * perPage, filteredActiveTeleAppointments.length)} of {filteredActiveTeleAppointments.length}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="rounded-lg border px-3 py-1 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Prev
+                  </button>
+                  <span className="px-2">Page {page} / {queueTotalPages}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => Math.min(queueTotalPages, p + 1))}
+                    disabled={page >= queueTotalPages}
+                    className="rounded-lg border px-3 py-1 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
 
             {endedTeleAppointments.length > 0 && (
               <div className="mt-5 overflow-x-auto rounded-2xl border border-text-secondary/15 bg-background/40 p-3">
@@ -851,12 +960,26 @@ export function PatientTelemedicineCenter() {
                     ref={meetingPanelRef}
                     className="relative overflow-hidden rounded-3xl bg-black shadow-2xl ring-1 ring-white/10"
                   >
-                    <div className="relative aspect-video w-full">
+                        <div className="relative aspect-video w-full">
+                      {(jitsiApiRef.current || !roomJoinable) && (
+                        <div className="absolute inset-0 z-[5] flex items-center justify-center bg-black">
+                          <div className="flex flex-col items-center gap-4 text-center">
+                            <img
+                              src={telemedImage}
+                              alt="Telemedicine"
+                              className="h-32 w-auto opacity-20 grayscale"
+                            />
+                            <p className="text-sm text-white/40">
+                              {jitsiApiRef.current ? "Session ended or disconnected." : "Meeting Room is Closed"}
+                            </p>
+                          </div>
+                        </div>
+                      )}
                       {roomJoinable && meetingSession?.sessionUrl ? (
                         <>
                           <div
                             ref={jitsiHostRef}
-                            className="h-full w-full"
+                            className="relative z-10 h-full w-full"
                           />
                           {embeddedMeetingError && (
                             <div className="absolute bottom-4 left-1/2 z-10 w-[90%] -translate-x-1/2 rounded-xl border border-accent-peach/30 bg-black/70 px-4 py-3 text-sm text-white backdrop-blur">

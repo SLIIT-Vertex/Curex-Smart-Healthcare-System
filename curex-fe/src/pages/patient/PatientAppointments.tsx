@@ -258,6 +258,15 @@ export function PatientAppointments() {
   const [myAppointments, setMyAppointments] = useState<AppointmentRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [booking, setBooking] = useState(false);
+  const [payingAppointmentId, setPayingAppointmentId] = useState<string | null>(null);
+  const [bookingTableSearch, setBookingTableSearch] = useState("");
+  const [bookingTypeFilter, setBookingTypeFilter] = useState<
+    "ALL" | "TELEMEDICINE" | "IN_PERSON"
+  >("ALL");
+  const [bookingStatusFilter, setBookingStatusFilter] = useState<
+    "ALL" | "PENDING" | "CONFIRMED" | "IN_SESSION" | "COMPLETED" | "CANCELLED"
+  >("ALL");
+  const [bookingTablePage, setBookingTablePage] = useState(1);
   const [telemedicineSessions, setTelemedicineSessions] = useState<
     Record<string, TelemedicineSessionRecord | null>
   >({});
@@ -456,7 +465,26 @@ export function PatientAppointments() {
         const time = slot.startTime.substring(0, 5); // Get HH:mm format
         const slotKey = dateSlotKey(selectedDateKey, time);
 
-        if (slot.booked) {
+        // More robust booked/available inference to handle varying backend payloads
+        const slotAny = slot as unknown as {
+          booked?: boolean;
+          isBooked?: boolean;
+          available?: boolean;
+          isAvailable?: boolean;
+          status?: string;
+        };
+        const normalizedStatus = String(slotAny.status ?? "").toUpperCase();
+        const inferredBooked =
+          slotAny.booked === true ||
+          slotAny.isBooked === true ||
+          slotAny.available === false ||
+          slotAny.isAvailable === false ||
+          (normalizedStatus !== "" &&
+            normalizedStatus !== "AVAILABLE" &&
+            normalizedStatus !== "OPEN" &&
+            normalizedStatus !== "FREE");
+
+        if (inferredBooked) {
           bookedForDate.add(slotKey);
         } else {
           availableForDate.add(slotKey);
@@ -467,7 +495,7 @@ export function PatientAppointments() {
     // Merge appointment records as booked markers so patients can always see booked slots.
     for (const appt of doctorAppointments) {
       const status = String(appt.status).toUpperCase();
-      if (status === "CANCELLED" || status === "COMPLETED") {
+        if (status === "CANCELLED" || status === "CANCELED" || status === "COMPLETED") {
         continue;
       }
 
@@ -543,6 +571,68 @@ export function PatientAppointments() {
         new Date(a.appointmentTime).getTime(),
     );
   }, [myAppointments]);
+
+  const BOOKING_TABLE_PAGE_SIZE = 8;
+
+  const filteredBookingRows = useMemo(() => {
+    const term = bookingTableSearch.trim().toLowerCase();
+    return sortedMyAppointments.filter((appt) => {
+      if (bookingTypeFilter !== "ALL" && appt.type !== bookingTypeFilter) {
+        return false;
+      }
+
+      const normalizedStatus = bookingStatusLabel(
+        appt,
+        telemedicineSessions[appt.id],
+      ).toUpperCase();
+      if (bookingStatusFilter !== "ALL" && normalizedStatus !== bookingStatusFilter) {
+        return false;
+      }
+
+      if (!term) {
+        return true;
+      }
+
+      return [
+        appt.id,
+        appt.doctorName,
+        appt.doctorId,
+        appt.doctorSpecialty,
+        appt.type,
+        normalizedStatus,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(term);
+    });
+  }, [
+    bookingStatusFilter,
+    bookingTableSearch,
+    bookingTypeFilter,
+    sortedMyAppointments,
+    telemedicineSessions,
+  ]);
+
+  const bookingTableTotalPages = Math.max(
+    1,
+    Math.ceil(filteredBookingRows.length / BOOKING_TABLE_PAGE_SIZE),
+  );
+
+  const paginatedBookingRows = useMemo(() => {
+    const start = (bookingTablePage - 1) * BOOKING_TABLE_PAGE_SIZE;
+    return filteredBookingRows.slice(start, start + BOOKING_TABLE_PAGE_SIZE);
+  }, [filteredBookingRows, bookingTablePage]);
+
+  useEffect(() => {
+    setBookingTablePage(1);
+  }, [bookingTableSearch, bookingTypeFilter, bookingStatusFilter]);
+
+  useEffect(() => {
+    if (bookingTablePage > bookingTableTotalPages) {
+      setBookingTablePage(bookingTableTotalPages);
+    }
+  }, [bookingTablePage, bookingTableTotalPages]);
 
   const bookingsByDate = useMemo(() => {
     const grouped: Record<string, AppointmentRecord[]> = {};
@@ -790,6 +880,34 @@ export function PatientAppointments() {
       toast(bookingMessage, "success");
       setSelectedSlot(null);
       setNotes("");
+
+      // Optimistically mark the slot as booked in local slots and doctor appointments cache
+      try {
+        setDoctorSlots((prev) => {
+          const copy = { ...prev };
+          const slots = (copy[selectedDoctor.id] || []).map((s) => ({ ...s }));
+          const parsed = parseDateSlotKey(createdAppointment.slotId ?? "");
+          if (parsed) {
+            for (const s of slots) {
+              const time = s.startTime.substring(0, 5);
+              const key = dateSlotKey(parsed.dateKey, time);
+              if (key === createdAppointment.slotId) {
+                s.booked = true;
+              }
+            }
+          }
+          copy[selectedDoctor.id] = slots;
+          return copy;
+        });
+
+        setDoctorAppointmentsById((prev) => ({
+          ...prev,
+          [selectedDoctor.id]: [
+            createdAppointment,
+            ...(prev[selectedDoctor.id] ?? []),
+          ],
+        }));
+      } catch {}
 
       const patientData = await getAppointmentsByPatient(patientId);
       setMyAppointments(patientData);
@@ -1516,11 +1634,16 @@ export function PatientAppointments() {
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    navigate(`/patient/checkout/${appt.id}`);
+                                    setPayingAppointmentId(appt.id);
+                                    // small delay to allow any pending backend warm-up
+                                    setTimeout(() => {
+                                      navigate(`/patient/checkout/${appt.id}`);
+                                    }, 500);
                                   }}
-                                  className="rounded-full bg-primary px-3 py-0.5 text-[10px] font-bold text-surface transition hover:bg-primary/90"
+                                  disabled={payingAppointmentId === appt.id}
+                                  className="rounded-full bg-primary px-3 py-0.5 text-[10px] font-bold text-surface transition hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
-                                  PAY NOW
+                                  {payingAppointmentId === appt.id ? "Processing..." : "PAY NOW"}
                                 </button>
                               )}
                             </div>
@@ -1546,9 +1669,58 @@ export function PatientAppointments() {
               <h3 className="mb-3 text-base font-semibold text-primary">
                 All Bookings
               </h3>
-              {sortedMyAppointments.length === 0 ? (
+              <div className="mb-3 grid gap-3 md:grid-cols-[1fr_170px_180px]">
+                <label className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                  <input
+                    value={bookingTableSearch}
+                    onChange={(e) => setBookingTableSearch(e.target.value)}
+                    placeholder="Search by doctor, specialty, status"
+                    className="patient-page-input w-full pl-10"
+                  />
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={bookingTypeFilter}
+                    onChange={(e) =>
+                      setBookingTypeFilter(
+                        e.target.value as "ALL" | "TELEMEDICINE" | "IN_PERSON",
+                      )
+                    }
+                    className="patient-page-input border-primary-light/30 bg-primary-light/5 font-medium text-primary outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                  >
+                    <option value="ALL">🔍 All Types</option>
+                    <option value="TELEMEDICINE">📹 Telemedicine</option>
+                    <option value="IN_PERSON">🏥 In-person</option>
+                  </select>
+                  <select
+                    value={bookingStatusFilter}
+                    onChange={(e) =>
+                      setBookingStatusFilter(
+                        e.target.value as
+                          | "ALL"
+                          | "PENDING"
+                          | "CONFIRMED"
+                          | "IN_SESSION"
+                          | "COMPLETED"
+                          | "CANCELLED",
+                      )
+                    }
+                    className="patient-page-input border-primary-light/30 bg-primary-light/5 font-medium text-primary outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                  >
+                    <option value="ALL">📌 All Status</option>
+                    <option value="PENDING">⏳ PENDING</option>
+                    <option value="CONFIRMED">✅ CONFIRMED</option>
+                    <option value="IN_SESSION">🔵 IN_SESSION</option>
+                    <option value="COMPLETED">🏁 COMPLETED</option>
+                    <option value="CANCELLED">❌ CANCELLED</option>
+                  </select>
+                </div>
+              </div>
+
+              {paginatedBookingRows.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-4 py-6 text-center text-sm text-text-secondary">
-                  No bookings yet.
+                  No bookings match your filters.
                 </div>
               ) : (
                 <table className="w-full min-w-[52rem] text-left text-sm">
@@ -1565,7 +1737,7 @@ export function PatientAppointments() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedMyAppointments.map((appt) => {
+                    {paginatedBookingRows.map((appt) => {
                       const date = new Date(appt.appointmentTime);
                       const telemedSession = telemedicineSessions[appt.id];
                       const canJoin = canJoinTelemedicine(appt, telemedSession);
@@ -1644,6 +1816,34 @@ export function PatientAppointments() {
                   </tbody>
                 </table>
               )}
+
+              <div className="mt-3 flex items-center justify-between text-xs text-text-secondary">
+                <span>
+                  Showing {filteredBookingRows.length === 0 ? 0 : (bookingTablePage - 1) * BOOKING_TABLE_PAGE_SIZE + 1}-
+                  {Math.min(bookingTablePage * BOOKING_TABLE_PAGE_SIZE, filteredBookingRows.length)} of {filteredBookingRows.length}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBookingTablePage((p) => Math.max(1, p - 1))}
+                    disabled={bookingTablePage === 1}
+                    className="rounded-lg border border-text-secondary/20 px-2 py-1 disabled:opacity-40"
+                  >
+                    Prev
+                  </button>
+                  <span>Page {bookingTablePage} / {bookingTableTotalPages}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setBookingTablePage((p) => Math.min(bookingTableTotalPages, p + 1))
+                    }
+                    disabled={bookingTablePage === bookingTableTotalPages}
+                    className="rounded-lg border border-text-secondary/20 px-2 py-1 disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

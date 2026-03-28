@@ -29,6 +29,7 @@ resources:
   - deployments/rabbitmq.yaml
   - deployments/user-service.yaml
   - deployments/notification-service.yaml
+  - deployments/appointment-service.yaml
   - deployments/telemedicine-service.yaml
   - deployments/patient-service.yaml
   - deployments/doctor-service.yaml
