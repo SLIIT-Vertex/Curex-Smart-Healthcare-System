@@ -26,8 +26,14 @@ export interface UserDoctorResponse {
   email: string;
   role?: string;
   specialization?: string;
+  specialty?: string;
   phone?: string;
+  phoneNumber?: string;
+  dob?: string;
+  gender?: string;
   bio?: string;
+  profileImageUrl?: string;
+  yearsOfExperience?: number;
 }
 
 export interface BookableDoctorResponse {
@@ -94,9 +100,119 @@ export interface DoctorProfileResponse {
   firstName?: string;
   lastName?: string;
   specialization?: string;
+  consultationFee?: number | string;
+  bio?: string;
+  avatarUrl?: string;
+  profileImageUrl?: string;
 }
 
 const doctorProfileIdByUserId = new Map<string, string>();
+
+type MaybeWrapped<T> = T | { payload?: T; data?: T };
+
+function unwrapApi<T>(value: MaybeWrapped<T> | undefined | null): T | null {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === "object" && value !== null) {
+    const wrapped = value as { payload?: T; data?: T };
+    if (wrapped.payload !== undefined) {
+      return wrapped.payload;
+    }
+    if (wrapped.data !== undefined) {
+      return wrapped.data;
+    }
+  }
+  return value as T;
+}
+
+function normalizeDoctorProfile(
+  raw: DoctorProfileResponse | null | undefined,
+): DoctorProfileResponse | null {
+  if (!raw) {
+    return null;
+  }
+
+  const source = raw as DoctorProfileResponse & {
+    specialty?: string;
+    fee?: number | string;
+    photoUrl?: string;
+    imageUrl?: string;
+    description?: string;
+  };
+
+  const feeNumber =
+    typeof (source.consultationFee ?? source.fee) === "string"
+      ? Number.parseFloat(String(source.consultationFee ?? source.fee))
+      : (source.consultationFee ?? source.fee);
+
+  return {
+    ...source,
+    specialization: source.specialization || source.specialty,
+    bio: source.bio || source.description,
+    consultationFee: Number.isFinite(feeNumber as number)
+      ? (feeNumber as number)
+      : undefined,
+    avatarUrl:
+      source.avatarUrl ||
+      source.profileImageUrl ||
+      source.photoUrl ||
+      source.imageUrl,
+  };
+}
+
+function normalizeFee(value: number | string | undefined): number | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function toAge(dob?: string): number | undefined {
+  if (!dob) {
+    return undefined;
+  }
+  const birth = new Date(`${dob}T00:00:00`);
+  if (Number.isNaN(birth.getTime())) {
+    return undefined;
+  }
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const monthDiff = now.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) {
+    age -= 1;
+  }
+  return age >= 0 ? age : undefined;
+}
+
+async function getDoctorProfileForBookable(
+  doctor: BookableDoctorResponse,
+): Promise<DoctorProfileResponse | null> {
+  try {
+    const byUser = await api.get<MaybeWrapped<DoctorProfileResponse>>(
+      `/api/doctors/by-user/${doctor.userId}`,
+    );
+    const profile = normalizeDoctorProfile(unwrapApi(byUser.data));
+    if (profile) {
+      return profile;
+    }
+  } catch {
+    // Fallback below.
+  }
+
+  try {
+    const byId = await api.get<MaybeWrapped<DoctorProfileResponse>>(
+      `/api/doctors/${doctor.id}`,
+    );
+    return normalizeDoctorProfile(unwrapApi(byId.data));
+  } catch {
+    return null;
+  }
+}
 
 /** Fetch doctors approved for booking (doctor profile + user id) from doctor-service. */
 export async function getDoctorDirectory(
@@ -104,14 +220,20 @@ export async function getDoctorDirectory(
 ): Promise<DoctorDirectoryItem[]> {
   try {
     let userSpecialtyById = new Map<string, string>();
+    let userById = new Map<string, UserDoctorResponse>();
     try {
       const { data: users } =
         await api.get<UserDoctorResponse[]>("/api/users/doctors");
       if (Array.isArray(users)) {
+        userById = new Map(users.map((user) => [user.id, user]));
         userSpecialtyById = new Map(
           users
-            .filter((user) => !!user.specialization)
-            .map((user) => [user.id, String(user.specialization).trim()]),
+            .map((user) => ({
+              id: user.id,
+              specialty: user.specialization || user.specialty,
+            }))
+            .filter((user) => !!user.specialty)
+            .map((user) => [user.id, String(user.specialty).trim()]),
         );
       }
     } catch {
@@ -119,24 +241,58 @@ export async function getDoctorDirectory(
     }
 
     // Preferred source: doctor-service returns profileId + userId together.
-    const { data } = await api.get<BookableDoctorResponse[]>(
+    const { data } = await api.get<MaybeWrapped<BookableDoctorResponse[]>>(
       "/api/doctors/bookable",
     );
-    if (Array.isArray(data) && data.length > 0) {
-      const doctors = data.map((doctor) => {
+    const bookableDoctors = unwrapApi(data);
+    if (Array.isArray(bookableDoctors) && bookableDoctors.length > 0) {
+      const profileResults = await Promise.allSettled(
+        bookableDoctors.map(async (doctor) => {
+          const profile = await getDoctorProfileForBookable(doctor);
+          return [doctor.userId, profile] as const;
+        }),
+      );
+
+      const profileByUserId = new Map<string, DoctorProfileResponse>();
+      for (const result of profileResults) {
+        if (result.status === "fulfilled") {
+          const [userId, profile] = result.value;
+          if (profile) {
+            profileByUserId.set(userId, profile);
+          }
+        }
+      }
+
+      const doctors = bookableDoctors.map((doctor) => {
         if (doctor.userId && doctor.id) {
           doctorProfileIdByUserId.set(doctor.userId, doctor.id);
         }
+
+        const profile = profileByUserId.get(doctor.userId);
+        const user = userById.get(doctor.userId);
         const normalizedSpecialty =
+          profile?.specialization?.trim() ||
           doctor.specialization?.trim() ||
           userSpecialtyById.get(doctor.userId) ||
           "General";
+
+        const firstName = profile?.firstName || doctor.firstName;
+        const lastName = profile?.lastName || doctor.lastName;
+
         return {
           // Keep doctor user ID for appointment ownership semantics.
           id: doctor.userId,
-          profileId: doctor.id,
-          name: `Dr. ${doctor.firstName} ${doctor.lastName}`.trim(),
+          profileId: profile?.id || doctor.id,
+          name: `Dr. ${firstName} ${lastName}`.trim(),
           specialty: normalizedSpecialty,
+          email: profile?.email || doctor.email,
+          phone: user?.phoneNumber || user?.phone,
+          gender: user?.gender,
+          age: toAge(user?.dob),
+          yearsOfExperience: user?.yearsOfExperience,
+          bio: profile?.bio,
+          avatarUrl: profile?.avatarUrl,
+          consultationFee: normalizeFee(profile?.consultationFee),
           hospital: "Curex Health Network",
         };
       });
@@ -188,8 +344,22 @@ export async function getDoctorDirectory(
         id: user.id,
         profileId: profile?.id,
         name: `Dr. ${user.firstName} ${user.lastName}`.trim(),
-        specialty: profile?.specialization || user.specialization || "General",
-        hospital: "Curex Health Network",
+        specialty:
+          profile?.specialization ||
+          user.specialization ||
+          user.specialty ||
+          "General",
+        email: profile?.email || user.email,
+        phone: user.phoneNumber || user.phone,
+        gender: user.gender,
+        age: toAge(user.dob),
+        yearsOfExperience: user.yearsOfExperience,
+        bio: profile?.bio || user.bio,
+        avatarUrl: profile?.avatarUrl || user.profileImageUrl,
+        consultationFee: normalizeFee(profile?.consultationFee),
+        hospital: user.yearsOfExperience
+          ? `Curex Health Network • ${user.yearsOfExperience}+ yrs`
+          : "Curex Health Network",
       };
     });
 
@@ -364,6 +534,24 @@ export async function getAppointmentById(
 ): Promise<AppointmentRecord> {
   const { data } = await api.get<AppointmentRecord>(
     `/api/appointments/${appointmentId}`,
+  );
+  return data;
+}
+
+export async function getAdminAppointments(): Promise<AppointmentRecord[]> {
+  const { data } = await api.get<AppointmentRecord[]>("/api/appointments");
+  return Array.isArray(data) ? data : [];
+}
+
+export async function adminCancelAppointment(
+  appointmentId: string,
+  reason: string,
+): Promise<AppointmentRecord> {
+  const { data } = await api.delete<AppointmentRecord>(
+    `/api/appointments/${appointmentId}`,
+    {
+      params: { reason },
+    },
   );
   return data;
 }

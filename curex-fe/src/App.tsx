@@ -21,6 +21,8 @@ import { AdminDashboard } from "./pages/admin/AdminDashboard";
 import { AdminUsers } from "./pages/admin/AdminUsers";
 import { AdminDoctorApproval } from "./pages/admin/AdminDoctorApproval";
 import { AdminProfile } from "./pages/admin/AdminProfile";
+import { AdminAppointments } from "./pages/admin/AdminAppointments";
+import { AdminPayments } from "./pages/admin/AdminPayments";
 
 // Doctor
 import { DoctorDashboard } from "./pages/doctor/DoctorDashboard";
@@ -79,6 +81,8 @@ function App() {
             <Route path="dashboard" element={<AdminDashboard />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="doctor-approval" element={<AdminDoctorApproval />} />
+            <Route path="appointments" element={<AdminAppointments />} />
+            <Route path="payments" element={<AdminPayments />} />
             <Route path="profile" element={<AdminProfile />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

@@ -21,7 +21,7 @@ export function PatientPayments() {
       try {
         setLoading(true);
         const data = await getPatientPayments(DEFAULT_PATIENT_ID);
-        setPayments(data);
+        setPayments(Array.isArray(data) ? data : []);
       } catch {
         setError("Failed to load payment history.");
       } finally {
@@ -107,14 +107,14 @@ export function PatientPayments() {
                     className="hover:bg-primary-light/5 transition"
                   >
                     <td className="px-6 py-4 text-sm text-primary whitespace-nowrap">
-                      {new Date(payment.createdAt).toLocaleDateString("en-GB", {
+                      {new Date(payment.createdAt ?? Date.now()).toLocaleDateString("en-GB", {
                         day: "2-digit",
                         month: "short",
                         year: "numeric",
                       })}
                     </td>
                     <td className="px-6 py-4 text-sm text-text-secondary font-mono">
-                      {payment.appointmentId.substring(0, 8)}...
+                      {String(payment.appointmentId ?? "-").substring(0, 8)}...
                     </td>
                     <td className="px-6 py-4 text-sm font-semibold text-primary">
                       {new Intl.NumberFormat("en-US", {

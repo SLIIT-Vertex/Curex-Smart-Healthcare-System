@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -13,6 +13,7 @@ import {
   createTelemedicineSession,
   getTelemedicineSession,
 } from "../../services/telemedicineService";
+import { confirmPayment } from "../../services/paymentService";
 import {
   dateSlotKey,
   getUpcomingDateKeys,
@@ -26,6 +27,8 @@ import {
 import type { TelemedicineSessionRecord } from "../../types/telemedicine";
 import { useAuth, useToast } from "../../store/hooks";
 import "../../styles/pages/AppointmentFlow.css";
+
+const PENDING_PAYMENT_STORAGE_KEY = "curex.pendingPayment";
 
 function generateTimeSlots(): string[] {
   const slots: string[] = [];
@@ -209,6 +212,7 @@ export function PatientAppointments() {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<"make" | "bookings">("make");
   const [search, setSearch] = useState("");
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>("ALL");
@@ -257,11 +261,34 @@ export function PatientAppointments() {
   const [telemedicineSessions, setTelemedicineSessions] = useState<
     Record<string, TelemedicineSessionRecord | null>
   >({});
-  const [message, setMessage] = useState<string | null>(null);
 
   const patientId = user?.id ?? "";
   const patientName = user ? `${user.firstName} ${user.lastName}`.trim() : "";
   const patientEmail = user?.email ?? "";
+
+  const loadPatientAppointments = useCallback(async () => {
+    if (!patientId) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const patientData = await getAppointmentsByPatient(patientId);
+      setMyAppointments(patientData);
+
+      if (patientData.length > 0) {
+        const firstDate = toDateKey(new Date(patientData[0].appointmentTime));
+        setSelectedBookingDate(firstDate);
+      }
+    } catch {
+      toast(
+        "Could not fetch appointment data. Please ensure backend is running.",
+        "error",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [patientId, toast]);
 
   const extractServerMessage = (err: unknown): string | undefined =>
     (err as { response?: { data?: { message?: string } } })?.response?.data
@@ -368,6 +395,20 @@ export function PatientAppointments() {
       return matchesText && matchesSpecialty;
     });
   }, [doctors, search, selectedSpecialty]);
+
+  useEffect(() => {
+    if (filteredDoctors.length === 0) {
+      return;
+    }
+
+    const selectedStillVisible = filteredDoctors.some(
+      (doctor) => doctor.id === selectedDoctorId,
+    );
+
+    if (!selectedDoctorId || !selectedStillVisible) {
+      setSelectedDoctorId(filteredDoctors[0].id);
+    }
+  }, [filteredDoctors, selectedDoctorId]);
 
   const visibleDoctors = useMemo(() => {
     return filteredDoctors.slice(
@@ -559,32 +600,63 @@ export function PatientAppointments() {
   }, []);
 
   useEffect(() => {
-    async function loadAppointments() {
-      if (!patientId) {
-        return;
-      }
+    void loadPatientAppointments();
+  }, [loadPatientAppointments]);
 
-      try {
-        setLoading(true);
-        const patientData = await getAppointmentsByPatient(patientId);
-        setMyAppointments(patientData);
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const paymentStatus = params.get("payment");
 
-        if (patientData.length > 0) {
-          const firstDate = toDateKey(new Date(patientData[0].appointmentTime));
-          setSelectedBookingDate(firstDate);
+    if (paymentStatus === "success") {
+      setActiveTab("bookings");
+
+      const handleSuccessReturn = async () => {
+        toast("Payment successful. Updating your appointment status...", "success");
+
+        const appointmentIdFromQuery = params.get("id");
+        const pendingRaw = sessionStorage.getItem(PENDING_PAYMENT_STORAGE_KEY);
+
+        if (pendingRaw) {
+          try {
+            const pending = JSON.parse(pendingRaw) as {
+              paymentId?: string;
+              appointmentId?: string;
+            };
+
+            const appointmentMatches =
+              !appointmentIdFromQuery ||
+              !pending.appointmentId ||
+              pending.appointmentId === appointmentIdFromQuery;
+
+            if (pending.paymentId && appointmentMatches) {
+              await confirmPayment(pending.paymentId);
+            }
+          } catch {
+            // Continue with refresh path even if payment confirmation call fails.
+          } finally {
+            sessionStorage.removeItem(PENDING_PAYMENT_STORAGE_KEY);
+          }
         }
-      } catch {
-        toast(
-          "Could not fetch appointment data. Please ensure backend is running.",
-          "error",
-        );
-      } finally {
-        setLoading(false);
-      }
+
+        await loadPatientAppointments();
+
+        window.setTimeout(() => {
+          void loadPatientAppointments();
+        }, 1500);
+
+        navigate("/patient/appointments", { replace: true });
+      };
+
+      void handleSuccessReturn();
+      return;
     }
 
-    loadAppointments();
-  }, [patientId, toast]);
+    if (paymentStatus === "cancelled") {
+      setActiveTab("bookings");
+      toast("Payment was cancelled.", "warning");
+      navigate("/patient/appointments", { replace: true });
+    }
+  }, [location.search, loadPatientAppointments, navigate, toast]);
 
   useEffect(() => {
     let active = true;
@@ -672,7 +744,6 @@ export function PatientAppointments() {
 
     try {
       setBooking(true);
-      setMessage(null);
 
       const appointmentTime = toAppointmentDateTime(
         parsed.dateKey,
@@ -716,7 +787,6 @@ export function PatientAppointments() {
         }
       }
 
-      setMessage(bookingMessage);
       toast(bookingMessage, "success");
       setSelectedSlot(null);
       setNotes("");
@@ -890,15 +960,28 @@ export function PatientAppointments() {
                               : ""
                           }`}
                         >
-                          <div className="doctor-card-avatar">
-                            {doctor.name.replace(/^Dr\.\s*/i, "").charAt(0)}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-primary">
+                          {doctor.avatarUrl ? (
+                            <img
+                              src={doctor.avatarUrl}
+                              alt={doctor.name}
+                              className="doctor-card-photo"
+                            />
+                          ) : (
+                            <div className="doctor-card-avatar">
+                              {doctor.name.replace(/^Dr\.\s*/i, "").charAt(0)}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-primary">
                               {doctor.name}
                             </p>
                             <p className="text-xs text-text-secondary">
                               {doctor.specialty}
+                            </p>
+                            <p className="mt-1 truncate text-[11px] text-text-secondary/85">
+                              {doctor.consultationFee != null
+                                ? `Fee: $${doctor.consultationFee}`
+                                : doctor.email ?? "Profile available"}
                             </p>
                           </div>
                         </button>
@@ -1126,11 +1209,6 @@ export function PatientAppointments() {
                   </button>
                 </div>
 
-                {message && (
-                  <div className="mt-4 rounded-xl border border-accent-mint/40 bg-accent-mint/20 px-4 py-3 text-sm text-primary">
-                    {message}
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1145,9 +1223,17 @@ export function PatientAppointments() {
                   )}
                 </div>
                 <div className="mt-4 flex items-center gap-3">
-                  <div className="doctor-profile-avatar border-surface/35 bg-surface/15 text-surface">
-                    {doctorInitials(selectedDoctor)}
-                  </div>
+                  {selectedDoctor?.avatarUrl ? (
+                    <img
+                      src={selectedDoctor.avatarUrl}
+                      alt={selectedDoctor.name}
+                      className="doctor-profile-photo"
+                    />
+                  ) : (
+                    <div className="doctor-profile-avatar border-surface/35 bg-surface/15 text-surface">
+                      {doctorInitials(selectedDoctor)}
+                    </div>
+                  )}
                   <div>
                     <p className="font-semibold text-surface">
                       {selectedDoctor?.name ?? "No doctor selected"}
@@ -1155,27 +1241,50 @@ export function PatientAppointments() {
                     <p className="text-sm text-surface/80">
                       {selectedDoctor?.specialty ?? "Specialty"}
                     </p>
+                    <p className="text-xs text-surface/70">
+                      {selectedDoctor?.email ?? "No contact info"}
+                    </p>
                   </div>
                 </div>
-                <div className="mt-4 grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    className="day-pill border-surface/30 bg-surface/10 text-surface hover:text-surface"
-                  >
-                    Chat
-                  </button>
-                  <button
-                    type="button"
-                    className="day-pill border-surface/30 bg-surface/10 text-surface hover:text-surface"
-                  >
-                    Call
-                  </button>
-                  <button
-                    type="button"
-                    className="day-pill border-surface/30 bg-surface/10 text-surface hover:text-surface"
-                  >
-                    Info
-                  </button>
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-lg border border-surface/25 bg-surface/10 px-2 py-2">
+                    <p className="text-[11px] uppercase tracking-wide text-surface/70">
+                      Age
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-surface">
+                      {selectedDoctor?.age ?? "-"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-surface/25 bg-surface/10 px-2 py-2">
+                    <p className="text-[11px] uppercase tracking-wide text-surface/70">
+                      Gender
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-surface">
+                      {selectedDoctor?.gender ?? "-"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-surface/25 bg-surface/10 px-2 py-2">
+                    <p className="text-[11px] uppercase tracking-wide text-surface/70">
+                      Experience
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-surface">
+                      {selectedDoctor?.yearsOfExperience != null
+                        ? `${selectedDoctor.yearsOfExperience} yrs`
+                        : "-"}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 rounded-xl border border-surface/20 bg-surface/10 p-3 text-xs text-surface/85">
+                  <p>
+                    <span className="font-semibold text-surface">Phone:</span>{" "}
+                    {selectedDoctor?.phone ?? "Not provided"}
+                  </p>
+                  <p className="mt-1">
+                    <span className="font-semibold text-surface">Fee:</span>{" "}
+                    {selectedDoctor?.consultationFee != null
+                      ? `$${selectedDoctor.consultationFee}`
+                      : "Not specified"}
+                  </p>
                 </div>
                 <div className="mt-4 rounded-xl border border-surface/20 bg-surface/10 p-3">
                   <p className="text-xs uppercase tracking-wide text-surface/70">
@@ -1183,7 +1292,8 @@ export function PatientAppointments() {
                   </p>
                   <p className="mt-2 text-sm text-surface">
                     {selectedDoctor
-                      ? `${selectedDoctor.name} specializes in ${selectedDoctor.specialty}.`
+                      ? selectedDoctor.bio ||
+                        `${selectedDoctor.name} specializes in ${selectedDoctor.specialty}.`
                       : "Select a doctor to view profile details."}
                   </p>
                 </div>
@@ -1450,6 +1560,7 @@ export function PatientAppointments() {
                       <th className="px-3 py-2 font-medium">Time</th>
                       <th className="px-3 py-2 font-medium">Type</th>
                       <th className="px-3 py-2 font-medium">Status</th>
+                      <th className="px-3 py-2 font-medium">Payment</th>
                       <th className="px-3 py-2 font-medium">Telemedicine</th>
                     </tr>
                   </thead>
@@ -1489,6 +1600,25 @@ export function PatientAppointments() {
                             >
                               {bookingStatusLabel(appt, telemedSession)}
                             </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            {String(appt.status).toUpperCase() === "PENDING" ? (
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/patient/checkout/${appt.id}`)}
+                                className="whitespace-nowrap rounded-md border border-primary/30 bg-primary px-2.5 py-1 text-[11px] font-semibold text-surface transition hover:bg-primary/90"
+                              >
+                                Pay Now
+                              </button>
+                            ) : String(appt.status).toUpperCase() === "CONFIRMED" ||
+                              String(appt.status).toUpperCase() === "IN_SESSION" ||
+                              String(appt.status).toUpperCase() === "COMPLETED" ? (
+                              <span className="rounded-full bg-accent-mint/20 px-2.5 py-1 text-xs font-semibold text-primary">
+                                Paid
+                              </span>
+                            ) : (
+                              <span className="text-xs text-text-secondary">-</span>
+                            )}
                           </td>
                           <td className="px-3 py-2">
                             {appt.type !== "TELEMEDICINE" ? (

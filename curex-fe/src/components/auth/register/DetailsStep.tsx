@@ -335,7 +335,7 @@ export const DetailsStep = () => {
             type="button"
             onClick={openPicker}
             disabled={uploading}
-            className="w-full flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-text-secondary/20 bg-surface px-4 py-8 text-center hover:border-primary-light/40 hover:bg-primary-light/[0.03] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-text-secondary/20 bg-surface px-4 py-8 text-center hover:border-primary-light/40 hover:bg-primary-light/3 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             data-testid="register-doc-upload-button"
           >
             {uploading ? (
