@@ -57,7 +57,6 @@ public class PatientController {
 
     @GetMapping("/{id}/prescriptions")
     public ResponseEntity<List<PrescriptionResponse>> getPrescriptions(@PathVariable String id) {
-        patientService.getById(id); // Validate patient exists
         return ResponseEntity.ok(patientService.getPrescriptions(id));
     }
 }

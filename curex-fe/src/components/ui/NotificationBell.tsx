@@ -6,7 +6,13 @@ import {
   Loader2,
   MoreHorizontal,
   RefreshCw,
+  Pill,
+  CalendarCheck,
+  CreditCard,
+  ShieldAlert,
+  BellRing,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useNotifications } from "../../hooks/useNotifications";
 import type { NotificationItem } from "../../types/notification";
 
@@ -51,6 +57,29 @@ function localDateTime(value: string): string {
   });
 }
 
+interface NotificationTypeStyle {
+  icon: LucideIcon;
+  bg: string;
+  color: string;
+}
+
+function getNotificationTypeStyle(type: string): NotificationTypeStyle {
+  const upper = type.toUpperCase();
+  if (upper.startsWith("PRESCRIPTION_")) {
+    return { icon: Pill, bg: "bg-accent-mint/15", color: "text-emerald-600" };
+  }
+  if (upper.startsWith("APPOINTMENT_")) {
+    return { icon: CalendarCheck, bg: "bg-accent-sky/15", color: "text-sky-600" };
+  }
+  if (upper.startsWith("PAYMENT_")) {
+    return { icon: CreditCard, bg: "bg-accent-peach/15", color: "text-amber-600" };
+  }
+  if (upper === "PASSWORD_RESET" || upper === "SYSTEM_ALERT") {
+    return { icon: ShieldAlert, bg: "bg-error/10", color: "text-red-500" };
+  }
+  return { icon: BellRing, bg: "bg-primary-light/10", color: "text-primary-light" };
+}
+
 function NotificationRow({
   item,
   onMarkRead,
@@ -64,6 +93,9 @@ function NotificationRow({
   onToggleMenu: () => void;
   onCloseMenu: () => void;
 }) {
+  const style = getNotificationTypeStyle(item.type);
+  const TypeIcon = style.icon;
+
   return (
     <div
       className={`relative rounded-xl border px-3 py-2.5 ${
@@ -72,7 +104,16 @@ function NotificationRow({
           : "border-text-secondary/10 bg-surface"
       }`}
     >
-      <div className="flex items-start gap-2">
+      <div className="flex items-start gap-2.5">
+        <div
+          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${style.bg}`}
+        >
+          <TypeIcon
+            className={`h-4 w-4 ${style.color}`}
+            strokeWidth={1.5}
+            aria-hidden
+          />
+        </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-primary truncate">
             {item.subject}
@@ -81,8 +122,6 @@ function NotificationRow({
             {item.content || `${item.type} notification`}
           </p>
           <div className="mt-1.5 flex items-center gap-2 text-[11px] text-text-secondary">
-            <span>{item.channel}</span>
-            <span className="h-1 w-1 rounded-full bg-text-secondary/50" />
             <span>{relativeTime(item.createdAt)}</span>
             <span className="h-1 w-1 rounded-full bg-text-secondary/50" />
             <span>{localDateTime(item.createdAt)}</span>

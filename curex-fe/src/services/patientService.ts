@@ -1,9 +1,11 @@
+import axios from 'axios'
 import api from './axiosInstance'
 import type {
   PatientProfile,
   MedicalHistory,
   PatientPrescription,
 } from '../types/patient.ts'
+import type { UserInfo } from '../types/auth'
 
 /** Use mock data when backend is unavailable (e.g. during development). */
 const USE_MOCK_ON_ERROR = true
@@ -38,51 +40,45 @@ const MOCK_MEDICAL_HISTORY: MedicalHistory = {
   pastSurgeries: [],
 }
 
-const MOCK_PRESCRIPTIONS: PatientPrescription[] = [
-  {
-    id: 'rx1',
-    doctorId: 'd1',
-    doctorName: 'Dr. Silva',
-    patientId: 'p1',
-    appointmentId: 'apt1',
-    medicines: 'Paracetamol 500mg, Vitamin D3',
-    instructions: 'Take twice daily with food. Vitamin D once in the morning.',
-    issuedAt: '2026-03-22T10:00:00Z',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'rx2',
-    doctorId: 'd2',
-    doctorName: 'Dr. Khan',
-    patientId: 'p1',
-    appointmentId: 'apt2',
-    medicines: 'Amoxicillin 500mg',
-    instructions: 'Take three times daily for 7 days. Complete full course.',
-    issuedAt: '2026-03-18T14:30:00Z',
-    status: 'ACTIVE',
-  },
-  {
-    id: 'rx3',
-    doctorId: 'd3',
-    doctorName: 'Dr. Perera',
-    patientId: 'p1',
-    appointmentId: 'apt3',
-    medicines: 'Ibuprofen 400mg',
-    instructions: 'Take as needed for pain, max 3 per day.',
-    issuedAt: '2026-03-10T09:00:00Z',
-    status: 'COMPLETED',
-  },
-]
-
 /*  API functions  */
 
+export async function createPatientProfile(
+  user: UserInfo
+): Promise<PatientProfile> {
+  const { data } = await api.post<PatientProfile>('/api/patients', {
+    userId: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    phone: user.phoneNumber ?? '',
+  })
+  return data
+}
+
+/**
+ * Resolves the patient-service profile for a given user ID.
+ * If no profile exists yet (404), one is auto-created so pages that depend on
+ * a patient-service record (prescriptions, reports) work like appointments.
+ */
 export async function getPatientByUserId(
-  userId: string
+  userId: string,
+  user?: UserInfo
 ): Promise<{ id: string; name: string; email: string }> {
-  const { data } = await api.get<PatientProfile>(
-    `/api/patients/by-user/${userId}`
-  )
-  return { id: data.id, name: data.name, email: data.email }
+  try {
+    const { data } = await api.get<PatientProfile>(
+      `/api/patients/by-user/${userId}`
+    )
+    return { id: data.id, name: data.name, email: data.email }
+  } catch (err) {
+    const is404 =
+      axios.isAxiosError(err) && err.response?.status === 404
+
+    if (is404 && user) {
+      const created = await createPatientProfile(user)
+      return { id: created.id, name: created.name, email: created.email }
+    }
+    throw err
+  }
 }
 
 export async function getProfile(patientId: string): Promise<PatientProfile> {
@@ -136,15 +132,9 @@ export async function getMedicalHistory(
 export async function getPrescriptions(
   patientId: string
 ): Promise<PatientPrescription[]> {
-  try {
-    const { data } = await api.get<PatientPrescription[]>(
-      `/api/patients/${patientId}/prescriptions`
-    )
-    return data
-  } catch (err) {
-    if (USE_MOCK_ON_ERROR) {
-      return MOCK_PRESCRIPTIONS.filter((p) => p.patientId === patientId)
-    }
-    throw err
-  }
+
+  const { data } = await api.get<PatientPrescription[]>(
+    `/api/patients/${patientId}/prescriptions`
+  )
+  return data
 }

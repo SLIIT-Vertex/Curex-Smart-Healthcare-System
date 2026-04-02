@@ -1,0 +1,223 @@
+@reference "../../index.css";
+
+@layer components {
+  /* ── Filter bar ──────────────────────────────────────────────── */
+  .rx-filter-bar {
+    @apply rounded-2xl bg-surface p-4 transition-all duration-200;
+    box-shadow: var(--shadow-card);
+  }
+
+  .rx-filter-row {
+    scrollbar-width: thin;
+  }
+
+  .rx-filter-row::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .rx-filter-row::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-text-secondary/25;
+  }
+
+  .rx-filter-chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold
+           transition-all duration-200 cursor-pointer select-none;
+  }
+
+  /* Main “Filters” toggle (dates + status) */
+  .rx-filter-chip--active {
+    @apply border-primary-light/45 bg-primary-light/12 text-primary shadow-sm ring-1 ring-primary-light/15;
+  }
+
+  .rx-filter-chip--inactive {
+    @apply border-text-secondary/15 bg-background/60 text-text-secondary
+           hover:border-text-secondary/25 hover:bg-background/90 hover:text-primary;
+  }
+
+  /* Status chips — selected (color-coded, matches prescription status semantics) */
+  .rx-filter-chip--on-all {
+    @apply border-primary-light/50 bg-primary-light/12 text-primary shadow-sm ring-1 ring-primary-light/20;
+  }
+
+  .rx-filter-chip--on-ACTIVE {
+    @apply border-emerald-500/45 bg-accent-mint/22 text-emerald-900 shadow-sm ring-1 ring-accent-mint/30;
+  }
+
+  .rx-filter-chip--on-ISSUED {
+    @apply border-teal-500/40 bg-teal-500/14 text-teal-900 shadow-sm ring-1 ring-teal-400/25;
+  }
+
+  .rx-filter-chip--on-COMPLETED {
+    @apply border-sky-500/45 bg-accent-sky/22 text-sky-900 shadow-sm ring-1 ring-accent-sky/35;
+  }
+
+  .rx-filter-chip--on-PENDING {
+    @apply border-amber-500/40 bg-accent-peach/28 text-amber-900 shadow-sm ring-1 ring-accent-peach/35;
+  }
+
+  .rx-filter-chip--on-CANCELLED {
+    @apply border-red-400/50 bg-error/16 text-red-900 shadow-sm ring-1 ring-error/25;
+  }
+
+  /* ── Prescription cards ──────────────────────────────────────── */
+  .rx-card {
+    @apply relative rounded-2xl bg-surface p-5 transition-all duration-200 cursor-pointer;
+    box-shadow: var(--shadow-card);
+  }
+
+  .rx-card:hover {
+    box-shadow: 0 8px 32px rgb(28 39 76 / 0.1);
+    @apply scale-[1.005];
+  }
+
+  /* Full-width list rows: subtler hover, clearer vertical rhythm */
+  .rx-prescription-list {
+    @apply w-full max-w-full min-w-0 p-0;
+  }
+
+  /* Only the prescription list scrolls; header/filters stay put */
+  .rx-prescription-scroll {
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .rx-prescription-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .rx-prescription-scroll::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-text-secondary/30;
+  }
+
+  .rx-prescription-scroll::-webkit-scrollbar-track {
+    @apply rounded-full bg-transparent;
+  }
+
+  .rx-card--list {
+    @apply w-full max-w-full min-w-0 scale-100 p-0;
+  }
+
+  .rx-card--list:hover {
+    @apply scale-[1.002];
+  }
+
+  .rx-card-list-inner {
+    @apply p-5 sm:p-6;
+  }
+
+  .rx-card-list-main {
+    @apply flex flex-col;
+  }
+
+  .rx-card::before {
+    content: "";
+    @apply absolute left-0 top-4 bottom-4 w-1 rounded-r-full;
+  }
+
+  .rx-card--ACTIVE::before,
+  .rx-card--ISSUED::before {
+    background: var(--color-accent-mint);
+  }
+  .rx-card--COMPLETED::before {
+    background: var(--color-accent-sky);
+  }
+  .rx-card--PENDING::before {
+    background: var(--color-accent-peach);
+  }
+  .rx-card--CANCELLED::before {
+    background: var(--color-error);
+  }
+
+  /* ── Status badges (refreshed) ──────────────────────────────── */
+  .rx-badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold tracking-wide uppercase;
+  }
+
+  .rx-badge--ACTIVE,
+  .rx-badge--ISSUED {
+    @apply bg-accent-mint/15 text-emerald-700;
+  }
+  .rx-badge--COMPLETED {
+    @apply bg-accent-sky/15 text-sky-700;
+  }
+  .rx-badge--PENDING {
+    @apply bg-accent-peach/15 text-amber-700;
+  }
+  .rx-badge--CANCELLED {
+    @apply bg-error/15 text-red-600;
+  }
+
+  /* ── Detail modal ────────────────────────────────────────────── */
+  .rx-detail-section {
+    @apply rounded-xl border border-text-secondary/10 bg-background/40 p-4;
+  }
+
+  .rx-detail-label {
+    @apply text-[11px] font-semibold uppercase tracking-wider text-text-secondary;
+  }
+
+  .rx-detail-value {
+    @apply mt-1 text-sm font-medium text-primary;
+  }
+
+  .rx-medicine-row {
+    @apply flex items-start gap-3 rounded-xl border border-text-secondary/10 bg-surface p-3 transition-colors hover:bg-background/50;
+  }
+
+  .rx-medicine-pill {
+    @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-mint/15 text-xs font-bold text-emerald-700;
+  }
+
+  /* ── Empty state ─────────────────────────────────────────────── */
+  .rx-empty {
+    @apply flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-text-secondary/15 bg-background/50 px-6 py-16 text-center;
+  }
+
+  .rx-empty-icon {
+    @apply flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-light/10 text-primary-light;
+  }
+
+  /* ── Animations ──────────────────────────────────────────────── */
+  .rx-fade-in {
+    animation: rxFadeUp 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  }
+
+  .rx-modal-enter {
+    animation: rxModalIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  }
+
+  .rx-backdrop-enter {
+    animation: rxBackdropIn 0.25s ease forwards;
+  }
+}
+
+@keyframes rxFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes rxModalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes rxBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

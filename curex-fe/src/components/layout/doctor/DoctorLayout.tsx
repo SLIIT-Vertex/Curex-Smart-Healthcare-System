@@ -15,7 +15,10 @@ export function DoctorLayout() {
       <DoctorSidebar isOpen={sidebarOpen} onClose={closeSidebar} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <DoctorTopBar onMenuClick={toggleSidebar} />
-        <main id="main" className="min-h-0 flex-1 overflow-y-auto p-6 lg:p-8">
+        <main
+          id="main"
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6 lg:p-8"
+        >
           <Outlet />
         </main>
       </div>

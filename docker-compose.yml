@@ -214,6 +214,7 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
       SERVICES_APPOINTMENT_URL: ${SERVICES_APPOINTMENT_URL:-http://appointment-service:8088}
       SERVICES_USER_URL: ${SERVICES_USER_URL:-http://user-service:8081}
+      CUREX_PRESCRIPTION_STATUS_ZONE: ${CUREX_PRESCRIPTION_STATUS_ZONE:-Asia/Colombo}
     depends_on:
       postgres:
         condition: service_healthy

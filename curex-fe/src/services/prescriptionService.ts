@@ -48,3 +48,14 @@ export async function getPrescriptionsByDoctor(
   )
   return data
 }
+
+export async function updatePrescriptionStatus(
+  prescriptionId: string,
+  status: string
+): Promise<PrescriptionResponse> {
+  const { data } = await api.patch<PrescriptionResponse>(
+    `/api/prescriptions/${prescriptionId}/status`,
+    { status }
+  )
+  return data
+}

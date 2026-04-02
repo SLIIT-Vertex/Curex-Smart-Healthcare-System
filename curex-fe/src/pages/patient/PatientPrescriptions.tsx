@@ -1,6 +1,15 @@
 import { useState, useEffect, useMemo, Fragment, useCallback } from 'react'
-import { Search, ChevronDown, ChevronUp, PillBottle } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import {
+  Search,
+  ChevronDown,
+  ChevronUp,
+  PillBottle,
+  CalendarClock,
+} from 'lucide-react'
 import { getPrescriptions, getPatientByUserId } from '../../services/patientService'
+import { getAppointmentsByPatient } from '../../services/appointmentService'
+import type { AppointmentRecord } from '../../types/appointment'
 import type { PatientPrescription } from '../../types/patient'
 import { useAuth } from '../../store/hooks'
 import { useToast } from '../../store/hooks'
@@ -8,8 +17,23 @@ import { useToast } from '../../store/hooks'
 /** Use mock data when backend is unavailable (e.g. during development). */
 const USE_MOCK_ON_ERROR = true
 
+/** Days before validTo to highlight as “expiring soon”. */
+const EXPIRING_SOON_DAYS = 14
+
+function startOfLocalDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+function parseDisplayDate(iso: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [y, m, d] = iso.split('-').map(Number)
+    return new Date(y, m - 1, d)
+  }
+  return new Date(iso)
+}
+
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', {
+  return parseDisplayDate(iso).toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -17,9 +41,21 @@ function formatDate(iso: string): string {
 }
 
 function formatDateShort(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', {
+  return parseDisplayDate(iso).toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'short',
+  })
+}
+
+function formatIssuedDetail(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return formatDate(iso)
+  return d.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   })
 }
 
@@ -29,30 +65,153 @@ function truncate(str: string, maxLen: number): string {
   return str.slice(0, maxLen) + '…'
 }
 
-const STATUS_STYLES = {
+type RxStatus = 'PENDING' | 'ACTIVE' | 'ISSUED' | 'COMPLETED' | 'CANCELLED'
+
+const STATUS_STYLES: Record<
+  RxStatus,
+  string
+> = {
+  PENDING: 'bg-accent-peach/20 text-primary border-accent-peach/40',
   ACTIVE: 'bg-accent-mint/20 text-primary border-accent-mint/40',
+  ISSUED: 'bg-primary-light/20 text-primary border-primary-light/40',
   COMPLETED: 'bg-accent-sky/20 text-primary border-accent-sky/40',
   CANCELLED: 'bg-error/20 text-primary border-error/40',
-} as const
+}
 
-function StatusBadge({
-  status,
-}: {
-  status?: 'ACTIVE' | 'COMPLETED' | 'CANCELLED'
-}) {
-  const s = status ?? 'ACTIVE'
+const STATUS_LABELS: Record<RxStatus, string> = {
+  PENDING: 'Pending',
+  ACTIVE: 'Active',
+  ISSUED: 'Issued',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+}
+
+/** Synthetic rows for visits eligible for a script but none issued yet (mirrors doctor prescriptions UI). */
+function isAwaitingPrescriptionPlaceholder(rx: PatientPrescription): boolean {
+  return rx.id.startsWith('pending-appt-')
+}
+
+function buildAwaitingPrescriptionRows(
+  appointments: AppointmentRecord[],
+  issuedForAppointmentIds: Set<string>,
+  patientUserId: string
+): PatientPrescription[] {
+  return appointments
+    .filter(
+      (a) =>
+        (a.status === 'COMPLETED' || a.status === 'IN_SESSION') &&
+        !issuedForAppointmentIds.has(a.id)
+    )
+    .map((a) => ({
+      id: `pending-appt-${a.id}`,
+      doctorId: a.doctorId,
+      doctorName: a.doctorName,
+      doctorSpecialty: a.doctorSpecialty,
+      patientId: patientUserId,
+      patientName: a.patientName,
+      appointmentId: a.id,
+      diagnosis: undefined,
+      medicines:
+        'No prescription has been issued for this visit yet. It will appear here once your doctor adds it.',
+      instructions: undefined,
+      validFrom: undefined,
+      validTo: undefined,
+      issuedAt: a.appointmentTime,
+      status: 'PENDING' as const,
+    }))
+}
+
+function StatusBadge({ status }: { status?: RxStatus }) {
+  const s = status ?? 'PENDING'
+  const label = STATUS_LABELS[s] ?? s
   return (
     <span
       className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[s] ?? 'bg-background/50'}`}
     >
-      {s}
+      {label}
     </span>
   )
 }
 
+type ValidityKind = 'ok' | 'soon' | 'ended' | 'future' | 'neutral'
+
+/** Backend derives ACTIVE from validFrom–validTo; ISSUED filter matches in-window rx. */
+function matchesPatientRxStatusFilter(
+  status: string | undefined,
+  filter: RxStatus
+): boolean {
+  const s = status ?? 'PENDING'
+  if (filter === 'ISSUED') return s === 'ISSUED' || s === 'ACTIVE'
+  return s === filter
+}
+
+function getValidityKind(rx: PatientPrescription, today: Date): ValidityKind {
+  const t = startOfLocalDay(today)
+  const from = rx.validFrom ? startOfLocalDay(parseDisplayDate(rx.validFrom)) : null
+  const to = rx.validTo ? startOfLocalDay(parseDisplayDate(rx.validTo)) : null
+
+  if (!from && !to) return 'neutral'
+  if (from && t < from) return 'future'
+  if (to && t > to) return 'ended'
+  if (to) {
+    const msLeft = to.getTime() - t.getTime()
+    const daysLeft = msLeft / (24 * 60 * 60 * 1000)
+    if (daysLeft >= 0 && daysLeft <= EXPIRING_SOON_DAYS) return 'soon'
+  }
+  return 'ok'
+}
+
+function ValidityPill({ rx }: { rx: PatientPrescription }) {
+  const today = new Date()
+  const kind = getValidityKind(rx, today)
+  const cls = {
+    ok: 'rx-validity-pill rx-validity-pill--ok',
+    soon: 'rx-validity-pill rx-validity-pill--soon',
+    ended: 'rx-validity-pill rx-validity-pill--ended',
+    future: 'rx-validity-pill rx-validity-pill--future',
+    neutral: 'rx-validity-pill rx-validity-pill--neutral',
+  }[kind]
+
+  let label = '—'
+  if (rx.validFrom && rx.validTo) {
+    label = `${formatDateShort(rx.validFrom)} – ${formatDateShort(rx.validTo)}`
+  } else if (rx.validTo) {
+    label = `Until ${formatDateShort(rx.validTo)}`
+  } else if (rx.validFrom) {
+    label = `From ${formatDateShort(rx.validFrom)}`
+  }
+
+  const hint =
+    kind === 'ended'
+      ? 'Period ended'
+      : kind === 'soon'
+        ? `≤ ${EXPIRING_SOON_DAYS} days left`
+        : kind === 'future'
+          ? 'Not yet valid'
+          : kind === 'neutral'
+            ? 'No dates on file'
+            : null
+
+  return (
+    <span className="inline-flex max-w-full flex-col gap-0.5" title={hint ?? label}>
+      <span className={`${cls} max-w-full`}>
+        <CalendarClock className="h-3.5 w-3.5 shrink-0 opacity-80" strokeWidth={1.5} />
+        <span className="truncate">{label}</span>
+      </span>
+      {hint && (
+        <span className="text-[10px] font-medium text-text-secondary">{hint}</span>
+      )}
+    </span>
+  )
+}
+
+const TABLE_COL_COUNT = 9
+
 export function PatientPrescriptions() {
   const { user } = useAuth()
   const { toast } = useToast()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const appointmentFilter = searchParams.get('appointment')?.trim() ?? ''
   const [patientId, setPatientId] = useState<string | null>(null)
   const [prescriptions, setPrescriptions] = useState<PatientPrescription[]>([])
   const [loading, setLoading] = useState(true)
@@ -60,6 +219,7 @@ export function PatientPrescriptions() {
   const [doctorFilter, setDoctorFilter] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | RxStatus>('ALL')
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const fetchPrescriptions = useCallback(async () => {
@@ -67,10 +227,30 @@ export function PatientPrescriptions() {
     setLoading(true)
     setError(null)
     try {
-      const patient = await getPatientByUserId(user.id)
+      const patient = await getPatientByUserId(user.id, user)
       setPatientId(patient.id)
+      let appointments: AppointmentRecord[] = []
+      try {
+        appointments = await getAppointmentsByPatient(user.id)
+      } catch {
+        appointments = []
+      }
       const data = await getPrescriptions(patient.id)
-      setPrescriptions(data)
+      const issuedAppointmentIds = new Set(
+        data
+          .map((r) => r.appointmentId)
+          .filter((id): id is string => Boolean(id))
+      )
+      const placeholders = buildAwaitingPrescriptionRows(
+        appointments,
+        issuedAppointmentIds,
+        user.id
+      )
+      const merged = [...placeholders, ...data].sort(
+        (a, b) =>
+          new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime()
+      )
+      setPrescriptions(merged)
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : 'Failed to load prescriptions'
@@ -84,14 +264,56 @@ export function PatientPrescriptions() {
     } finally {
       setLoading(false)
     }
-  }, [user?.id, user?.role, toast])
+  }, [user, toast])
 
   useEffect(() => {
     fetchPrescriptions()
   }, [fetchPrescriptions])
 
-  const filtered = useMemo(() => {
-    return prescriptions.filter((rx) => {
+  useEffect(() => {
+    if (!loading && prescriptions.length > 0) {
+      window.dispatchEvent(new CustomEvent('curex:notification-preferences-changed'))
+    }
+  }, [loading, prescriptions.length])
+
+  useEffect(() => {
+    if (!appointmentFilter || prescriptions.length === 0) return
+    const match = prescriptions.find(
+      (rx) => rx.appointmentId === appointmentFilter
+    )
+    if (match) setExpandedId(match.id)
+  }, [appointmentFilter, prescriptions])
+
+  const clearVisitFilter = useCallback(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('appointment')
+      return next
+    })
+  }, [setSearchParams])
+
+  const clearAllFilters = useCallback(() => {
+    setStatusFilter('ALL')
+    setDoctorFilter('')
+    setDateFrom('')
+    setDateTo('')
+    clearVisitFilter()
+  }, [clearVisitFilter])
+
+  const filteredSorted = useMemo(() => {
+    const list = prescriptions.filter((rx) => {
+      if (
+        appointmentFilter &&
+        rx.appointmentId !== appointmentFilter
+      ) {
+        return false
+      }
+      if (
+        statusFilter !== 'ALL' &&
+        !matchesPatientRxStatusFilter(rx.status, statusFilter)
+      ) {
+        return false
+      }
       if (doctorFilter) {
         const name = (rx.doctorName ?? '').toLowerCase()
         const specialty = (rx.doctorSpecialty ?? '').toLowerCase()
@@ -103,11 +325,25 @@ export function PatientPrescriptions() {
       if (dateTo && issued > `${dateTo}T23:59:59`) return false
       return true
     })
-  }, [prescriptions, doctorFilter, dateFrom, dateTo])
+    return [...list].sort(
+      (a, b) =>
+        new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime()
+    )
+  }, [
+    prescriptions,
+    appointmentFilter,
+    doctorFilter,
+    dateFrom,
+    dateTo,
+    statusFilter,
+  ])
 
   const toggleExpand = (id: string) => {
     setExpandedId((prev) => (prev === id ? null : id))
   }
+
+  const emptyBecauseFilters =
+    prescriptions.length > 0 && filteredSorted.length === 0
 
   if (loading && !patientId) {
     return (
@@ -166,50 +402,110 @@ export function PatientPrescriptions() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-stretch gap-4">
-        <span className="flex w-12 shrink-0 items-center justify-center rounded-xl bg-accent-sky/15 text-accent-sky">
-          <PillBottle className="h-7 w-7" strokeWidth={1.5} />
-        </span>
-        <div>
-          <h1 className="section-heading">Prescriptions</h1>
-          <p className="section-subtext mt-1">
-            View prescriptions issued by your doctors.
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-between">
+        <div className="flex items-stretch gap-4">
+          <span className="flex w-12 shrink-0 items-center justify-center rounded-xl bg-accent-sky/15 text-accent-sky">
+            <PillBottle className="h-7 w-7" strokeWidth={1.5} />
+          </span>
+          <div>
+            <h1 className="section-heading">Prescriptions</h1>
+            <p className="section-subtext mt-1 max-w-xl">
+              See medicines, validity dates, and instructions from your care
+              team.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {appointmentFilter && (
+        <div
+          className="patient-card flex flex-col gap-3 border-primary-light/25 bg-primary-light/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+          role="status"
+        >
+          <p className="text-sm text-primary">
+            <span className="text-text-secondary">Filtered from your consultation: </span>
+            appointment{' '}
+            <span className="rounded bg-background/60 px-1.5 py-0.5 font-mono text-xs">
+              {appointmentFilter}
+            </span>
           </p>
+          <button
+            type="button"
+            onClick={clearVisitFilter}
+            className="shrink-0 text-left text-sm font-medium text-primary-light hover:underline sm:text-right"
+          >
+            Show all prescriptions
+          </button>
+        </div>
+      )}
+
+      {/* Status quick-filter + search / date range */}
+      <div className="patient-card flex flex-col gap-4 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="mr-1 text-xs font-medium text-text-secondary">
+            Status
+          </span>
+          {(
+            [
+              ['ALL', 'All'],
+              ['PENDING', STATUS_LABELS.PENDING],
+              ['ACTIVE', STATUS_LABELS.ACTIVE],
+              ['ISSUED', STATUS_LABELS.ISSUED],
+              ['COMPLETED', STATUS_LABELS.COMPLETED],
+              ['CANCELLED', STATUS_LABELS.CANCELLED],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setStatusFilter(value)}
+              className={`rx-filter-chip ${statusFilter === value ? 'rx-filter-chip--active' : ''}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[12rem] flex-1">
+            <Search
+              className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary"
+              strokeWidth={1.5}
+            />
+            <input
+              type="text"
+              value={doctorFilter}
+              onChange={(e) => setDoctorFilter(e.target.value)}
+              placeholder="Search doctor name or specialty…"
+              className="patient-page-input w-full pl-10"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <label className="sr-only" htmlFor="rx-date-from">
+              Issued from
+            </label>
+            <input
+              id="rx-date-from"
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="patient-page-input w-auto min-w-[10rem]"
+              title="Issued on or after"
+            />
+            <label className="sr-only" htmlFor="rx-date-to">
+              Issued until
+            </label>
+            <input
+              id="rx-date-to"
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="patient-page-input w-auto min-w-[10rem]"
+              title="Issued on or before"
+            />
+          </div>
         </div>
       </div>
 
-      {/* Search / filter bar */}
-      <div className="patient-card flex flex-wrap items-center gap-3 p-4">
-        <div className="relative flex-1 min-w-[12rem]">
-          <Search
-            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary"
-            strokeWidth={1.5}
-          />
-          <input
-            type="text"
-            value={doctorFilter}
-            onChange={(e) => setDoctorFilter(e.target.value)}
-            placeholder="Search doctor name or specialty…"
-            className="patient-page-input w-full pl-10"
-          />
-        </div>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-          className="patient-page-input"
-          title="From date"
-        />
-        <input
-          type="date"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-          className="patient-page-input"
-          title="To date"
-        />
-      </div>
-
-      {/* Prescriptions table */}
       <div className="patient-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="rx-table w-full">
@@ -220,7 +516,7 @@ export function PatientPrescriptions() {
                   aria-label="Expand"
                 />
                 <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
-                  Date
+                  Issued
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
                   Doctor
@@ -229,9 +525,12 @@ export function PatientPrescriptions() {
                   Specialty
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
-                  Medicines
+                  Medicines & diagnosis
                 </th>
-                <th className="hidden px-4 py-3 text-left text-xs font-medium text-text-secondary sm:table-cell">
+                <th className="hidden min-w-[7.5rem] px-4 py-3 text-left text-xs font-medium text-text-secondary md:table-cell">
+                  Validity
+                </th>
+                <th className="hidden px-4 py-3 text-left text-xs font-medium text-text-secondary lg:table-cell">
                   Instructions
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
@@ -243,15 +542,12 @@ export function PatientPrescriptions() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length > 0 ? (
-                filtered.map((rx) => {
+              {filteredSorted.length > 0 ? (
+                filteredSorted.map((rx) => {
                   const isExpanded = expandedId === rx.id
                   return (
                     <Fragment key={rx.id}>
-                      <tr
-                        key={rx.id}
-                        className="border-b border-text-secondary/10 transition-colors hover:bg-background/50"
-                      >
+                      <tr className="border-b border-text-secondary/10 transition-colors hover:bg-background/50">
                         <td className="px-4 py-3">
                           <button
                             type="button"
@@ -271,7 +567,9 @@ export function PatientPrescriptions() {
                           </button>
                         </td>
                         <td className="px-4 py-3 text-sm text-text-secondary">
-                          {formatDateShort(rx.issuedAt)}
+                          <span className="tabular-nums">
+                            {formatDateShort(rx.issuedAt)}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-sm font-medium text-primary">
                           {rx.doctorName ?? '—'}
@@ -279,11 +577,27 @@ export function PatientPrescriptions() {
                         <td className="hidden px-4 py-3 text-sm text-text-secondary sm:table-cell">
                           {rx.doctorSpecialty ?? '—'}
                         </td>
-                        <td className="max-w-[10rem] truncate px-4 py-3 text-sm text-text-secondary sm:max-w-[14rem]">
-                          {truncate(rx.medicines, 30)}
+                        <td className="max-w-[12rem] px-4 py-3 text-sm sm:max-w-[16rem]">
+                          <p className="truncate text-text-secondary">
+                            {truncate(rx.medicines, 42)}
+                          </p>
+                          {rx.diagnosis && (
+                            <p
+                              className="mt-1 line-clamp-2 text-xs leading-snug text-text-secondary/90"
+                              title={rx.diagnosis}
+                            >
+                              <span className="font-medium text-primary/80">
+                                Dx:{' '}
+                              </span>
+                              {truncate(rx.diagnosis, 90)}
+                            </p>
+                          )}
                         </td>
-                        <td className="hidden max-w-[12rem] truncate px-4 py-3 text-sm text-text-secondary sm:table-cell">
-                          {truncate(rx.instructions ?? '', 35)}
+                        <td className="hidden px-4 py-3 md:table-cell">
+                          <ValidityPill rx={rx} />
+                        </td>
+                        <td className="hidden max-w-[11rem] px-4 py-3 text-sm text-text-secondary lg:table-cell">
+                          {truncate(rx.instructions ?? '', 40) || '—'}
                         </td>
                         <td className="px-4 py-3">
                           <StatusBadge status={rx.status} />
@@ -299,29 +613,27 @@ export function PatientPrescriptions() {
                         </td>
                       </tr>
                       {isExpanded && (
-                        <tr
-                          key={`${rx.id}-expanded`}
-                          className="border-b border-text-secondary/10 bg-background/30"
-                        >
-                          <td colSpan={8} className="px-4 py-4">
+                        <tr className="border-b border-text-secondary/10 bg-background/30">
+                          <td colSpan={TABLE_COL_COUNT} className="px-4 py-4">
                             <div className="rounded-xl border border-text-secondary/10 bg-surface/80 p-4">
-                              {/* Rich Prescription View */}
                               <div className="space-y-4">
                                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                   <div>
                                     <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
                                       Prescription ID
                                     </h4>
-                                    <p className="mt-1 text-sm font-mono text-primary">
-                                      {rx.id}
+                                    <p className="mt-1 break-all text-sm font-mono text-primary">
+                                      {isAwaitingPrescriptionPlaceholder(rx)
+                                        ? '— (not issued yet)'
+                                        : rx.id}
                                     </p>
                                   </div>
                                   <div>
                                     <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-                                      Issue date
+                                      Issued
                                     </h4>
                                     <p className="mt-1 text-sm text-primary">
-                                      {formatDate(rx.issuedAt)}
+                                      {formatIssuedDetail(rx.issuedAt)}
                                     </p>
                                   </div>
                                   <div>
@@ -336,7 +648,7 @@ export function PatientPrescriptions() {
                                 <div className="grid gap-4 sm:grid-cols-2">
                                   <div>
                                     <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-                                      Doctor
+                                      Prescribing doctor
                                     </h4>
                                     <p className="mt-1 text-sm font-medium text-primary">
                                       {rx.doctorName ?? '—'}
@@ -346,30 +658,46 @@ export function PatientPrescriptions() {
                                         {rx.doctorSpecialty}
                                       </p>
                                     )}
+                                    <p className="mt-1 text-[11px] font-mono text-text-secondary">
+                                      Doctor ID: {rx.doctorId}
+                                    </p>
                                   </div>
-                                  {(rx.validFrom || rx.validTo) && (
-                                    <div>
-                                      <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-                                        Valid period
-                                      </h4>
-                                      <p className="mt-1 text-sm text-primary">
+                                  <div>
+                                    <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                                      Valid period
+                                    </h4>
+                                    <p className="mt-1">
+                                      <ValidityPill rx={rx} />
+                                    </p>
+                                    {(rx.validFrom || rx.validTo) && (
+                                      <p className="mt-2 text-xs text-text-secondary">
                                         {rx.validFrom && rx.validTo
                                           ? `${formatDate(rx.validFrom)} – ${formatDate(rx.validTo)}`
                                           : rx.validFrom
-                                            ? `From ${formatDate(rx.validFrom)}`
+                                            ? `Valid from ${formatDate(rx.validFrom)}`
                                             : rx.validTo
-                                              ? `Until ${formatDate(rx.validTo)}`
-                                              : '—'}
+                                              ? `Valid until ${formatDate(rx.validTo)}`
+                                              : null}
                                       </p>
-                                    </div>
-                                  )}
+                                    )}
+                                  </div>
                                 </div>
+                                {rx.patientName && (
+                                  <div>
+                                    <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                                      Patient on prescription
+                                    </h4>
+                                    <p className="mt-1 text-sm text-primary">
+                                      {rx.patientName}
+                                    </p>
+                                  </div>
+                                )}
                                 {rx.diagnosis && (
                                   <div>
                                     <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
                                       Diagnosis
                                     </h4>
-                                    <p className="mt-1 text-sm text-primary">
+                                    <p className="mt-1 text-sm leading-relaxed text-primary">
                                       {rx.diagnosis}
                                     </p>
                                   </div>
@@ -378,7 +706,7 @@ export function PatientPrescriptions() {
                                   <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
                                     Medicines
                                   </h4>
-                                  <p className="mt-1 text-sm text-primary whitespace-pre-wrap">
+                                  <p className="mt-1 whitespace-pre-wrap text-sm text-primary">
                                     {rx.medicines}
                                   </p>
                                 </div>
@@ -387,14 +715,17 @@ export function PatientPrescriptions() {
                                     <h4 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
                                       Instructions
                                     </h4>
-                                    <p className="mt-1 text-sm text-primary whitespace-pre-wrap">
+                                    <p className="mt-1 whitespace-pre-wrap text-sm text-primary">
                                       {rx.instructions}
                                     </p>
                                   </div>
                                 )}
                                 {rx.appointmentId && (
-                                  <p className="text-xs text-text-secondary">
-                                    Appointment reference: {rx.appointmentId}
+                                  <p className="rounded-lg border border-text-secondary/10 bg-background/40 px-3 py-2 text-xs text-text-secondary">
+                                    <span className="font-semibold text-primary/80">
+                                      Linked appointment:{' '}
+                                    </span>
+                                    <span className="font-mono">{rx.appointmentId}</span>
                                   </p>
                                 )}
                               </div>
@@ -407,13 +738,28 @@ export function PatientPrescriptions() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={8} className="p-0">
+                  <td colSpan={TABLE_COL_COUNT} className="p-0">
                     <div className="patient-empty-state">
                       <p className="text-text-secondary">
                         {loading
                           ? 'Loading prescriptions…'
-                          : 'No prescriptions found. Use filters to refine your search.'}
+                          : emptyBecauseFilters && appointmentFilter
+                            ? 'No prescription is linked to this visit in your records yet. If you just had an appointment, it may take a short time to appear.'
+                            : emptyBecauseFilters
+                              ? 'No prescriptions match your filters. Try clearing status or date range.'
+                              : prescriptions.length === 0
+                                ? 'You have no prescriptions on file yet. They will appear here after a doctor issues one.'
+                                : 'No prescriptions found.'}
                       </p>
+                      {emptyBecauseFilters && (
+                        <button
+                          type="button"
+                          className="mt-4 text-sm font-medium text-primary-light hover:underline"
+                          onClick={clearAllFilters}
+                        >
+                          Clear filters
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

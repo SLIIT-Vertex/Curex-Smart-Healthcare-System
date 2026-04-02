@@ -49,7 +49,7 @@ public class Prescription {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     @Builder.Default
-    private PrescriptionStatus status = PrescriptionStatus.ACTIVE;
+    private PrescriptionStatus status = PrescriptionStatus.PENDING;
 
     @Column(name = "issued_at", nullable = false)
     private LocalDateTime issuedAt;

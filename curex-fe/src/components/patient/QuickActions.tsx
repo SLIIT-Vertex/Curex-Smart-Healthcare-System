@@ -34,7 +34,7 @@ const actions = [
 
 export function QuickActions() {
   return (
-    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
       {actions.map(({ to, icon: Icon, title, description, accentClass }) => (
         <Link key={to} to={to} className="quick-action-card">
           <div

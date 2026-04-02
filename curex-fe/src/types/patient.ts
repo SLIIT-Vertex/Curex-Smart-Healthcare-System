@@ -42,7 +42,7 @@ export interface PatientPrescription {
   validFrom?: string
   validTo?: string
   issuedAt: string
-  status?: 'ACTIVE' | 'COMPLETED' | 'CANCELLED'
+  status?: 'PENDING' | 'ACTIVE' | 'ISSUED' | 'COMPLETED' | 'CANCELLED'
 }
 
 export interface ConsultationRecord {
@@ -55,6 +55,13 @@ export interface ConsultationRecord {
   healthStatus: 'GOOD' | 'FAIR' | 'CRITICAL'
   healthScore?: number
   reportId?: string
+  /** Whether a prescription exists for this visit. */
+  prescriptionIssued: boolean
+  /**
+   * When `prescriptionIssued` is true, used to deep-link prescriptions
+   * (`?appointment=`). Should match `prescription.appointmentId`.
+   */
+  appointmentId?: string
 }
 
 export interface ProgressDataPoint {
@@ -86,9 +93,9 @@ export interface PatientDashboardData {
 }
 
 export interface MedicalDetailsSnapshot {
-  ageGroup: string
-  bloodType: string
+  age: string | null
+  bloodGroup: string | null
+  gender: string | null
   allergies: string[]
-  knownConditions: string[]
-  lastCheckup?: string
+  chronicConditions: string[]
 }

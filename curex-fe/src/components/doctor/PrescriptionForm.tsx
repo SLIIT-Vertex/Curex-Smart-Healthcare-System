@@ -29,6 +29,7 @@ export interface PrescriptionFormProps {
     patientEmail?: string
     date: string
   }[]
+  prefill?: { patientId: string; appointmentId: string }
 }
 
 const emptyMedicine: MedicineLine = {
@@ -38,25 +39,39 @@ const emptyMedicine: MedicineLine = {
   duration: '',
 }
 
+/** YYYY-MM-DD in the user's local calendar (avoids UTC shifting vs doctor-service status-zone dates). */
+function localYmd(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function defaultValidFromString(): string {
+  return localYmd(new Date())
+}
+
+function defaultValidToString(): string {
+  const d = new Date()
+  d.setDate(d.getDate() + 30)
+  return localYmd(d)
+}
+
 export function PrescriptionForm({
   isOpen,
   onClose,
   onSubmit,
   patients,
   appointments,
+  prefill,
 }: PrescriptionFormProps) {
-  const today = new Date().toISOString().slice(0, 10)
-  const defaultValidTo = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10)
-
-  const [patientId, setPatientId] = useState('')
-  const [appointmentId, setAppointmentId] = useState('')
+  const [patientId, setPatientId] = useState(prefill?.patientId ?? '')
+  const [appointmentId, setAppointmentId] = useState(prefill?.appointmentId ?? '')
   const [medicines, setMedicines] = useState<MedicineLine[]>([{ ...emptyMedicine }])
   const [instructions, setInstructions] = useState('')
   const [diagnosis, setDiagnosis] = useState('')
-  const [validFrom, setValidFrom] = useState(today)
-  const [validTo, setValidTo] = useState(defaultValidTo)
+  const [validFrom, setValidFrom] = useState(defaultValidFromString)
+  const [validTo, setValidTo] = useState(defaultValidToString)
   const [patientSearch, setPatientSearch] = useState('')
 
   const filteredPatients = patientSearch
@@ -89,8 +104,8 @@ export function PrescriptionForm({
     setMedicines([{ ...emptyMedicine }])
     setInstructions('')
     setDiagnosis('')
-    setValidFrom(today)
-    setValidTo(defaultValidTo)
+    setValidFrom(defaultValidFromString())
+    setValidTo(defaultValidToString())
     setPatientSearch('')
   }
 
@@ -163,34 +178,38 @@ export function PrescriptionForm({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5 p-6">
-          {/* Patient selector */}
+          {/* Patient selector — search + select  */}
           <div>
             <label className="block text-sm font-medium text-primary">
               Patient
             </label>
-            <input
-              type="text"
-              value={patientSearch}
-              onChange={(e) => setPatientSearch(e.target.value)}
-              placeholder="Search by name or ID..."
-              className={`mt-1.5 ${INPUT_CLASS}`}
-            />
-            <select
-              value={patientId}
-              onChange={(e) => {
-                setPatientId(e.target.value)
-                setAppointmentId('')
-              }}
-              required
-              className={`mt-2 ${INPUT_CLASS}`}
-            >
-              <option value="">Select a patient</option>
-              {filteredPatients.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.id})
-                </option>
-              ))}
-            </select>
+            <div className="mt-1.5 flex flex-nowrap items-stretch gap-2 sm:gap-3">
+              <input
+                type="search"
+                value={patientSearch}
+                onChange={(e) => setPatientSearch(e.target.value)}
+                placeholder="Search by name or ID…"
+                className={`min-w-0 flex-1 basis-0 ${INPUT_CLASS}`}
+                aria-label="Search patient by name or ID"
+              />
+              <select
+                value={patientId}
+                onChange={(e) => {
+                  setPatientId(e.target.value)
+                  setAppointmentId('')
+                }}
+                required
+                className={`min-w-0 flex-1 basis-0 ${INPUT_CLASS}`}
+                aria-label="Select a patient"
+              >
+                <option value="">Select a patient</option>
+                {filteredPatients.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Appointment selector — required for prescriptions */}

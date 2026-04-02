@@ -2,6 +2,7 @@ package com.curex.doctor.controller;
 
 import com.curex.doctor.dto.IssuePrescriptionRequest;
 import com.curex.doctor.dto.PrescriptionResponse;
+import com.curex.doctor.entity.PrescriptionStatus;
 import com.curex.doctor.service.PrescriptionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -10,11 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
-/**
- * Prescription API. Base path /prescriptions for Patient Service Feign (Phase 5)
- * and Frontend. Gateway routes /api/prescriptions/** here.
- */
 @RestController
 @RequestMapping("/prescriptions")
 @RequiredArgsConstructor
@@ -25,6 +23,19 @@ public class PrescriptionController {
     @PostMapping
     public ResponseEntity<PrescriptionResponse> issue(@Valid @RequestBody IssuePrescriptionRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(prescriptionService.issue(request));
+    }
+
+    /**
+     * Only {@link PrescriptionStatus#CANCELLED} is supported. The gateway forwards
+     * {@code X-User-Id} (JWT subject) so the prescribing doctor can be verified.
+     */
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<PrescriptionResponse> updateStatus(
+            @PathVariable String id,
+            @RequestBody Map<String, String> body,
+            @RequestHeader(value = "X-User-Id", required = false) String requestingUserId) {
+        PrescriptionStatus newStatus = PrescriptionStatus.valueOf(body.get("status"));
+        return ResponseEntity.ok(prescriptionService.updateStatus(id, newStatus, requestingUserId));
     }
 
     @GetMapping("/patient/{patientId}")
