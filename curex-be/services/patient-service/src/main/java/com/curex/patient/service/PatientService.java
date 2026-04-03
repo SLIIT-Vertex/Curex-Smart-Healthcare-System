@@ -133,12 +133,21 @@ public class PatientService {
         return toMedicalHistoryResponse(history);
     }
 
-    public List<PrescriptionResponse> getPrescriptions(String patientId) {
+    /**
+     * Doctor-service stores {@code patientId} as the user-service user id (same as on appointments).
+     * Patient API paths use the patient-profile id; resolve to {@link Patient#getUserId()} for Feign.
+     */
+    public List<PrescriptionResponse> getPrescriptions(String patientProfileId) {
+        Patient patient = patientRepository.findById(patientProfileId)
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found with id: " + patientProfileId));
+        String doctorPatientKey = patient.getUserId() != null && !patient.getUserId().isBlank()
+                ? patient.getUserId()
+                : patientProfileId;
         try {
-            return doctorServiceClient.getPrescriptionsByPatient(patientId);
+            return doctorServiceClient.getPrescriptionsByPatient(doctorPatientKey);
         } catch (Exception e) {
-            log.warn("Failed to fetch prescriptions from doctor-service for patient {}: {}",
-                    patientId, e.getMessage());
+            log.warn("Failed to fetch prescriptions from doctor-service for patient profile {} (lookup {}): {}",
+                    patientProfileId, doctorPatientKey, e.getMessage());
             return Collections.emptyList();
         }
     }

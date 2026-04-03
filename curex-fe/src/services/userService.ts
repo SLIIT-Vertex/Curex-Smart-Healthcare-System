@@ -21,6 +21,11 @@ export const userService = {
     return api.get<UserResponse>("/api/users/me").then((r) => r.data);
   },
 
+  /** Approved user by id (e.g. patient user id from an appointment). Any authenticated role. */
+  getApprovedUserById(userId: string): Promise<UserResponse> {
+    return api.get<UserResponse>(`/api/users/${userId}`).then((r) => r.data);
+  },
+
   /**
    * Partially updates the authenticated user's profile.
    * Only non-null fields in the request body are applied on the backend.

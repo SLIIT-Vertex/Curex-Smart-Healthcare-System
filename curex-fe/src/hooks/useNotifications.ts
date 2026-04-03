@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth, useToast } from "../store/hooks";
 import { notificationService } from "../services/notificationService";
+import { userService } from "../services/userService";
 import type {
   NotificationChannel,
   NotificationItem,
@@ -187,6 +188,44 @@ export function useNotifications() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  /**
+   * Align bell filtering with user-service preferences. Previously only SettingsPage
+   * loaded server prefs into localStorage, so stale "prescription alerts off" here
+   * could hide in-app rows while email (driven by the server) still sent.
+   */
+  useEffect(() => {
+    if (!userId) return;
+
+    let cancelled = false;
+    void userService
+      .getMyNotificationPreferences()
+      .then((data) => {
+        if (cancelled) return;
+        const synced: NotificationSettings = {
+          appointmentReminders: data.appointmentReminders,
+          prescriptionAlerts: data.prescriptionAlerts,
+          paymentAlerts: data.paymentAlerts,
+          emailDigest: data.emailDigest,
+        };
+        try {
+          localStorage.setItem(
+            `curex-notification-settings-${userId}`,
+            JSON.stringify(synced),
+          );
+        } catch {
+          // ignore quota / private mode
+        }
+        window.dispatchEvent(new Event("curex:notification-preferences-changed"));
+      })
+      .catch(() => {
+        // Keep existing localStorage when offline or API errors
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;

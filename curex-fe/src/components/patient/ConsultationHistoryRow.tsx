@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { FileText } from 'lucide-react'
+import { FileText, PillBottle } from 'lucide-react'
 import type { ConsultationRecord } from '../../types/patient'
 
 function getInitials(name: string): string {
@@ -23,6 +23,10 @@ const STATUS_LABELS = {
   CRITICAL: 'Critical',
 } as const
 
+/** Matches View Report link sizing; pair on one row for scanability. */
+const rowActionClass =
+  'inline-flex items-center gap-1.5 text-sm font-medium transition-colors'
+
 interface ConsultationHistoryRowProps {
   consultation: ConsultationRecord
 }
@@ -31,6 +35,9 @@ export function ConsultationHistoryRow({ consultation }: ConsultationHistoryRowP
   const initials = getInitials(consultation.doctorName)
   const statusStyle = STATUS_STYLES[consultation.healthStatus]
   const statusLabel = STATUS_LABELS[consultation.healthStatus]
+
+  const canViewPrescription =
+    consultation.prescriptionIssued && consultation.appointmentId
 
   return (
     <div className="consultation-row">
@@ -58,13 +65,36 @@ export function ConsultationHistoryRow({ consultation }: ConsultationHistoryRowP
           </span>
         </div>
       </div>
-      <Link
-        to="/patient/reports"
-        className="link-subtle inline-flex items-center gap-1.5 text-sm font-medium"
-      >
-        <FileText className="h-4 w-4" strokeWidth={1.5} />
-        View Report
-      </Link>
+      <div className="flex w-full flex-wrap items-center gap-x-5 gap-y-2 sm:w-auto sm:justify-end">
+        <Link
+          to="/patient/reports"
+          className={`link-subtle ${rowActionClass}`}
+        >
+          <FileText className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+          View Report
+        </Link>
+        {canViewPrescription ? (
+          <Link
+            to={`/patient/prescriptions?appointment=${encodeURIComponent(consultation.appointmentId!)}`}
+            className={`${rowActionClass} text-accent-mint hover:text-accent-mint/85 hover:underline`}
+          >
+            <PillBottle className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+            View Prescription
+          </Link>
+        ) : (
+          <span
+            className={`${rowActionClass} cursor-default text-text-secondary/55`}
+            role="status"
+            aria-label="No prescription for this visit"
+          >
+            <PillBottle
+              className="h-4 w-4 shrink-0 text-text-secondary/45"
+              strokeWidth={1.5}
+            />
+            Prescription not issued
+          </span>
+        )}
+      </div>
     </div>
   )
 }

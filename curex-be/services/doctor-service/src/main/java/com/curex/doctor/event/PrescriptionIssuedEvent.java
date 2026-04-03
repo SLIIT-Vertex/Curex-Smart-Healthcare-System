@@ -16,10 +16,15 @@ public class PrescriptionIssuedEvent {
 
     private String prescriptionId;
     private String doctorId;
+    private String doctorUserId;
     private String doctorName;
+    private String doctorEmail;
     private String patientId;
+    private String patientName;
     private String patientEmail;
+    private String diagnosis;
     private String medicines;
+    private String instructions;
     private LocalDate validFrom;
     private LocalDate validTo;
     private LocalDateTime issuedAt;

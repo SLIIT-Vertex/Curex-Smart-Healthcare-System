@@ -3,22 +3,12 @@ import { WelcomeBanner } from '../../components/patient/WelcomeBanner'
 import { MedicalDetailsCard } from '../../components/patient/MedicalDetailsCard'
 import { QuickActions } from '../../components/patient/QuickActions'
 import { ConsultationHistoryRow } from '../../components/patient/ConsultationHistoryRow'
+import { useAuth } from '../../store/hooks'
+import { useMyProfile } from '../../hooks/useMyProfile'
 import type {
   ConsultationRecord,
   MedicalDetailsSnapshot,
 } from '../../types/patient'
-
-/*  Mock data — replace with usePatientDashboard() when API ready  */
-
-const MOCK_PATIENT_NAME = 'Emma'
-
-const MOCK_DETAILS: MedicalDetailsSnapshot = {
-  ageGroup: '25 – 30',
-  bloodType: 'O+',
-  allergies: ['Penicillin'],
-  knownConditions: [],
-  lastCheckup: '23 Mar',
-}
 
 const MOCK_CONSULTATIONS: ConsultationRecord[] = [
   {
@@ -31,6 +21,8 @@ const MOCK_CONSULTATIONS: ConsultationRecord[] = [
     healthStatus: 'GOOD',
     healthScore: 88,
     reportId: 'r1',
+    prescriptionIssued: true,
+    appointmentId: 'apt1',
   },
   {
     id: '2',
@@ -42,6 +34,8 @@ const MOCK_CONSULTATIONS: ConsultationRecord[] = [
     healthStatus: 'GOOD',
     healthScore: 90,
     reportId: 'r2',
+    prescriptionIssued: true,
+    appointmentId: 'apt2',
   },
   {
     id: '3',
@@ -53,13 +47,46 @@ const MOCK_CONSULTATIONS: ConsultationRecord[] = [
     healthStatus: 'FAIR',
     healthScore: 72,
     reportId: 'r3',
+    prescriptionIssued: false,
   },
 ]
+
+function computeAge(dob?: string): string | null {
+  if (!dob) return null
+  const birth = new Date(dob)
+  const today = new Date()
+  let age = today.getFullYear() - birth.getFullYear()
+  const m = today.getMonth() - birth.getMonth()
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
+  return String(age)
+}
+
+function formatGender(gender?: string): string | null {
+  if (!gender) return null
+  return gender[0] + gender.slice(1).toLowerCase()
+}
+
+function parseCsvField(value?: string): string[] {
+  if (!value) return []
+  return value.split(',').map((s) => s.trim()).filter(Boolean)
+}
 
 type SortOrder = 'new-to-old' | 'old-to-new'
 
 export function PatientDashboard() {
+  const { user } = useAuth()
+  const { profile, loading: profileLoading } = useMyProfile()
   const [sortOrder, setSortOrder] = useState<SortOrder>('new-to-old')
+
+  const patientName = user?.firstName ?? 'there'
+
+  const medicalDetails: MedicalDetailsSnapshot = useMemo(() => ({
+    age: computeAge(profile?.dob),
+    bloodGroup: profile?.bloodGroup ?? null,
+    gender: formatGender(profile?.gender),
+    allergies: parseCsvField(profile?.allergies),
+    chronicConditions: parseCsvField(profile?.chronicConditions),
+  }), [profile?.dob, profile?.bloodGroup, profile?.gender, profile?.allergies, profile?.chronicConditions])
 
   const sortedConsultations = useMemo(() => {
     const sorted = [...MOCK_CONSULTATIONS]
@@ -73,15 +100,17 @@ export function PatientDashboard() {
     <div className="space-y-6 lg:space-y-8">
       {/* Welcome banner + Details card — side by side on desktop */}
       <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
-        <WelcomeBanner patientName={MOCK_PATIENT_NAME} />
-        <MedicalDetailsCard details={MOCK_DETAILS} />
+        <WelcomeBanner patientName={patientName} />
+        <MedicalDetailsCard details={medicalDetails} loading={profileLoading} />
       </div>
 
       {/* Quick Actions */}
       <section>
         <h2 className="section-heading mb-2">Quick actions</h2>
         <p className="section-subtext">
-          Book visits, check symptoms, or upload reports.
+          Book appointments, join video consultations, upload reports, review your
+          prescriptions, and get AI-powered health suggestions—your everyday care,
+          streamlined in one place.
         </p>
         <div className="mt-4">
           <QuickActions />

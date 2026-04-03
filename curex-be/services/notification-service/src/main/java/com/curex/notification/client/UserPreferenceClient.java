@@ -2,6 +2,7 @@ package com.curex.notification.client;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
@@ -19,6 +20,29 @@ public class UserPreferenceClient {
 
     @Value("${services.user-service.base-url:http://localhost:8081}")
     private String userServiceBaseUrl;
+
+    /**
+     * Resolves the account email for a user id (internal API). Used when domain events omit email.
+     */
+    public String resolveUserEmail(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return null;
+        }
+        String url = userServiceBaseUrl + "/api/internal/users/" + userId.trim();
+        RestTemplate restTemplate = restTemplateBuilder.build();
+        try {
+            ResponseEntity<InternalUserResponse> response =
+                    restTemplate.getForEntity(url, InternalUserResponse.class);
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                return null;
+            }
+            String email = response.getBody().getEmail();
+            return email != null && !email.isBlank() ? email.trim() : null;
+        } catch (RestClientException ex) {
+            log.warn("Could not resolve email for user {}: {}", userId, ex.getMessage());
+            return null;
+        }
+    }
 
     public NotificationPreferences getNotificationPreferences(String userId) {
         if (userId == null || userId.isBlank()) {
@@ -77,5 +101,11 @@ public class UserPreferenceClient {
         public boolean isPaymentAlertsEnabled() {
             return Boolean.TRUE.equals(paymentAlerts);
         }
+    }
+
+    @Getter
+    @Setter
+    private static class InternalUserResponse {
+        private String email;
     }
 }

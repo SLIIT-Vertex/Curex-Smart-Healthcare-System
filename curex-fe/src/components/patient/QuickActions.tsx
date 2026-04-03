@@ -1,40 +1,47 @@
 import { Link } from 'react-router-dom'
-import { Calendar, Brain, FileUp, CreditCard } from 'lucide-react'
+import { Calendar, Sparkles, FileUp, Video, ClipboardList } from 'lucide-react'
 
 const actions = [
   {
     to: '/patient/appointments',
     icon: Calendar,
-    title: 'Book an Appointment',
-    description: 'Schedule your next visit.',
+    title: 'Book appointments',
+    description: 'Find a slot and schedule your next visit in seconds.',
     accentClass: 'bg-accent-sky/15 text-accent-sky',
   },
   {
-    to: '/patient/symptom-checker',
-    icon: Brain,
-    title: 'Check Symptoms',
-    description: 'AI-powered symptom analysis.',
-    accentClass: 'bg-accent-mint/15 text-accent-mint',
+    to: '/patient/telemedicine',
+    icon: Video,
+    title: 'Video consultations',
+    description: 'Join secure telehealth sessions from anywhere.',
+    accentClass: 'bg-primary-light/15 text-primary',
   },
   {
     to: '/patient/reports',
     icon: FileUp,
-    title: 'Upload Report',
-    description: 'Medical reports & lab results.',
+    title: 'Upload reports',
+    description: 'Add lab results and imaging for your care team.',
     accentClass: 'bg-accent-peach/15 text-accent-peach',
   },
   {
-    to: '/patient/payments',
-    icon: CreditCard,
-    title: 'Payments & Billing',
-    description: 'View your billing history.',
-    accentClass: 'bg-primary-light/15 text-primary',
+    to: '/patient/prescriptions',
+    icon: ClipboardList,
+    title: 'My prescriptions',
+    description: 'See active meds, doses, and instructions from your doctors.',
+    accentClass: 'bg-accent-mint/15 text-accent-mint',
+  },
+  {
+    to: '/patient/symptom-checker',
+    icon: Sparkles,
+    title: 'AI health suggestions',
+    description: 'Describe how you feel and get guided, AI-based insights.',
+    accentClass: 'bg-accent-violet/15 text-accent-violet',
   },
 ] as const
 
 export function QuickActions() {
   return (
-    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
       {actions.map(({ to, icon: Icon, title, description, accentClass }) => (
         <Link key={to} to={to} className="quick-action-card">
           <div

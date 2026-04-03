@@ -51,6 +51,10 @@ curex:
     appointment-service:
       user-id: ${CUREX_APPOINTMENT_FEIGN_USER_ID:doctor-service-internal}
       user-role: ${CUREX_APPOINTMENT_FEIGN_USER_ROLE:ADMIN}
+  prescriptions:
+    # Zone for comparing validFrom/validTo calendar dates to "today" (PENDING vs ACTIVE vs COMPLETED).
+    # Docker defaults to UTC; set CUREX_PRESCRIPTION_STATUS_ZONE=Asia/Colombo (see docker-compose) for LK-aligned dates.
+    status-zone: ${CUREX_PRESCRIPTION_STATUS_ZONE:UTC}
 
 management:
   endpoints:

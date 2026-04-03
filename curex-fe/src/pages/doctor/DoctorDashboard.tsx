@@ -1,3 +1,4 @@
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { Calendar, ClipboardList, Users, Clock } from 'lucide-react'
 import {
@@ -11,14 +12,22 @@ import {
   Legend,
 } from 'recharts'
 import { StatCard } from '../../components/doctor/StatCard'
-import type { Appointment, Prescription, DashboardStats } from '../../types/doctor'
+import type {
+  Appointment,
+  Prescription,
+  PrescriptionStatus,
+  DashboardStats,
+} from '../../types/doctor'
 import '../../styles/pages/DoctorDashboard.css'
-
-/*  Mock data  */
+import { useAuth } from '../../store/hooks'
+import { getDoctorByUserId } from '../../services/doctorService'
+import { getAppointmentsByDoctor } from '../../services/appointmentService'
+import { getPrescriptionsByDoctor } from '../../services/prescriptionService'
+import type { AppointmentRecord } from '../../types/appointment'
 
 const MOCK_STATS: DashboardStats = {
   todayAppointments: 5,
-  pendingPrescriptions: 2,
+  pendingPrescriptions: 0,
   totalPatients: 48,
   availableSlots: 12,
   weeklyAppointments: [
@@ -64,30 +73,64 @@ const MOCK_APPOINTMENTS: Appointment[] = [
   },
 ]
 
-const MOCK_PRESCRIPTIONS: Prescription[] = [
-  {
-    id: 'rx1',
-    doctorId: 'd1',
-    patientId: 'p1',
-    appointmentId: '1',
-    medicines: 'Paracetamol 500mg',
-    instructions: 'Take twice daily with food',
-    issuedAt: '2025-03-22T10:00:00',
-  },
-  {
-    id: 'rx2',
-    doctorId: 'd1',
-    patientId: 'p2',
-    appointmentId: '2',
-    medicines: 'Amoxicillin 250mg',
-    instructions: 'One capsule three times daily for 7 days',
-    issuedAt: '2025-03-21T14:30:00',
-  },
-]
+const RECENT_RX_LIMIT = 2
 
 function formatTime(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+}
+
+function formatRxIssued(iso: string): string {
+  const d = new Date(iso)
+  return `${d.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })}, ${d.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`
+}
+
+function formatValidRange(from?: string, to?: string): string | null {
+  if (!from?.trim() && !to?.trim()) return null
+  const a = from?.trim()
+    ? new Date(from).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: '2-digit',
+      })
+    : '—'
+  const b = to?.trim()
+    ? new Date(to).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: '2-digit',
+      })
+    : '—'
+  return `${a} → ${b}`
+}
+
+function recentRxStatusLabel(status: PrescriptionStatus | undefined): string {
+  const s = status ?? 'PENDING'
+  if (s === 'ACTIVE') return 'Active'
+  if (s === 'ISSUED') return 'Issued'
+  if (s === 'COMPLETED') return 'Completed'
+  if (s === 'CANCELLED') return 'Cancelled'
+  return 'Pending'
+}
+
+function recentRxStatusClass(status: PrescriptionStatus | undefined): string {
+  const s = status ?? 'PENDING'
+  if (s === 'ACTIVE') {
+    return 'recent-rx-status recent-rx-status--active'
+  }
+  if (s === 'ISSUED') {
+    return 'recent-rx-status recent-rx-status--issued'
+  }
+  if (s === 'COMPLETED') return 'recent-rx-status recent-rx-status--completed'
+  if (s === 'CANCELLED') return 'recent-rx-status recent-rx-status--cancelled'
+  return 'recent-rx-status recent-rx-status--pending'
 }
 
 function getGreeting(): string {
@@ -104,6 +147,7 @@ const CHART_COLORS = {
 }
 
 export function DoctorDashboard() {
+  const { user } = useAuth()
   const greeting = getGreeting()
   const dateStr = new Date().toLocaleDateString('en-GB', {
     weekday: 'long',
@@ -111,12 +155,78 @@ export function DoctorDashboard() {
     month: 'long',
   })
 
+  const doctorDisplayName =
+    user?.role === 'DOCTOR' && user?.firstName
+      ? `Dr. ${user.firstName}`
+      : 'Dr. Silva'
+
+  const [rxLoading, setRxLoading] = useState(true)
+  const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
+
+  const loadPrescriptionInsights = useCallback(async () => {
+    if (!user?.id || user.role !== 'DOCTOR') {
+      setRxLoading(false)
+      setAppointments([])
+      setPrescriptions([])
+      return
+    }
+    setRxLoading(true)
+    try {
+      const doctor = await getDoctorByUserId(user.id, user)
+      const [apptList, rxList] = await Promise.all([
+        getAppointmentsByDoctor(doctor.id),
+        getPrescriptionsByDoctor(doctor.id),
+      ])
+      setAppointments(Array.isArray(apptList) ? apptList : [])
+      setPrescriptions((Array.isArray(rxList) ? rxList : []) as Prescription[])
+    } catch {
+      setAppointments([])
+      setPrescriptions([])
+    } finally {
+      setRxLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    loadPrescriptionInsights()
+  }, [loadPrescriptionInsights])
+
+  const pendingPrescriptionsCount = useMemo(() => {
+    const eligible = appointments.filter(
+      (a) => a.status === 'IN_SESSION' || a.status === 'COMPLETED'
+    )
+    const prescribedIds = new Set(
+      prescriptions.map((rx) => rx.appointmentId).filter(Boolean)
+    )
+    return eligible.filter((a) => !prescribedIds.has(a.id)).length
+  }, [appointments, prescriptions])
+
+  const recentPrescriptions = useMemo(() => {
+    return [...prescriptions]
+      .sort(
+        (a, b) =>
+          new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime()
+      )
+      .slice(0, RECENT_RX_LIMIT)
+  }, [prescriptions])
+
+  const pendingTrend =
+    pendingPrescriptionsCount > 0
+      ? 'To be issued'
+      : rxLoading
+        ? 'Loading…'
+        : 'All caught up'
+
+  const pendingValue: number | string =
+    rxLoading && user?.role === 'DOCTOR' ? '—' : pendingPrescriptionsCount
+
   return (
     <div className="space-y-6 lg:space-y-8">
       {/* Greeting banner */}
       <div>
         <h1 className="section-heading">
-          {greeting}, Dr. Silva
+          {greeting}, {doctorDisplayName}
         </h1>
         <p className="section-subtext mt-1">{dateStr}</p>
       </div>
@@ -132,8 +242,8 @@ export function DoctorDashboard() {
         />
         <StatCard
           label="Pending Prescriptions"
-          value={MOCK_STATS.pendingPrescriptions}
-          trend="To be issued"
+          value={pendingValue}
+          trend={pendingTrend}
           accent="peach"
           icon={ClipboardList}
         />
@@ -214,7 +324,7 @@ export function DoctorDashboard() {
           )}
         </div>
 
-        {/* Recent Prescriptions */}
+        {/* Recent Prescriptions (backend) */}
         <div
           className="rounded-2xl bg-surface p-5 lg:p-6"
           style={{ boxShadow: 'var(--shadow-card)' }}
@@ -222,24 +332,84 @@ export function DoctorDashboard() {
           <h2 className="text-lg font-semibold text-primary">
             Recent Prescriptions
           </h2>
-          {MOCK_PRESCRIPTIONS.length > 0 ? (
+          {user?.role !== 'DOCTOR' ? (
+            <div className="mt-6 rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-6 py-10 text-center">
+              <p className="text-text-secondary">
+                Sign in as a doctor to see recent prescriptions.
+              </p>
+            </div>
+          ) : rxLoading ? (
+            <ul className="mt-4 space-y-2" role="list" aria-busy="true">
+              {Array.from({ length: RECENT_RX_LIMIT }).map((_, i) => (
+                <li
+                  key={i}
+                  className="h-[3.5rem] animate-pulse rounded-xl border border-text-secondary/10 bg-background/70"
+                />
+              ))}
+            </ul>
+          ) : recentPrescriptions.length > 0 ? (
             <>
-              <ul className="mt-4 space-y-2" role="list">
-                {MOCK_PRESCRIPTIONS.map((rx) => (
-                  <li
-                    key={rx.id}
-                    className="rounded-lg border border-text-secondary/10 px-4 py-3 text-sm"
-                  >
-                    <p className="font-medium text-primary">{rx.medicines}</p>
-                    <p className="mt-0.5 text-xs text-text-secondary">
-                      {rx.instructions}
-                    </p>
-                  </li>
-                ))}
+              <ul className="recent-rx-list mt-4 space-y-2" role="list">
+                {recentPrescriptions.map((rx) => {
+                  const patient =
+                    rx.patientName?.trim() || rx.patientId || 'Patient'
+                  const validRange = formatValidRange(rx.validFrom, rx.validTo)
+                  const diagnosis = rx.diagnosis?.trim()
+                  return (
+                    <li key={rx.id}>
+                      <article className="recent-rx-card">
+                        <header className="recent-rx-card__head">
+                          <p className="recent-rx-card__patient min-w-0 truncate">
+                            <span className="text-text-secondary">Patient:</span>{' '}
+                            <span className="font-semibold text-primary">
+                              {patient}
+                            </span>
+                          </p>
+                          <span
+                            className={recentRxStatusClass(rx.status)}
+                            title="Prescription status"
+                          >
+                            {recentRxStatusLabel(rx.status)}
+                          </span>
+                        </header>
+                        <table className="recent-rx-table">
+                          <tbody>
+                            <tr>
+                              <th scope="row">Issued</th>
+                              <td>
+                                <time dateTime={rx.issuedAt}>
+                                  {formatRxIssued(rx.issuedAt)}
+                                </time>
+                              </td>
+                            </tr>
+                            <tr>
+                              <th scope="row">Diagnosis</th>
+                              <td
+                                className={
+                                  diagnosis
+                                    ? 'recent-rx-table__clamp-2'
+                                    : 'text-text-secondary'
+                                }
+                              >
+                                {diagnosis || '—'}
+                              </td>
+                            </tr>
+                            {validRange && (
+                              <tr>
+                                <th scope="row">Valid</th>
+                                <td>{validRange}</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </article>
+                    </li>
+                  )
+                })}
               </ul>
               <Link
                 to="/doctor/prescriptions"
-                className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary-light hover:underline"
+                className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-primary-light transition-colors hover:text-primary hover:underline"
               >
                 View all →
               </Link>
@@ -247,8 +417,14 @@ export function DoctorDashboard() {
           ) : (
             <div className="mt-6 rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-6 py-10 text-center">
               <p className="text-text-secondary">
-                No recent prescriptions
+                No recent prescriptions yet.
               </p>
+              <Link
+                to="/doctor/prescriptions"
+                className="mt-3 inline-flex text-sm font-medium text-primary-light hover:underline"
+              >
+                Issue a prescription
+              </Link>
             </div>
           )}
         </div>
@@ -294,7 +470,9 @@ export function DoctorDashboard() {
                 }}
                 formatter={(value, name) => [
                   value ?? 0,
-                  typeof name === 'string' ? name.charAt(0).toUpperCase() + name.slice(1) : String(name),
+                  typeof name === 'string'
+                    ? name.charAt(0).toUpperCase() + name.slice(1)
+                    : String(name),
                 ]}
               />
               <Legend

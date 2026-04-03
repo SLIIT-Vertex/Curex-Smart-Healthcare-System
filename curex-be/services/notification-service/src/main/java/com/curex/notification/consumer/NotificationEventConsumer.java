@@ -298,40 +298,104 @@ public class NotificationEventConsumer {
         try {
             log.info("Received prescription.issued event");
 
+            String prescriptionId = (String) event.get("prescriptionId");
             String patientId      = (String) event.get("patientId");
+            String patientName    = (String) event.get("patientName");
             String patientEmail   = (String) event.get("patientEmail");
             String doctorName     = (String) event.get("doctorName");
-            String prescriptionId = (String) event.get("prescriptionId");
+            String doctorUserId   = (String) event.get("doctorUserId");
+            String doctorEmail    = (String) event.get("doctorEmail");
+            String diagnosis      = (String) event.get("diagnosis");
+            String medicines      = (String) event.get("medicines");
+            String instructions   = (String) event.get("instructions");
+            String validFrom      = event.get("validFrom") != null ? event.get("validFrom").toString() : null;
+            String validTo        = event.get("validTo") != null ? event.get("validTo").toString() : null;
 
-            UserPreferenceClient.NotificationPreferences preferences =
-                    userPreferenceClient.getNotificationPreferences(patientId);
-            if (!preferences.isPrescriptionAlertsEnabled()) {
-                log.info("Skipping prescription notification for user {} due to preference", patientId);
-                return;
+            String safeDoctorName  = doctorName != null ? HtmlUtils.htmlEscape(doctorName) : "your doctor";
+            String safePatientName = patientName != null ? HtmlUtils.htmlEscape(patientName) : "Patient";
+            String safeRxId        = prescriptionId != null ? HtmlUtils.htmlEscape(prescriptionId) : "—";
+
+            if (patientId != null && !patientId.isBlank()
+                    && (patientEmail == null || patientEmail.isBlank())) {
+                String resolved = userPreferenceClient.resolveUserEmail(patientId);
+                if (resolved != null) {
+                    patientEmail = resolved;
+                }
             }
 
-            String content = String.format("A new prescription from Dr. %s is ready. Prescription ID: %s.",
-                    HtmlUtils.htmlEscape(doctorName),
-                    HtmlUtils.htmlEscape(prescriptionId));
+            // ── Patient notifications ──────────────────────────────────────
 
-            if (patientEmail != null && !patientEmail.isBlank()) {
+            UserPreferenceClient.NotificationPreferences patientPrefs =
+                    userPreferenceClient.getNotificationPreferences(patientId);
+
+            if (patientPrefs.isPrescriptionAlertsEnabled()) {
+                // Patient — email
+                if (patientEmail != null && !patientEmail.isBlank()) {
+                    notificationService.sendNotificationAsync(NotificationRequest.builder()
+                            .userId(patientId)
+                            .recipientEmail(patientEmail)
+                            .type(Notification.NotificationType.PRESCRIPTION_READY)
+                            .channel(Notification.NotificationChannel.EMAIL)
+                            .subject("New Prescription from Dr. " + safeDoctorName + " - Curex Healthcare")
+                            .content(buildPrescriptionPatientEmailContent(
+                                    safePatientName, safeDoctorName, medicines, diagnosis,
+                                    instructions, validFrom, validTo, safeRxId))
+                            .build());
+                }
+
+                // Patient — in-app
+                String patientInApp = String.format(
+                        "Dr. %s has issued a new prescription for you. Medicines: %s",
+                        safeDoctorName,
+                        HtmlUtils.htmlEscape(truncateText(medicines, 80)));
                 notificationService.sendNotificationAsync(NotificationRequest.builder()
                         .userId(patientId)
-                        .recipientEmail(patientEmail)
                         .type(Notification.NotificationType.PRESCRIPTION_READY)
-                        .channel(Notification.NotificationChannel.EMAIL)
-                        .subject("Prescription Ready - Curex Healthcare")
-                        .content("<p>" + content + "</p>")
+                        .channel(Notification.NotificationChannel.IN_APP)
+                        .subject("New Prescription Ready")
+                        .content(patientInApp)
                         .build());
+            } else {
+                log.info("Skipping patient prescription notification for user {} due to preference", patientId);
             }
 
-            notificationService.sendNotificationAsync(NotificationRequest.builder()
-                    .userId(patientId)
-                    .type(Notification.NotificationType.PRESCRIPTION_READY)
-                    .channel(Notification.NotificationChannel.IN_APP)
-                    .subject("Prescription Ready")
-                    .content(content)
-                    .build());
+            // ── Doctor notifications ───────────────────────────────────────
+
+            if (doctorUserId != null && !doctorUserId.isBlank()) {
+                UserPreferenceClient.NotificationPreferences doctorPrefs =
+                        userPreferenceClient.getNotificationPreferences(doctorUserId);
+
+                if (doctorPrefs.isPrescriptionAlertsEnabled()) {
+                    // Doctor — in-app confirmation
+                    String doctorInApp = String.format(
+                            "Prescription issued for %s — %s",
+                            safePatientName,
+                            HtmlUtils.htmlEscape(truncateText(medicines, 60)));
+                    notificationService.sendNotificationAsync(NotificationRequest.builder()
+                            .userId(doctorUserId)
+                            .type(Notification.NotificationType.PRESCRIPTION_READY)
+                            .channel(Notification.NotificationChannel.IN_APP)
+                            .subject("Prescription Issued Successfully")
+                            .content(doctorInApp)
+                            .build());
+
+                    // Doctor — email confirmation
+                    if (doctorEmail != null && !doctorEmail.isBlank()) {
+                        notificationService.sendNotificationAsync(NotificationRequest.builder()
+                                .userId(doctorUserId)
+                                .recipientEmail(doctorEmail)
+                                .type(Notification.NotificationType.PRESCRIPTION_READY)
+                                .channel(Notification.NotificationChannel.EMAIL)
+                                .subject("Prescription Issued — " + safePatientName)
+                                .content(buildPrescriptionDoctorEmailContent(
+                                        safeDoctorName, safePatientName, medicines, diagnosis,
+                                        validFrom, validTo, safeRxId))
+                                .build());
+                    }
+                } else {
+                    log.info("Skipping doctor prescription notification for user {} due to preference", doctorUserId);
+                }
+            }
         } catch (Exception e) {
             log.error("Failed to process prescription.issued event: {}", e.getMessage(), e);
         }
@@ -427,5 +491,109 @@ public class NotificationEventConsumer {
                 <p>If this was not you, please reset your password immediately and contact support.</p>
                 <p>Regards,<br>The Curex Security Team</p>
                 """, safeName, safeTime);
+    }
+
+    // ── Prescription email builders ────────────────────────────────────────
+
+    private String buildPrescriptionPatientEmailContent(String patientName, String doctorName,
+                                                         String medicines, String diagnosis,
+                                                         String instructions,
+                                                         String validFrom, String validTo,
+                                                         String prescriptionId) {
+        String safeMedicines    = (medicines == null || medicines.isBlank())
+                ? "—" : HtmlUtils.htmlEscape(medicines);
+        String diagnosisBlock   = (diagnosis != null && !diagnosis.isBlank())
+                ? "<p><strong>Diagnosis:</strong> " + HtmlUtils.htmlEscape(diagnosis) + "</p>" : "";
+        String instructionBlock = (instructions != null && !instructions.isBlank())
+                ? "<p><strong>Instructions:</strong> " + HtmlUtils.htmlEscape(instructions) + "</p>" : "";
+        String validityBlock    = buildValidityBlock(validFrom, validTo);
+
+        return String.format("""
+                <p>Dear %s,</p>
+                <p>A new prescription has been issued for you by <strong>Dr. %s</strong>.</p>
+                <div style="background:#e8f5e9;padding:15px;border-radius:8px;margin:15px 0;">
+                    <h3 style="margin:0 0 10px;">Prescription Details</h3>
+                    <p><strong>Prescription ID:</strong> %s</p>
+                    <p><strong>Medicines:</strong> %s</p>
+                    %s
+                    %s
+                    %s
+                </div>
+                %s
+                <p>You can view this prescription anytime by logging in to your Curex dashboard.</p>
+                <p>Best regards,<br>The Curex Healthcare Team</p>
+                """, patientName, doctorName, prescriptionId, safeMedicines,
+                diagnosisBlock, instructionBlock, validityBlock,
+                buildMedicineDetailBlock(medicines));
+    }
+
+    private String buildPrescriptionDoctorEmailContent(String doctorName, String patientName,
+                                                        String medicines, String diagnosis,
+                                                        String validFrom, String validTo,
+                                                        String prescriptionId) {
+        String safeMedicines  = (medicines == null || medicines.isBlank())
+                ? "—" : HtmlUtils.htmlEscape(medicines);
+        String diagnosisBlock = (diagnosis != null && !diagnosis.isBlank())
+                ? "<p><strong>Diagnosis:</strong> " + HtmlUtils.htmlEscape(diagnosis) + "</p>" : "";
+        String validityBlock  = buildValidityBlock(validFrom, validTo);
+
+        return String.format("""
+                <p>Dear Dr. %s,</p>
+                <p>This is a confirmation that you have successfully issued a prescription.</p>
+                <div style="background:#e7f3ff;padding:15px;border-radius:8px;margin:15px 0;">
+                    <h3 style="margin:0 0 10px;">Prescription Summary</h3>
+                    <p><strong>Prescription ID:</strong> %s</p>
+                    <p><strong>Patient:</strong> %s</p>
+                    <p><strong>Medicines:</strong> %s</p>
+                    %s
+                    %s
+                </div>
+                <p>The patient has been notified and can view this prescription in their dashboard.</p>
+                <p>Best regards,<br>Curex Healthcare Platform</p>
+                """, doctorName, prescriptionId, patientName, safeMedicines,
+                diagnosisBlock, validityBlock);
+    }
+
+    private String buildValidityBlock(String validFrom, String validTo) {
+        if ((validFrom == null || validFrom.isBlank()) && (validTo == null || validTo.isBlank())) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("<p><strong>Valid Period:</strong> ");
+        if (validFrom != null && !validFrom.isBlank()) {
+            sb.append(HtmlUtils.htmlEscape(validFrom));
+        }
+        if (validTo != null && !validTo.isBlank()) {
+            if (validFrom != null && !validFrom.isBlank()) {
+                sb.append(" to ");
+            } else {
+                sb.append("Until ");
+            }
+            sb.append(HtmlUtils.htmlEscape(validTo));
+        }
+        sb.append("</p>");
+        return sb.toString();
+    }
+
+    private String buildMedicineDetailBlock(String medicines) {
+        if (medicines == null || medicines.isBlank()) return "";
+        String[] items = medicines.split(";");
+        if (items.length <= 1) return "";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("<div style=\"margin:10px 0;\"><strong>Medicine Breakdown:</strong><ul style=\"margin:5px 0;padding-left:20px;\">");
+        for (String item : items) {
+            String trimmed = item.trim();
+            if (!trimmed.isEmpty()) {
+                sb.append("<li>").append(HtmlUtils.htmlEscape(trimmed)).append("</li>");
+            }
+        }
+        sb.append("</ul></div>");
+        return sb.toString();
+    }
+
+    private static String truncateText(String text, int maxLen) {
+        if (text == null) return "";
+        if (text.length() <= maxLen) return text;
+        return text.substring(0, maxLen - 1) + "…";
     }
 }

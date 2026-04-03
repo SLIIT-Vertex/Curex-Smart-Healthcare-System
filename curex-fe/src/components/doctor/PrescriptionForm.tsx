@@ -1,6 +1,16 @@
-import { useState } from 'react'
-import { X, Plus, Trash2 } from 'lucide-react'
+import {
+  useState,
+  useRef,
+  useEffect,
+  useMemo,
+  type ComponentType,
+  type ReactNode,
+} from 'react'
+import { X, Plus, Trash2, User, CalendarClock } from 'lucide-react'
 import type { MedicineLine } from '../../types/doctor'
+import type { AppointmentStatus } from '../../types/appointment'
+import type { PatientProfile } from '../../types/patient'
+import { getPatientClinicalProfileForAppointment } from '../../services/patientService'
 
 const INPUT_CLASS =
   'w-full rounded-xl border border-text-secondary/20 bg-surface px-4 py-2.5 text-sm text-primary placeholder:text-text-secondary focus:border-primary-light focus:outline-none focus:ring-2 focus:ring-primary-light/20'
@@ -17,18 +27,25 @@ export interface PrescriptionFormData {
   validTo: string
 }
 
+export interface PrescriptionFormAppointment {
+  id: string
+  patientId: string
+  patientName?: string
+  patientEmail?: string
+  /** Short label for the dropdown (e.g. date only) */
+  date: string
+  appointmentTime: string
+  type: 'IN_PERSON' | 'TELEMEDICINE'
+  status: AppointmentStatus
+}
+
 export interface PrescriptionFormProps {
   isOpen: boolean
   onClose: () => void
   onSubmit: (data: PrescriptionFormData) => void
   patients: { id: string; name: string }[]
-  appointments: {
-    id: string
-    patientId: string
-    patientName?: string
-    patientEmail?: string
-    date: string
-  }[]
+  appointments: PrescriptionFormAppointment[]
+  prefill?: { patientId: string; appointmentId: string }
 }
 
 const emptyMedicine: MedicineLine = {
@@ -38,26 +55,133 @@ const emptyMedicine: MedicineLine = {
   duration: '',
 }
 
+function ageFromDateOfBirth(iso?: string): string | null {
+  if (!iso?.trim()) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  const today = new Date()
+  let age = today.getFullYear() - d.getFullYear()
+  const m = today.getMonth() - d.getMonth()
+  if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age -= 1
+  if (age < 0 || age > 130) return null
+  return String(age)
+}
+
+function formatVisitDateTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function visitTypeLabel(type: 'IN_PERSON' | 'TELEMEDICINE'): string {
+  return type === 'IN_PERSON' ? 'In person' : 'Telemedicine'
+}
+
+function visitStatusLabel(status: AppointmentStatus): string {
+  const labels: Record<AppointmentStatus, string> = {
+    PENDING: 'Pending',
+    CONFIRMED: 'Confirmed',
+    IN_SESSION: 'In session',
+    COMPLETED: 'Completed',
+    CANCELLED: 'Cancelled',
+  }
+  return labels[status]
+}
+
+function formatList(items: string[] | undefined, emptyLabel: string): string {
+  if (!items?.length) return emptyLabel
+  return items.join(', ')
+}
+
+function DetailBlock({
+  label,
+  value,
+}: {
+  label: string
+  value: ReactNode
+}) {
+  return (
+    <div className="space-y-0.5">
+      <dt className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+        {label}
+      </dt>
+      <dd className="text-sm font-medium leading-snug text-primary">{value}</dd>
+    </div>
+  )
+}
+
+function PanelCard({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <section
+      className="rounded-2xl border border-text-secondary/12 bg-surface p-4 shadow-sm"
+      style={{ boxShadow: 'var(--shadow-card)' }}
+    >
+      <div className="mb-3 flex items-center gap-2 border-b border-text-secondary/10 pb-2">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-light/10 text-primary-light">
+          <Icon className="h-4 w-4" strokeWidth={1.75} />
+        </div>
+        <h3 className="text-sm font-semibold text-primary">{title}</h3>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+/** YYYY-MM-DD in the user's local calendar (avoids UTC shifting vs doctor-service status-zone dates). */
+function localYmd(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function defaultValidFromString(): string {
+  return localYmd(new Date())
+}
+
+function defaultValidToString(): string {
+  const d = new Date()
+  d.setDate(d.getDate() + 30)
+  return localYmd(d)
+}
+
 export function PrescriptionForm({
   isOpen,
   onClose,
   onSubmit,
   patients,
   appointments,
+  prefill,
 }: PrescriptionFormProps) {
-  const today = new Date().toISOString().slice(0, 10)
-  const defaultValidTo = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
 
-  const [patientId, setPatientId] = useState('')
-  const [appointmentId, setAppointmentId] = useState('')
+  const [patientId, setPatientId] = useState(prefill?.patientId ?? '')
+  const [appointmentId, setAppointmentId] = useState(prefill?.appointmentId ?? '')
   const [medicines, setMedicines] = useState<MedicineLine[]>([{ ...emptyMedicine }])
   const [instructions, setInstructions] = useState('')
   const [diagnosis, setDiagnosis] = useState('')
-  const [validFrom, setValidFrom] = useState(today)
-  const [validTo, setValidTo] = useState(defaultValidTo)
+  const [validFrom, setValidFrom] = useState(defaultValidFromString)
+  const [validTo, setValidTo] = useState(defaultValidToString)
   const [patientSearch, setPatientSearch] = useState('')
+  const [patientProfile, setPatientProfile] = useState<PatientProfile | null>(null)
+  /** Appointment / form `patientId` is the auth user id; profile `id` is different. */
+  const [profileResolvedForPatientId, setProfileResolvedForPatientId] = useState<
+    string | null
+  >(null)
 
   const filteredPatients = patientSearch
     ? patients.filter(
@@ -71,7 +195,43 @@ export function PrescriptionForm({
     (a) => !patientId || a.patientId === patientId
   )
 
-  // When appointment is selected, auto-fill patientId from the appointment
+  const selectedAppointment = useMemo(
+    () => appointments.find((a) => a.id === appointmentId),
+    [appointments, appointmentId]
+  )
+
+  useEffect(() => {
+    if (!patientId) return
+    let cancelled = false
+    getPatientClinicalProfileForAppointment(patientId)
+      .then((profile) => {
+        if (!cancelled) {
+          setPatientProfile(profile)
+          setProfileResolvedForPatientId(patientId)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPatientProfile({
+            id: patientId,
+            name: '',
+            email: '',
+            createdAt: '',
+          })
+          setProfileResolvedForPatientId(patientId)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [patientId])
+
+  const displayedPatientProfile =
+    patientId && profileResolvedForPatientId === patientId ? patientProfile : null
+  const patientProfileLoading = Boolean(
+    patientId && profileResolvedForPatientId !== patientId
+  )
+
   const handleAppointmentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value
     setAppointmentId(id)
@@ -89,9 +249,11 @@ export function PrescriptionForm({
     setMedicines([{ ...emptyMedicine }])
     setInstructions('')
     setDiagnosis('')
-    setValidFrom(today)
-    setValidTo(defaultValidTo)
+    setValidFrom(defaultValidFromString())
+    setValidTo(defaultValidToString())
     setPatientSearch('')
+    setPatientProfile(null)
+    setProfileResolvedForPatientId(null)
   }
 
   const handleClose = () => {
@@ -106,10 +268,19 @@ export function PrescriptionForm({
     const resolvedPatientId = patientId || selectedAppt?.patientId
     if (!resolvedPatientId || !appointmentId || validMedicines.length === 0) return
 
+    const emailFromAppt = selectedAppt?.patientEmail?.trim()
+    const emailFromProfile = displayedPatientProfile?.email?.trim()
+    const resolvedPatientEmail =
+      emailFromAppt && emailFromAppt.length > 0
+        ? emailFromAppt
+        : emailFromProfile && emailFromProfile.length > 0
+          ? emailFromProfile
+          : undefined
+
     onSubmit({
       patientId: resolvedPatientId,
       appointmentId,
-      patientEmail: selectedAppt?.patientEmail,
+      patientEmail: resolvedPatientEmail,
       patientName: selectedAppt?.patientName,
       diagnosis: diagnosis.trim() || undefined,
       medicines: validMedicines,
@@ -136,224 +307,319 @@ export function PrescriptionForm({
     setMedicines((prev) => prev.filter((_, i) => i !== index))
   }
 
+  useEffect(() => {
+    if (!isOpen) return
+    const id = window.requestAnimationFrame(() => {
+      closeButtonRef.current?.focus()
+    })
+    return () => window.cancelAnimationFrame(id)
+  }, [isOpen])
+
+  const patientAge = displayedPatientProfile
+    ? ageFromDateOfBirth(displayedPatientProfile.dateOfBirth)
+    : null
+  const bloodDisplay = displayedPatientProfile?.bloodType?.trim() || null
+  const allergiesDisplay = displayedPatientProfile
+    ? formatList(displayedPatientProfile.medicalHistory?.allergies, 'None on file')
+    : null
+  const chronicDisplay = displayedPatientProfile
+    ? formatList(
+        displayedPatientProfile.medicalHistory?.conditions,
+        'None on file'
+      )
+    : null
+
   if (!isOpen) return null
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-primary/20 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[140] flex items-center justify-center bg-primary/25 p-3 backdrop-blur-sm sm:p-5"
       onClick={(e) => e.target === e.currentTarget && handleClose()}
+      role="presentation"
     >
       <div
-        className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-xl"
-        style={{ boxShadow: 'var(--shadow-card)' }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="prescription-form-title"
+        className="relative flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-surface shadow-2xl ring-1 ring-primary/8"
+        style={{ boxShadow: '0 24px 80px rgb(28 39 76 / 0.18)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-text-secondary/10 bg-surface px-6 py-4">
-          <h2 className="text-xl font-semibold text-primary">
+        <div className="flex shrink-0 items-center justify-between border-b border-text-secondary/10 bg-surface px-5 py-4 sm:px-7 sm:py-5">
+          <h2
+            id="prescription-form-title"
+            className="text-lg font-semibold tracking-tight text-primary sm:text-xl"
+          >
             Issue Prescription
           </h2>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={handleClose}
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary transition hover:bg-primary-light/10 hover:text-primary"
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-text-secondary transition hover:bg-primary-light/10 hover:text-primary"
             aria-label="Close"
           >
             <X className="h-5 w-5" strokeWidth={1.5} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5 p-6">
-          {/* Patient selector */}
-          <div>
-            <label className="block text-sm font-medium text-primary">
-              Patient
-            </label>
-            <input
-              type="text"
-              value={patientSearch}
-              onChange={(e) => setPatientSearch(e.target.value)}
-              placeholder="Search by name or ID..."
-              className={`mt-1.5 ${INPUT_CLASS}`}
-            />
-            <select
-              value={patientId}
-              onChange={(e) => {
-                setPatientId(e.target.value)
-                setAppointmentId('')
-              }}
-              required
-              className={`mt-2 ${INPUT_CLASS}`}
-            >
-              <option value="">Select a patient</option>
-              {filteredPatients.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.id})
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+          {/* Left: patient + visit context */}
+          <aside className="flex max-h-[40vh] shrink-0 flex-col gap-4 overflow-y-auto border-b border-text-secondary/10 bg-background/50 p-4 sm:p-5 lg:max-h-none lg:w-[min(100%,20rem)] lg:border-b-0 lg:border-r xl:w-[22rem]">
+            <PanelCard icon={User} title="Patient details">
+              {!patientId ? (
+                <p className="text-sm text-text-secondary">
+                  Choose a patient to load age, blood group, known allergies, and
+                  chronic conditions.
+                </p>
+              ) : patientProfileLoading ? (
+                <p className="text-sm text-text-secondary">Loading patient details…</p>
+              ) : (
+                <dl className="space-y-3">
+                  <DetailBlock
+                    label="Age"
+                    value={
+                      patientAge != null
+                        ? `${patientAge} years`
+                        : patientProfile?.dateOfBirth
+                          ? '—'
+                          : 'Not on file'
+                    }
+                  />
+                  <DetailBlock
+                    label="Blood group"
+                    value={bloodDisplay ?? 'Not on file'}
+                  />
+                  <DetailBlock label="Known allergies" value={allergiesDisplay ?? '—'} />
+                  <DetailBlock
+                    label="Chronic conditions"
+                    value={chronicDisplay ?? '—'}
+                  />
+                </dl>
+              )}
+            </PanelCard>
 
-          {/* Appointment selector — required for prescriptions */}
-          <div>
-            <label className="block text-sm font-medium text-primary">
-              Appointment (required)
-            </label>
-            <select
-              value={appointmentId}
-              onChange={handleAppointmentChange}
-              required
-              className={`mt-1.5 ${INPUT_CLASS}`}
-            >
-              <option value="">Select an appointment</option>
-              {filteredAppointments.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.patientName ?? a.patientId} — {a.date}
-                </option>
-              ))}
-            </select>
-          </div>
+            <PanelCard icon={CalendarClock} title="Appointment details">
+              {!appointmentId || !selectedAppointment ? (
+                <p className="text-sm text-text-secondary">
+                  Choose an appointment to see date &amp; time, visit type, and
+                  status.
+                </p>
+              ) : (
+                <dl className="space-y-3">
+                  <DetailBlock
+                    label="Date & time"
+                    value={formatVisitDateTime(selectedAppointment.appointmentTime)}
+                  />
+                  <DetailBlock
+                    label="Visit type"
+                    value={visitTypeLabel(selectedAppointment.type)}
+                  />
+                  <DetailBlock
+                    label="Visit status"
+                    value={visitStatusLabel(selectedAppointment.status)}
+                  />
+                </dl>
+              )}
+            </PanelCard>
+          </aside>
 
-          {/* Valid from / Valid to */}
-          <div className="grid gap-4 sm:grid-cols-2">
+          {/* Right: form */}
+          <form
+            onSubmit={handleSubmit}
+            className="min-h-0 min-w-0 flex-1 space-y-5 overflow-y-auto p-4 sm:p-6 lg:p-7"
+          >
             <div>
               <label className="block text-sm font-medium text-primary">
-                Valid from
+                Patient
               </label>
-              <input
-                type="date"
-                value={validFrom}
-                onChange={(e) => setValidFrom(e.target.value)}
-                required
-                className={`mt-1.5 ${INPUT_CLASS}`}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-primary">
-                Valid to
-              </label>
-              <input
-                type="date"
-                value={validTo}
-                onChange={(e) => setValidTo(e.target.value)}
-                required
-                className={`mt-1.5 ${INPUT_CLASS}`}
-              />
-            </div>
-          </div>
-
-          {/* Diagnosis / Clinical notes */}
-          <div>
-            <label className="block text-sm font-medium text-primary">
-              Diagnosis / Clinical notes (optional)
-            </label>
-            <textarea
-              value={diagnosis}
-              onChange={(e) => setDiagnosis(e.target.value)}
-              rows={2}
-              placeholder="e.g. Viral upper respiratory tract infection"
-              className={`mt-1.5 ${INPUT_CLASS} resize-y`}
-            />
-          </div>
-
-          {/* Medicines */}
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="block text-sm font-medium text-primary">
-                Medicines
-              </label>
-              <button
-                type="button"
-                onClick={addMedicine}
-                className="flex items-center gap-1 text-sm font-medium text-primary-light hover:underline"
-              >
-                <Plus className="h-4 w-4" strokeWidth={1.5} />
-                Add medicine
-              </button>
-            </div>
-
-            <div className="mt-2 space-y-3">
-              {medicines.map((m, i) => (
-                <div
-                  key={i}
-                  className="rounded-xl border border-text-secondary/20 bg-background/50 p-4"
+              <div className="mt-1.5 flex flex-nowrap items-stretch gap-2 sm:gap-3">
+                <input
+                  type="search"
+                  value={patientSearch}
+                  onChange={(e) => setPatientSearch(e.target.value)}
+                  placeholder="Search by name or ID…"
+                  className={`min-w-0 flex-1 basis-0 ${INPUT_CLASS}`}
+                  aria-label="Search patient by name or ID"
+                />
+                <select
+                  value={patientId}
+                  onChange={(e) => {
+                    const next = e.target.value
+                    setPatientId(next)
+                    setAppointmentId('')
+                    if (!next) {
+                      setPatientProfile(null)
+                      setProfileResolvedForPatientId(null)
+                    }
+                  }}
+                  required
+                  className={`min-w-0 flex-1 basis-0 ${INPUT_CLASS}`}
+                  aria-label="Select a patient"
                 >
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <input
-                      type="text"
-                      value={m.name}
-                      onChange={(e) => updateMedicine(i, 'name', e.target.value)}
-                      placeholder="Medicine name"
-                      className={INPUT_CLASS}
-                    />
-                    <input
-                      type="text"
-                      value={m.dosage}
-                      onChange={(e) => updateMedicine(i, 'dosage', e.target.value)}
-                      placeholder="Dosage"
-                      className={INPUT_CLASS}
-                    />
-                    <input
-                      type="text"
-                      value={m.frequency}
-                      onChange={(e) =>
-                        updateMedicine(i, 'frequency', e.target.value)
-                      }
-                      placeholder="Frequency"
-                      className={INPUT_CLASS}
-                    />
-                    <div className="flex gap-2">
+                  <option value="">Select a patient</option>
+                  {filteredPatients.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-primary">
+                Appointment (required)
+              </label>
+              <select
+                value={appointmentId}
+                onChange={handleAppointmentChange}
+                required
+                className={`mt-1.5 ${INPUT_CLASS}`}
+              >
+                <option value="">Select an appointment</option>
+                {filteredAppointments.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.patientName ?? a.patientId} — {a.date}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-primary">
+                  Valid from
+                </label>
+                <input
+                  type="date"
+                  value={validFrom}
+                  onChange={(e) => setValidFrom(e.target.value)}
+                  required
+                  className={`mt-1.5 ${INPUT_CLASS}`}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary">
+                  Valid to
+                </label>
+                <input
+                  type="date"
+                  value={validTo}
+                  onChange={(e) => setValidTo(e.target.value)}
+                  required
+                  className={`mt-1.5 ${INPUT_CLASS}`}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-primary">
+                Diagnosis / Clinical notes (optional)
+              </label>
+              <textarea
+                value={diagnosis}
+                onChange={(e) => setDiagnosis(e.target.value)}
+                rows={2}
+                placeholder="e.g. Viral upper respiratory tract infection"
+                className={`mt-1.5 ${INPUT_CLASS} resize-y`}
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-primary">
+                  Medicines
+                </label>
+                <button
+                  type="button"
+                  onClick={addMedicine}
+                  className="flex items-center gap-1 text-sm font-medium text-primary-light hover:underline"
+                >
+                  <Plus className="h-4 w-4" strokeWidth={1.5} />
+                  Add medicine
+                </button>
+              </div>
+
+              <div className="mt-2 space-y-3">
+                {medicines.map((m, i) => (
+                  <div
+                    key={i}
+                    className="rounded-2xl border border-text-secondary/15 bg-background/40 p-4"
+                  >
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       <input
                         type="text"
-                        value={m.duration}
-                        onChange={(e) =>
-                          updateMedicine(i, 'duration', e.target.value)
-                        }
-                        placeholder="Duration"
+                        value={m.name}
+                        onChange={(e) => updateMedicine(i, 'name', e.target.value)}
+                        placeholder="Medicine name"
                         className={INPUT_CLASS}
                       />
-                      <button
-                        type="button"
-                        onClick={() => removeMedicine(i)}
-                        disabled={medicines.length === 1}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-error/30 text-error transition hover:bg-error/10 disabled:opacity-40"
-                        aria-label="Remove medicine"
-                      >
-                        <Trash2 className="h-4 w-4" strokeWidth={1.5} />
-                      </button>
+                      <input
+                        type="text"
+                        value={m.dosage}
+                        onChange={(e) => updateMedicine(i, 'dosage', e.target.value)}
+                        placeholder="Dosage"
+                        className={INPUT_CLASS}
+                      />
+                      <input
+                        type="text"
+                        value={m.frequency}
+                        onChange={(e) =>
+                          updateMedicine(i, 'frequency', e.target.value)
+                        }
+                        placeholder="Frequency"
+                        className={INPUT_CLASS}
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={m.duration}
+                          onChange={(e) =>
+                            updateMedicine(i, 'duration', e.target.value)
+                          }
+                          placeholder="Duration"
+                          className={INPUT_CLASS}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeMedicine(i)}
+                          disabled={medicines.length === 1}
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-error/30 text-error transition hover:bg-error/10 disabled:opacity-40"
+                          aria-label="Remove medicine"
+                        >
+                          <Trash2 className="h-4 w-4" strokeWidth={1.5} />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
 
-          {/* Instructions */}
-          <div>
-            <label className="block text-sm font-medium text-primary">
-              Instructions
-            </label>
-            <textarea
-              value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
-              rows={4}
-              placeholder="Additional instructions for the patient..."
-              className={`mt-1.5 ${INPUT_CLASS} resize-y`}
-            />
-          </div>
+            <div>
+              <label className="block text-sm font-medium text-primary">
+                Instructions
+              </label>
+              <textarea
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                rows={4}
+                placeholder="Additional instructions for the patient..."
+                className={`mt-1.5 ${INPUT_CLASS} resize-y`}
+              />
+            </div>
 
-          <div className="flex gap-3 border-t border-text-secondary/10 pt-6">
-            <button type="submit" className="btn-primary">
-              Issue Prescription
-            </button>
-            <button
-              type="button"
-              onClick={handleClose}
-              className="btn-secondary"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+            <div className="flex flex-wrap gap-3 border-t border-text-secondary/10 pt-6">
+              <button type="submit" className="btn-primary">
+                Issue Prescription
+              </button>
+              <button type="button" onClick={handleClose} className="btn-secondary">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   )
