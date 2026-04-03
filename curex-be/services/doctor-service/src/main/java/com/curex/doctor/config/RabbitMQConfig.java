@@ -14,6 +14,7 @@ public class RabbitMQConfig {
 
     public static final String DOCTOR_EXCHANGE = "doctor.exchange";
     public static final String PRESCRIPTION_ISSUED_KEY = "prescription.issued";
+    public static final String PRESCRIPTION_CANCELLED_KEY = "prescription.cancelled";
 
     @Bean
     public TopicExchange doctorExchange() {

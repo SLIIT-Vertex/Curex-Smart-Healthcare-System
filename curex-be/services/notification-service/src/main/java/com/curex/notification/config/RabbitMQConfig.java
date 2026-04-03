@@ -25,6 +25,7 @@ public class RabbitMQConfig {
     public static final String APPOINTMENT_BOOKING_QUEUE = "appointment.booking.queue";
     public static final String PAYMENT_CONFIRMATION_QUEUE = "payment.confirmation.queue";
     public static final String PRESCRIPTION_ISSUED_QUEUE = "prescription.issued.queue";
+    public static final String PRESCRIPTION_CANCELLED_QUEUE = "prescription.cancelled.queue";
 
     // Routing keys
     public static final String USER_REGISTRATION_ROUTING_KEY = "user.registration";
@@ -33,6 +34,7 @@ public class RabbitMQConfig {
     public static final String APPOINTMENT_BOOKING_ROUTING_KEY = "appointment.booking";
     public static final String PAYMENT_CONFIRMATION_ROUTING_KEY = "payment.confirmation";
     public static final String PRESCRIPTION_ISSUED_ROUTING_KEY = "prescription.issued";
+    public static final String PRESCRIPTION_CANCELLED_ROUTING_KEY = "prescription.cancelled";
 
     // Message converter for JSON
     @Bean
@@ -160,6 +162,19 @@ public class RabbitMQConfig {
                 .bind(prescriptionIssuedQueue())
                 .to(doctorExchange())
                 .with(PRESCRIPTION_ISSUED_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue prescriptionCancelledQueue() {
+        return QueueBuilder.durable(PRESCRIPTION_CANCELLED_QUEUE).build();
+    }
+
+    @Bean
+    public Binding prescriptionCancelledBinding() {
+        return BindingBuilder
+                .bind(prescriptionCancelledQueue())
+                .to(doctorExchange())
+                .with(PRESCRIPTION_CANCELLED_ROUTING_KEY);
     }
 
     // === OTP EVENTS (from user-service) ===

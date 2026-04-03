@@ -11,6 +11,7 @@ import {
   CreditCard,
   ShieldAlert,
   BellRing,
+  Ban,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useNotifications } from "../../hooks/useNotifications";
@@ -65,6 +66,9 @@ interface NotificationTypeStyle {
 
 function getNotificationTypeStyle(type: string): NotificationTypeStyle {
   const upper = type.toUpperCase();
+  if (upper === "PRESCRIPTION_CANCELLED") {
+    return { icon: Ban, bg: "bg-error/12", color: "text-error" };
+  }
   if (upper.startsWith("PRESCRIPTION_")) {
     return { icon: Pill, bg: "bg-accent-mint/15", color: "text-emerald-600" };
   }

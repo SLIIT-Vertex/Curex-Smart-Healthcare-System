@@ -401,6 +401,75 @@ public class NotificationEventConsumer {
         }
     }
 
+    @RabbitListener(queues = "prescription.cancelled.queue")
+    public void handlePrescriptionCancelled(Map<String, Object> event) {
+        try {
+            log.info("Received prescription.cancelled event");
+
+            String prescriptionId = (String) event.get("prescriptionId");
+            String patientId = (String) event.get("patientId");
+            String patientName = (String) event.get("patientName");
+            String patientEmail = (String) event.get("patientEmail");
+            String doctorName = (String) event.get("doctorName");
+            String medicines = (String) event.get("medicines");
+            String diagnosis = (String) event.get("diagnosis");
+            String cancelledAtStr = event.get("cancelledAt") != null
+                    ? event.get("cancelledAt").toString()
+                    : "";
+
+            if (patientId == null || patientId.isBlank()) {
+                log.warn("prescription.cancelled event missing patientId; skipping notifications");
+                return;
+            }
+
+            String safeDoctorName = doctorName != null ? HtmlUtils.htmlEscape(doctorName) : "your doctor";
+            String safePatientName = patientName != null ? HtmlUtils.htmlEscape(patientName) : "Patient";
+            String safeRxId = prescriptionId != null ? HtmlUtils.htmlEscape(prescriptionId) : "—";
+
+            if (patientId != null && !patientId.isBlank()
+                    && (patientEmail == null || patientEmail.isBlank())) {
+                String resolved = userPreferenceClient.resolveUserEmail(patientId);
+                if (resolved != null) {
+                    patientEmail = resolved;
+                }
+            }
+
+            UserPreferenceClient.NotificationPreferences patientPrefs =
+                    userPreferenceClient.getNotificationPreferences(patientId);
+
+            String patientInApp = String.format(
+                    "Dr. %s has cancelled a prescription for you. It will show as cancelled in your prescriptions.",
+                    safeDoctorName);
+            notificationService.sendNotificationAsync(NotificationRequest.builder()
+                    .userId(patientId)
+                    .type(Notification.NotificationType.PRESCRIPTION_CANCELLED)
+                    .channel(Notification.NotificationChannel.IN_APP)
+                    .subject("Prescription cancelled")
+                    .content(patientInApp)
+                    .build());
+
+            if (patientPrefs.isPrescriptionAlertsEnabled()) {
+                if (patientEmail != null && !patientEmail.isBlank()) {
+                    notificationService.sendNotificationAsync(NotificationRequest.builder()
+                            .userId(patientId)
+                            .recipientEmail(patientEmail)
+                            .type(Notification.NotificationType.PRESCRIPTION_CANCELLED)
+                            .channel(Notification.NotificationChannel.EMAIL)
+                            .subject("Prescription cancelled — Dr. " + safeDoctorName + " — Curex Healthcare")
+                            .content(buildPrescriptionCancelledPatientEmailContent(
+                                    safePatientName, safeDoctorName, safeRxId, medicines, diagnosis,
+                                    HtmlUtils.htmlEscape(cancelledAtStr)))
+                            .build());
+                }
+            } else {
+                log.info("Skipping patient prescription-cancelled email for user {} due to prescription-alerts preference",
+                        patientId);
+            }
+        } catch (Exception e) {
+            log.error("Failed to process prescription.cancelled event: {}", e.getMessage(), e);
+        }
+    }
+
     // ── Email / SMS content builders ──────────────────────────────────────────
 
     private String buildWelcomeEmailContent(String firstName, String userRole) {
@@ -494,6 +563,33 @@ public class NotificationEventConsumer {
     }
 
     // ── Prescription email builders ────────────────────────────────────────
+
+    private String buildPrescriptionCancelledPatientEmailContent(String patientName, String doctorName,
+                                                                  String prescriptionId, String medicines,
+                                                                  String diagnosis, String cancelledAtDisplay) {
+        String safeMedicines = (medicines == null || medicines.isBlank())
+                ? "—" : HtmlUtils.htmlEscape(medicines);
+        String diagnosisBlock = (diagnosis != null && !diagnosis.isBlank())
+                ? "<p><strong>Previous diagnosis / notes:</strong> " + HtmlUtils.htmlEscape(diagnosis) + "</p>" : "";
+        String whenBlock = (cancelledAtDisplay == null || cancelledAtDisplay.isBlank())
+                ? ""
+                : "<p><strong>Cancelled at:</strong> " + cancelledAtDisplay + "</p>";
+
+        return String.format("""
+                <p>Dear %s,</p>
+                <p><strong>Important:</strong> Dr. %s has <strong>cancelled</strong> a prescription that was on your Curex account.</p>
+                <div style="background:#fff3e0;border-left:4px solid #ff9800;padding:15px;border-radius:8px;margin:15px 0;">
+                    <h3 style="margin:0 0 10px;">Cancelled prescription</h3>
+                    <p><strong>Prescription ID:</strong> %s</p>
+                    %s
+                    <p><strong>Medicines (were listed as):</strong> %s</p>
+                    %s
+                </div>
+                <p>Do not use this prescription. If you still need treatment, please book a follow-up or contact your doctor through Curex.</p>
+                <p>You can review the updated status in your patient dashboard under Prescriptions.</p>
+                <p>Best regards,<br>The Curex Healthcare Team</p>
+                """, patientName, doctorName, prescriptionId, whenBlock, safeMedicines, diagnosisBlock);
+    }
 
     private String buildPrescriptionPatientEmailContent(String patientName, String doctorName,
                                                          String medicines, String diagnosis,

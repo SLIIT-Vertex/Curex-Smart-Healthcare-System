@@ -13,6 +13,10 @@ import type { AppointmentRecord } from '../../types/appointment'
 import type { PatientPrescription } from '../../types/patient'
 import { useAuth } from '../../store/hooks'
 import { useToast } from '../../store/hooks'
+import {
+  openPrescriptionPrint,
+  type PrescriptionPrintModel,
+} from '../../lib/printPrescriptionDocument'
 import '../../styles/pages/DoctorPrescriptions.css'
 
 /** Use mock data when backend is unavailable (e.g. during development). */
@@ -477,6 +481,56 @@ function ValidityPill({ rx }: { rx: PatientPrescription }) {
   )
 }
 
+function buildPatientPrescriptionPrintModel(
+  rx: PatientPrescription,
+  appointment?: AppointmentRecord,
+): PrescriptionPrintModel {
+  const statusKey = normalizeRxStatus(rx.status)
+  const statusLabel = STATUS_LABELS[statusKey]
+
+  let validPeriod = '—'
+  if (rx.validFrom && rx.validTo) {
+    validPeriod = `${formatDate(rx.validFrom)} – ${formatDate(rx.validTo)}`
+  } else if (rx.validFrom) {
+    validPeriod = `From ${formatDate(rx.validFrom)}`
+  } else if (rx.validTo) {
+    validPeriod = `Until ${formatDate(rx.validTo)}`
+  }
+
+  const doctorLine =
+    [rx.doctorName, rx.doctorSpecialty]
+      .filter((s): s is string => Boolean(s?.trim()))
+      .join(' · ') || '—'
+
+  const linkedVisit = appointment
+    ? {
+        doctorLine:
+          [appointment.doctorName, appointment.doctorSpecialty]
+            .filter((s): s is string => Boolean(s?.trim()))
+            .join(' · ') || '—',
+        dateTime: formatVisitDateTime(appointment.appointmentTime),
+        visitType: appointmentTypeLabel(appointment.type),
+        visitStatus: appointmentStatusLabel(appointment.status),
+      }
+    : null
+
+  const short = rx.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 10) || 'rx'
+
+  return {
+    documentTitle: `Curex-prescription-${short}`,
+    rxId: rx.id,
+    issuedAt: formatIssuedDetail(rx.issuedAt),
+    statusLabel,
+    patientName: rx.patientName?.trim() || '—',
+    doctorLine,
+    validPeriod,
+    diagnosis: rx.diagnosis?.trim() ? rx.diagnosis : null,
+    instructions: rx.instructions?.trim() ? rx.instructions : null,
+    medicines: parseMedicinesForTable(rx.medicines),
+    linkedVisit,
+  }
+}
+
 const TABLE_COL_COUNT = 9
 
 const INPUT_CLASS =
@@ -641,6 +695,25 @@ export function PatientPrescriptions() {
     })
     return map
   }, [appointments])
+
+  const printPrescription = useCallback(
+    (rx: PatientPrescription) => {
+      if (isAwaitingPrescriptionPlaceholder(rx)) {
+        toast('No prescription has been issued for this visit yet.', 'info')
+        return
+      }
+      const apt = rx.appointmentId ? appointmentById[rx.appointmentId] : undefined
+      const model = buildPatientPrescriptionPrintModel(rx, apt)
+      const ok = openPrescriptionPrint(model)
+      if (!ok) {
+        toast(
+          'Pop-up blocked. Allow pop-ups for this site to print or save as PDF.',
+          'error',
+        )
+      }
+    },
+    [appointmentById, toast],
+  )
 
   const appointmentFilterRecord = useMemo(
     () =>
@@ -1003,8 +1076,23 @@ export function PatientPrescriptions() {
                         <td className="px-4 py-3 text-right">
                           <button
                             type="button"
-                            className="text-sm font-medium text-primary-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-light/25 focus-visible:ring-offset-2"
-                            aria-label="Print prescription"
+                            disabled={awaitingRx}
+                            title={
+                              awaitingRx
+                                ? 'No prescription issued for this visit yet'
+                                : 'Open print dialog — choose Save as PDF to download'
+                            }
+                            onClick={() => printPrescription(rx)}
+                            className={`text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-light/25 focus-visible:ring-offset-2 ${
+                              awaitingRx
+                                ? 'cursor-not-allowed text-text-secondary/45'
+                                : 'text-primary-light'
+                            }`}
+                            aria-label={
+                              awaitingRx
+                                ? 'Print unavailable — prescription not issued yet'
+                                : 'Print or save prescription as PDF'
+                            }
                           >
                             Print
                           </button>

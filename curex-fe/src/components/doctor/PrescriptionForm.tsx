@@ -149,6 +149,16 @@ function localYmd(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/
+
+function addDaysToYmd(ymd: string, days: number): string {
+  if (!YMD_RE.test(ymd)) return ymd
+  const [y, m, d] = ymd.split('-').map(Number)
+  const dt = new Date(y!, m! - 1, d!)
+  dt.setDate(dt.getDate() + days)
+  return localYmd(dt)
+}
+
 function defaultValidFromString(): string {
   return localYmd(new Date())
 }
@@ -176,6 +186,7 @@ export function PrescriptionForm({
   const [diagnosis, setDiagnosis] = useState('')
   const [validFrom, setValidFrom] = useState(defaultValidFromString)
   const [validTo, setValidTo] = useState(defaultValidToString)
+  const [validityDateError, setValidityDateError] = useState<string | null>(null)
   const [patientSearch, setPatientSearch] = useState('')
   const [patientProfile, setPatientProfile] = useState<PatientProfile | null>(null)
   /** Appointment / form `patientId` is the auth user id; profile `id` is different. */
@@ -251,6 +262,7 @@ export function PrescriptionForm({
     setDiagnosis('')
     setValidFrom(defaultValidFromString())
     setValidTo(defaultValidToString())
+    setValidityDateError(null)
     setPatientSearch('')
     setPatientProfile(null)
     setProfileResolvedForPatientId(null)
@@ -267,6 +279,21 @@ export function PrescriptionForm({
     const selectedAppt = appointments.find((a) => a.id === appointmentId)
     const resolvedPatientId = patientId || selectedAppt?.patientId
     if (!resolvedPatientId || !appointmentId || validMedicines.length === 0) return
+
+    const todayYmd = localYmd(new Date())
+    if (!YMD_RE.test(validFrom) || !YMD_RE.test(validTo)) {
+      setValidityDateError('Please enter valid from and valid to dates.')
+      return
+    }
+    if (validFrom < todayYmd) {
+      setValidityDateError('Valid from cannot be before today.')
+      return
+    }
+    if (validTo <= validFrom) {
+      setValidityDateError('Valid to must be after valid from.')
+      return
+    }
+    setValidityDateError(null)
 
     const emailFromAppt = selectedAppt?.patientEmail?.trim()
     const emailFromProfile = displayedPatientProfile?.email?.trim()
@@ -328,6 +355,15 @@ export function PrescriptionForm({
         'None on file'
       )
     : null
+
+  const todayYmd = localYmd(new Date())
+  const validToMinYmd =
+    YMD_RE.test(validFrom) && validFrom >= todayYmd
+      ? addDaysToYmd(validFrom, 1)
+      : addDaysToYmd(todayYmd, 1)
+  const dateFieldErrorClass = validityDateError
+    ? ' border-error/50 focus:border-error focus:ring-error/20'
+    : ''
 
   if (!isOpen) return null
 
@@ -494,10 +530,24 @@ export function PrescriptionForm({
                 <input
                   type="date"
                   value={validFrom}
-                  onChange={(e) => setValidFrom(e.target.value)}
+                  min={todayYmd}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setValidityDateError(null)
+                    setValidFrom(v)
+                    if (YMD_RE.test(v)) {
+                      setValidTo((prev) =>
+                        prev && prev <= v ? addDaysToYmd(v, 1) : prev
+                      )
+                    }
+                  }}
                   required
-                  className={`mt-1.5 ${INPUT_CLASS}`}
+                  aria-invalid={Boolean(validityDateError)}
+                  className={`mt-1.5 ${INPUT_CLASS}${dateFieldErrorClass}`}
                 />
+                <p className="mt-1 text-xs text-text-secondary">
+                  Cannot be before today.
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-primary">
@@ -506,12 +556,25 @@ export function PrescriptionForm({
                 <input
                   type="date"
                   value={validTo}
-                  onChange={(e) => setValidTo(e.target.value)}
+                  min={validToMinYmd}
+                  onChange={(e) => {
+                    setValidityDateError(null)
+                    setValidTo(e.target.value)
+                  }}
                   required
-                  className={`mt-1.5 ${INPUT_CLASS}`}
+                  aria-invalid={Boolean(validityDateError)}
+                  className={`mt-1.5 ${INPUT_CLASS}${dateFieldErrorClass}`}
                 />
+                <p className="mt-1 text-xs text-text-secondary">
+                  Must be after valid from.
+                </p>
               </div>
             </div>
+            {validityDateError ? (
+              <p className="text-sm font-medium text-error" role="alert">
+                {validityDateError}
+              </p>
+            ) : null}
 
             <div>
               <label className="block text-sm font-medium text-primary">
