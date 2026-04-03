@@ -71,6 +71,7 @@ export function DoctorSidebar({ isOpen = true, onClose }: DoctorSidebarProps) {
               <NavLink
                 key={to}
                 to={to}
+                end={to !== '/doctor/telemedicine'}
                 onClick={() => onClose?.()}
                 className={({ isActive }) =>
                   `sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
@@ -89,6 +90,7 @@ export function DoctorSidebar({ isOpen = true, onClose }: DoctorSidebarProps) {
           <div className="shrink-0 border-t border-text-secondary/10 p-4">
             <NavLink
               to="/doctor/settings"
+              end
               onClick={() => onClose?.()}
               className={({ isActive }) =>
                 `sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${

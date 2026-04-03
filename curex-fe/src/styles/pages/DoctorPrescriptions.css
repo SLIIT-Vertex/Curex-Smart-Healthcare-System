@@ -178,6 +178,42 @@
   }
 
   /* ── Animations ──────────────────────────────────────────────── */
+  /* Table shell (aligns with patient prescriptions list container) */
+  .rx-table-shell {
+    @apply rounded-2xl bg-surface;
+    box-shadow: var(--shadow-card);
+  }
+
+  .rx-table-empty {
+    @apply flex flex-col items-center justify-center rounded-xl border border-dashed border-text-secondary/20
+           bg-background/50 px-6 py-12 text-center;
+  }
+
+  /* Validity pill (matches patient prescriptions; used in doctor table) */
+  .rx-validity-pill {
+    @apply inline-flex max-w-full items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium;
+  }
+
+  .rx-validity-pill--ok {
+    @apply border-accent-mint/35 bg-accent-mint/15 text-primary;
+  }
+
+  .rx-validity-pill--soon {
+    @apply border-accent-peach/40 bg-accent-peach/15 text-primary;
+  }
+
+  .rx-validity-pill--ended {
+    @apply border-text-secondary/25 bg-text-secondary/10 text-text-secondary;
+  }
+
+  .rx-validity-pill--future {
+    @apply border-accent-sky/35 bg-accent-sky/12 text-primary;
+  }
+
+  .rx-validity-pill--neutral {
+    @apply border-text-secondary/20 bg-background/80 text-text-secondary;
+  }
+
   .rx-fade-in {
     animation: rxFadeUp 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
   }

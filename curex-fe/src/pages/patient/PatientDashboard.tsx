@@ -108,7 +108,9 @@ export function PatientDashboard() {
       <section>
         <h2 className="section-heading mb-2">Quick actions</h2>
         <p className="section-subtext">
-          Book visits, check symptoms, or upload reports.
+          Book appointments, join video consultations, upload reports, review your
+          prescriptions, and get AI-powered health suggestions—your everyday care,
+          streamlined in one place.
         </p>
         <div className="mt-4">
           <QuickActions />

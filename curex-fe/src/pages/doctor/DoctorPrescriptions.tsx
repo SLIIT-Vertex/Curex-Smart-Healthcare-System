@@ -1,22 +1,20 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, Fragment } from 'react'
 import {
   Plus,
   Search,
   X,
   FileText,
-  CheckCircle2,
-  Clock,
-  XCircle,
-  Calendar,
   User,
   Pill,
   ClipboardList,
   Stethoscope,
   AlertCircle,
-  ChevronRight,
   Filter,
   Video,
   MapPin,
+  ChevronDown,
+  ChevronUp,
+  CalendarClock,
 } from 'lucide-react'
 import { PrescriptionForm } from '../../components/doctor/PrescriptionForm'
 import type { Prescription, PrescriptionStatus } from '../../types/doctor'
@@ -38,6 +36,33 @@ function formatDate(iso: string): string {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+  })
+}
+
+function parseDisplayDate(iso: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [y, m, d] = iso.split('-').map(Number)
+    return new Date(y, m - 1, d)
+  }
+  return new Date(iso)
+}
+
+function formatDateShort(iso: string): string {
+  return parseDisplayDate(iso).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+  })
+}
+
+function formatIssuedDetail(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return formatDate(iso)
+  return d.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   })
 }
 
@@ -75,40 +100,332 @@ function appointmentStatusLabel(status: AppointmentRecord['status']): string {
   return labels[status]
 }
 
-function relativeDate(iso: string): string {
-  const now = new Date()
-  const d = new Date(iso)
-  const diff = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
-  if (diff === 0) return 'Today'
-  if (diff === 1) return 'Yesterday'
-  if (diff < 7) return `${diff} days ago`
-  return formatDate(iso)
-}
-
-function StatusBadge({ status }: { status?: PrescriptionStatus }) {
-  const s = status ?? 'PENDING'
-  const icons: Record<string, typeof CheckCircle2> = {
-    ACTIVE: CheckCircle2,
-    ISSUED: CheckCircle2,
-    COMPLETED: CheckCircle2,
-    PENDING: Clock,
-    CANCELLED: XCircle,
-  }
-  const Icon = icons[s] ?? CheckCircle2
-  return (
-    <span className={`rx-badge rx-badge--${s}`}>
-      <Icon className="h-3 w-3" strokeWidth={2} />
-      {s}
-    </span>
-  )
-}
-
 function parseMedicines(raw: string): string[] {
   return raw
     .split(';')
     .map((s) => s.trim())
     .filter(Boolean)
 }
+
+/** Days before validTo to highlight as “expiring soon” (same as patient view). */
+const EXPIRING_SOON_DAYS = 14
+
+function startOfLocalDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+interface MedicineTableRow {
+  name: string
+  dosage: string
+  frequency: string
+  duration: string
+}
+
+function looksLikeDuration(s: string): boolean {
+  const t = s.trim().toLowerCase()
+  if (!t) return false
+  if (/(?:^|\s)(?:days?|weeks?|months?|years?)\b/.test(t)) return true
+  if (/^\d[\d\s]*(?:-|–)?\s*\d*\s*(?:days?|weeks?|months?)?$/i.test(t)) return true
+  return /\d/.test(t) && /\b(for\s+)?\d+\b/.test(t)
+}
+
+function parseMedicineLineSerialized(line: string): MedicineTableRow {
+  const t = line.trim()
+  if (!t) return { name: '', dosage: '', frequency: '', duration: '' }
+
+  const parts = t.split(', ').map((p) => p.trim())
+  let nameHead = ''
+  let frequency = ''
+  let duration = ''
+
+  if (parts.length === 1) {
+    return { name: parts[0]!, dosage: '', frequency: '', duration: '' }
+  }
+
+  if (parts.length === 2) {
+    nameHead = parts[0]!
+    const second = parts[1]!
+    if (looksLikeDuration(second)) duration = second
+    else frequency = second
+  } else {
+    duration = parts[parts.length - 1]!
+    frequency = parts[parts.length - 2]!
+    nameHead = parts.slice(0, -2).join(', ')
+  }
+
+  const sp = nameHead.indexOf(' ')
+  if (sp === -1) {
+    return { name: nameHead, dosage: '', frequency, duration }
+  }
+  return {
+    name: nameHead.slice(0, sp),
+    dosage: nameHead.slice(sp + 1).trim(),
+    frequency,
+    duration,
+  }
+}
+
+function parseMedicinesForTable(raw: string): MedicineTableRow[] {
+  return parseMedicines(raw).map(parseMedicineLineSerialized)
+}
+
+const STATUS_STYLES: Record<PrescriptionStatus, string> = {
+  PENDING:
+    'border border-accent-peach/45 border-l-[3px] border-l-accent-peach bg-accent-peach/25 text-primary',
+  ACTIVE:
+    'border border-accent-mint/45 border-l-[3px] border-l-accent-mint bg-accent-mint/25 text-primary',
+  ISSUED:
+    'border border-primary-light/50 border-l-[3px] border-l-primary-light bg-primary-light/22 text-primary',
+  COMPLETED:
+    'border border-accent-sky/45 border-l-[3px] border-l-accent-sky bg-accent-sky/25 text-primary',
+  CANCELLED:
+    'border border-error/45 border-l-[3px] border-l-error bg-error/22 text-primary',
+}
+
+const STATUS_SECTION_BG: Record<PrescriptionStatus, string> = {
+  PENDING: 'bg-accent-peach/[0.14]',
+  ACTIVE: 'bg-accent-mint/[0.14]',
+  ISSUED: 'bg-primary-light/[0.12]',
+  COMPLETED: 'bg-accent-sky/[0.14]',
+  CANCELLED: 'bg-error/[0.10]',
+}
+
+const STATUS_DETAIL_BORDER: Record<PrescriptionStatus, string> = {
+  PENDING: 'border-accent-peach/35',
+  ACTIVE: 'border-accent-mint/35',
+  ISSUED: 'border-primary-light/40',
+  COMPLETED: 'border-accent-sky/35',
+  CANCELLED: 'border-error/35',
+}
+
+const STATUS_LABELS: Record<PrescriptionStatus, string> = {
+  PENDING: 'Pending',
+  ACTIVE: 'Active',
+  ISSUED: 'Issued',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+}
+
+function normalizeRxStatus(status?: PrescriptionStatus): PrescriptionStatus {
+  const s = status ?? 'PENDING'
+  if (
+    s === 'PENDING' ||
+    s === 'ACTIVE' ||
+    s === 'ISSUED' ||
+    s === 'COMPLETED' ||
+    s === 'CANCELLED'
+  ) {
+    return s
+  }
+  return 'PENDING'
+}
+
+function StatusBadge({ status }: { status?: PrescriptionStatus }) {
+  const s = normalizeRxStatus(status)
+  const label = STATUS_LABELS[s] ?? s
+  return (
+    <span
+      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLES[s] ?? STATUS_STYLES.PENDING}`}
+    >
+      {label}
+    </span>
+  )
+}
+
+type ValidityKind = 'ok' | 'soon' | 'ended' | 'future' | 'neutral'
+
+function getValidityKind(rx: Prescription, today: Date): ValidityKind {
+  const t = startOfLocalDay(today)
+  const from = rx.validFrom ? startOfLocalDay(parseDisplayDate(rx.validFrom)) : null
+  const to = rx.validTo ? startOfLocalDay(parseDisplayDate(rx.validTo)) : null
+
+  if (!from && !to) return 'neutral'
+  if (from && t < from) return 'future'
+  if (to && t > to) return 'ended'
+  if (to) {
+    const msLeft = to.getTime() - t.getTime()
+    const daysLeft = msLeft / (24 * 60 * 60 * 1000)
+    if (daysLeft >= 0 && daysLeft <= EXPIRING_SOON_DAYS) return 'soon'
+  }
+  return 'ok'
+}
+
+function PendingNa({ className = '' }: { className?: string }) {
+  return (
+    <span
+      className={`text-sm font-medium tabular-nums text-text-secondary ${className}`.trim()}
+    >
+      N/A
+    </span>
+  )
+}
+
+const LINKED_VISIT_TH =
+  'w-[5.25rem] shrink-0 py-0.5 pr-2 align-top font-normal text-text-secondary'
+
+/** Linked visit block oriented for the doctor: patient + visit logistics. */
+function DoctorLinkedVisitSection({
+  appointment,
+  patientLabel,
+}: {
+  appointment: AppointmentRecord
+  patientLabel: string
+}) {
+  const leftRows: [string, string][] = [
+    ['Patient', patientLabel],
+    ['Date & time', formatVisitDateTime(appointment.appointmentTime)],
+  ]
+  const rightRows: [string, string][] = [
+    ['Visit type', appointmentTypeLabel(appointment.type)],
+    ['Visit status', appointmentStatusLabel(appointment.status)],
+  ]
+
+  return (
+    <div className="rounded-lg border border-primary-light/20 bg-primary-light/[0.06] px-3 py-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+        Linked visit
+      </p>
+      <div className="mt-1.5 flex flex-row items-start gap-2 sm:gap-3">
+        <div className="min-w-0 flex-1">
+          <table className="w-full border-collapse text-left text-xs">
+            <tbody>
+              {leftRows.map(([label, val]) => (
+                <tr key={label}>
+                  <th scope="row" className={LINKED_VISIT_TH}>
+                    {label}
+                  </th>
+                  <td className="py-0.5 font-medium leading-snug text-primary">{val}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <span
+          className="shrink-0 select-none self-stretch pt-0.5 text-sm font-light leading-none text-text-secondary/30"
+          aria-hidden
+        >
+          |
+        </span>
+        <div className="min-w-0 flex-1">
+          <table className="w-full border-collapse text-left text-xs">
+            <tbody>
+              {rightRows.map(([label, val]) => (
+                <tr key={label}>
+                  <th scope="row" className={LINKED_VISIT_TH}>
+                    {label}
+                  </th>
+                  <td className="py-0.5 font-medium leading-snug text-primary">{val}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function cellOrDash(val: string) {
+  const t = val.trim()
+  return t ? t : '—'
+}
+
+function MedicinesDetailTable({ raw }: { raw: string }) {
+  const rows = parseMedicinesForTable(raw)
+  if (rows.length === 0) {
+    return <p className="text-xs text-text-secondary">No medicines listed.</p>
+  }
+  return (
+    <div className="overflow-x-auto rounded-md border border-text-secondary/12">
+      <table className="w-full min-w-[36rem] border-collapse text-left text-xs">
+        <thead>
+          <tr className="border-b border-text-secondary/12 bg-background/70">
+            <th className="w-7 px-1.5 py-1.5 font-semibold text-text-secondary">#</th>
+            <th className="min-w-[6.5rem] px-1.5 py-1.5 font-semibold text-text-secondary">
+              Medicine name
+            </th>
+            <th className="min-w-[5rem] px-1.5 py-1.5 font-semibold text-text-secondary">Dosage</th>
+            <th className="min-w-[5.5rem] px-1.5 py-1.5 font-semibold text-text-secondary">
+              Frequency
+            </th>
+            <th className="min-w-[5rem] px-1.5 py-1.5 font-semibold text-text-secondary">Duration</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} className="border-b border-text-secondary/8 last:border-b-0">
+              <td className="px-1.5 py-1.5 align-top tabular-nums text-text-secondary">{i + 1}</td>
+              <td className="px-1.5 py-1.5 align-top leading-snug text-primary">
+                {cellOrDash(row.name)}
+              </td>
+              <td className="px-1.5 py-1.5 align-top leading-snug text-primary">
+                {cellOrDash(row.dosage)}
+              </td>
+              <td className="px-1.5 py-1.5 align-top leading-snug text-primary">
+                {cellOrDash(row.frequency)}
+              </td>
+              <td className="px-1.5 py-1.5 align-top leading-snug text-primary">
+                {cellOrDash(row.duration)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ValidityPill({ rx }: { rx: Prescription }) {
+  const today = new Date()
+  const kind = getValidityKind(rx, today)
+  const cls = {
+    ok: 'rx-validity-pill rx-validity-pill--ok',
+    soon: 'rx-validity-pill rx-validity-pill--soon',
+    ended: 'rx-validity-pill rx-validity-pill--ended',
+    future: 'rx-validity-pill rx-validity-pill--future',
+    neutral: 'rx-validity-pill rx-validity-pill--neutral',
+  }[kind]
+
+  let label = '—'
+  if (rx.validFrom && rx.validTo) {
+    label = `${formatDateShort(rx.validFrom)} – ${formatDateShort(rx.validTo)}`
+  } else if (rx.validTo) {
+    label = `Until ${formatDateShort(rx.validTo)}`
+  } else if (rx.validFrom) {
+    label = `From ${formatDateShort(rx.validFrom)}`
+  }
+
+  const hint =
+    kind === 'ended'
+      ? 'Period ended'
+      : kind === 'soon'
+        ? `≤ ${EXPIRING_SOON_DAYS} days left`
+        : kind === 'future'
+          ? 'Not yet valid'
+          : kind === 'neutral'
+            ? 'No dates on file'
+            : null
+
+  return (
+    <span className="inline-flex max-w-full flex-col gap-0.5" title={hint ?? label}>
+      <span className={`${cls} max-w-full`}>
+        <CalendarClock className="h-3.5 w-3.5 shrink-0 opacity-80" strokeWidth={1.5} />
+        <span className="truncate">{label}</span>
+      </span>
+      {hint && (
+        <span className="text-[10px] font-medium text-text-secondary">{hint}</span>
+      )}
+    </span>
+  )
+}
+
+function truncateStr(str: string, maxLen: number): string {
+  if (!str) return ''
+  if (str.length <= maxLen) return str
+  return str.slice(0, maxLen) + '…'
+}
+
+const TABLE_COL_COUNT = 9
 
 const INPUT_CLASS =
   'rounded-xl border border-text-secondary/20 bg-surface px-4 py-2.5 text-sm text-primary placeholder:text-text-secondary focus:border-primary-light focus:outline-none focus:ring-2 focus:ring-primary-light/20 transition-colors'
@@ -124,14 +441,13 @@ const STATUS_FILTER_OPTIONS: { value: PrescriptionStatus | ''; label: string }[]
   { value: 'CANCELLED', label: 'Cancelled' },
 ]
 
-/** API maps in-window prescriptions to ACTIVE; treat ISSUED filter as “currently valid”. */
+/** ISSUED = prescribed but not yet in validity window; ACTIVE = currently valid. */
 function matchesPrescriptionStatusFilter(
   rx: Prescription,
   filter: PrescriptionStatus | ''
 ): boolean {
   if (!filter) return true
   const s = rx.status ?? 'PENDING'
-  if (filter === 'ISSUED') return s === 'ISSUED' || s === 'ACTIVE'
   return s === filter
 }
 
@@ -151,6 +467,7 @@ export function DoctorPrescriptions() {
   const [selectedPrescription, setSelectedPrescription] =
     useState<Prescription | null>(null)
   const [prefill, setPrefill] = useState<{ patientId: string; appointmentId: string } | undefined>(undefined)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const patientNames = useMemo(() => {
     const map: Record<string, string> = {}
@@ -196,6 +513,9 @@ export function DoctorPrescriptions() {
         patientName: a.patientName,
         patientEmail: a.patientEmail,
         date: formatAppointmentDate(a.appointmentTime),
+        appointmentTime: a.appointmentTime,
+        type: a.type,
+        status: a.status,
       })),
     [appointmentsWithoutPrescription]
   )
@@ -290,8 +610,8 @@ export function DoctorPrescriptions() {
     [pendingFromAppointments, prescriptions]
   )
 
-  const filtered = useMemo(() => {
-    return allPrescriptions.filter((rx) => {
+  const filteredSorted = useMemo(() => {
+    const list = allPrescriptions.filter((rx) => {
       if (patientFilter) {
         const name = patientNames[rx.patientId] ?? ''
         if (
@@ -306,7 +626,13 @@ export function DoctorPrescriptions() {
       if (statusFilter && !matchesPrescriptionStatusFilter(rx, statusFilter)) return false
       return true
     })
+    return [...list].sort(
+      (a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime()
+    )
   }, [allPrescriptions, patientFilter, dateFrom, dateTo, statusFilter, patientNames])
+
+  const emptyBecauseFilters =
+    allPrescriptions.length > 0 && filteredSorted.length === 0
 
   const activeFilterCount = [patientFilter, dateFrom, dateTo, statusFilter].filter(
     Boolean
@@ -317,6 +643,10 @@ export function DoctorPrescriptions() {
     setDateFrom('')
     setDateTo('')
     setStatusFilter('')
+  }
+
+  const toggleExpand = (id: string) => {
+    setExpandedId((prev) => (prev === id ? null : id))
   }
 
   const handleIssuePrescription = async (data: PrescriptionFormData) => {
@@ -368,17 +698,6 @@ export function DoctorPrescriptions() {
 
   const displayName = (rx: Prescription) =>
     rx.patientName ?? patientNames[rx.patientId] ?? rx.patientId
-
-  const visitContext = (rx: Prescription) => {
-    const appt = rx.appointmentId ? appointmentById[rx.appointmentId] : undefined
-    const whenIso = appt?.appointmentTime ?? rx.issuedAt
-    return {
-      whenLabel: formatVisitDateTime(whenIso),
-      relativeLabel: relativeDate(whenIso),
-      typeLabel: appt ? appointmentTypeLabel(appt.type) : null,
-      visitStatus: appt ? appointmentStatusLabel(appt.status) : null,
-    }
-  }
 
   if (loading && !doctorId) {
     return (
@@ -551,7 +870,7 @@ export function DoctorPrescriptions() {
       {!loading && (
         <div className="rx-fade-in flex items-center gap-2 text-sm text-text-secondary" style={{ animationDelay: '0.2s' }}>
           <Filter className="h-3.5 w-3.5" strokeWidth={1.5} />
-          Showing <span className="font-semibold text-primary">{filtered.length}</span> of{' '}
+          Showing <span className="font-semibold text-primary">{filteredSorted.length}</span> of{' '}
           <span className="font-semibold text-primary">{allPrescriptions.length}</span> prescriptions
         </div>
       )}
@@ -563,145 +882,363 @@ export function DoctorPrescriptions() {
         role="region"
         aria-label="Prescription list"
       >
-      {filtered.length > 0 ? (
-        <ul className="rx-prescription-list w-full min-w-0 max-w-none list-none space-y-3 p-0">
-          {filtered.map((rx, idx) => {
-            const medicines = parseMedicines(rx.medicines)
-            const status = rx.status ?? 'PENDING'
-            const visit = visitContext(rx)
-            const appt = rx.appointmentId ? appointmentById[rx.appointmentId] : undefined
-            const visitWhenIso = appt?.appointmentTime ?? rx.issuedAt
-            return (
-              <li key={rx.id} className="rx-fade-in w-full min-w-0" style={{ animationDelay: `${0.05 * Math.min(idx, 12)}s` }}>
-                <div
-                  className={`rx-card rx-card--list rx-card--${status} group`}
-                  onClick={() => handleCardClick(rx)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => e.key === 'Enter' && handleCardClick(rx)}
-                >
-                  <div className="rx-card-list-inner">
-                    <div className="rx-card-list-main min-w-0 flex-1">
-                      <div className="flex flex-wrap items-start justify-between gap-2 gap-y-1">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-light/8">
-                            <User className="h-4 w-4 text-primary-light" strokeWidth={1.5} />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate text-base font-semibold text-primary">
-                              {displayName(rx)}
-                            </p>
-                            <p className="mt-0.5 text-xs text-text-secondary">
-                              <span className="font-medium text-text-secondary/90">Visit</span>
-                              <span className="mx-1.5 text-text-secondary/40" aria-hidden>
-                                ·
-                              </span>
-                              <time dateTime={visitWhenIso}>
-                                {visit.whenLabel}
-                              </time>
-                              <span className="text-text-secondary/50"> ({visit.relativeLabel})</span>
-                            </p>
-                          </div>
-                        </div>
-                        <StatusBadge status={rx.status} />
-                      </div>
-
-                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
-                        {visit.typeLabel && (
-                          <span className="inline-flex items-center gap-1.5">
-                            {appt?.type === 'TELEMEDICINE' ? (
-                              <Video className="h-3.5 w-3.5 shrink-0 opacity-70" strokeWidth={1.5} />
+      <div className="rx-table-shell overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="rx-table w-full">
+            <thead>
+              <tr className="border-b border-text-secondary/20 bg-background/50">
+                <th
+                  className="w-10 px-4 py-3 text-left text-xs font-medium text-text-secondary"
+                  aria-label="Expand"
+                />
+                <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                  Issued
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                  Patient
+                </th>
+                <th className="hidden px-4 py-3 text-left text-xs font-medium text-text-secondary sm:table-cell">
+                  Visit
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                  Medicines & diagnosis
+                </th>
+                <th className="hidden min-w-[7.5rem] px-4 py-3 text-left text-xs font-medium text-text-secondary md:table-cell">
+                  Validity
+                </th>
+                <th className="hidden px-4 py-3 text-left text-xs font-medium text-text-secondary lg:table-cell">
+                  Instructions
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredSorted.length > 0 ? (
+                filteredSorted.map((rx) => {
+                  const isExpanded = expandedId === rx.id
+                  const awaitingRx = isPendingPlaceholder(rx)
+                  const statusKey = normalizeRxStatus(rx.status)
+                  const sectionBg = STATUS_SECTION_BG[statusKey]
+                  const detailBorder = STATUS_DETAIL_BORDER[statusKey]
+                  const appt = rx.appointmentId ? appointmentById[rx.appointmentId] : undefined
+                  const visitWhenIso = appt?.appointmentTime ?? rx.issuedAt
+                  const patientLabel = displayName(rx)
+                  return (
+                    <Fragment key={rx.id}>
+                      <tr className={`border-b border-text-secondary/10 ${sectionBg}`}>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpand(rx.id)}
+                            className="flex items-center justify-center rounded-lg p-1 text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-light/25"
+                            aria-expanded={isExpanded}
+                            aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="h-4 w-4" strokeWidth={1.5} />
                             ) : (
-                              <MapPin className="h-3.5 w-3.5 shrink-0 opacity-70" strokeWidth={1.5} />
+                              <ChevronDown className="h-4 w-4" strokeWidth={1.5} />
                             )}
-                            {visit.typeLabel}
-                          </span>
-                        )}
-                        {visit.visitStatus && isPendingPlaceholder(rx) && (
-                          <span className="inline-flex items-center gap-1.5 rounded-md bg-accent-peach/12 px-2 py-0.5 font-medium text-amber-800/90">
-                            <Calendar className="h-3.5 w-3.5" strokeWidth={1.5} />
-                            {visit.visitStatus}
-                          </span>
-                        )}
-                      </div>
-
-                      {isPendingPlaceholder(rx) ? (
-                        <p className="mt-3 text-sm text-text-secondary">
-                          No prescription issued for this visit yet. Click to add medicines and issue.
-                        </p>
-                      ) : (
-                        <>
-                          {rx.diagnosis && (
-                            <div className="mt-3 flex items-start gap-2 border-t border-text-secondary/10 pt-3">
-                              <Stethoscope className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary-light/80" strokeWidth={1.5} />
-                              <p className="line-clamp-2 text-sm text-primary/90">{rx.diagnosis}</p>
-                            </div>
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-text-secondary">
+                          {awaitingRx ? (
+                            <PendingNa />
+                          ) : (
+                            <span className="tabular-nums">{formatDateShort(rx.issuedAt)}</span>
                           )}
-
-                          <div className="mt-3 flex flex-wrap gap-1.5 border-t border-text-secondary/10 pt-3">
-                            {medicines.length === 0 ? (
-                              <span className="text-xs italic text-text-secondary">No medicines listed</span>
-                            ) : (
-                              <>
-                                {medicines.slice(0, 4).map((med, i) => (
-                                  <span
-                                    key={i}
-                                    className="inline-flex items-center gap-1 rounded-lg bg-background/80 px-2 py-1 text-[11px] font-medium text-text-secondary"
-                                  >
-                                    <Pill className="h-3 w-3" strokeWidth={1.5} />
-                                    {med.length > 36 ? `${med.slice(0, 36)}…` : med}
-                                  </span>
-                                ))}
-                                {medicines.length > 4 && (
-                                  <span className="inline-flex items-center rounded-lg bg-primary-light/8 px-2 py-1 text-[11px] font-semibold text-primary-light">
-                                    +{medicines.length - 4} more
-                                  </span>
-                                )}
-                              </>
-                            )}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-medium text-primary">
+                          {patientLabel}
+                        </td>
+                        <td className="hidden px-4 py-3 text-sm text-text-secondary sm:table-cell">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="tabular-nums text-primary/90">
+                              {formatDateShort(visitWhenIso)}
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+                              {appt?.type === 'TELEMEDICINE' ? (
+                                <Video className="h-3.5 w-3.5 shrink-0 opacity-70" strokeWidth={1.5} />
+                              ) : appt ? (
+                                <MapPin className="h-3.5 w-3.5 shrink-0 opacity-70" strokeWidth={1.5} />
+                              ) : null}
+                              {appt ? appointmentTypeLabel(appt.type) : '—'}
+                            </span>
                           </div>
-                        </>
-                      )}
+                        </td>
+                        <td className="max-w-[12rem] px-4 py-3 text-sm sm:max-w-[16rem]">
+                          {awaitingRx ? (
+                            <p className="text-text-secondary">
+                              <span className="font-medium text-primary/90">Awaiting prescription</span>
+                              <span className="mt-0.5 block text-xs text-text-secondary/90">
+                                Issue medicines for this visit
+                              </span>
+                            </p>
+                          ) : (
+                            <>
+                              <p className="truncate text-text-secondary">
+                                {truncateStr(rx.medicines, 42)}
+                              </p>
+                              {rx.diagnosis && (
+                                <p
+                                  className="mt-1 line-clamp-2 text-xs leading-snug text-text-secondary/90"
+                                  title={rx.diagnosis}
+                                >
+                                  <span className="font-medium text-primary/80">Dx: </span>
+                                  {truncateStr(rx.diagnosis, 90)}
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </td>
+                        <td className="hidden px-4 py-3 md:table-cell">
+                          {awaitingRx ? <PendingNa /> : <ValidityPill rx={rx} />}
+                        </td>
+                        <td className="hidden max-w-[11rem] px-4 py-3 text-sm text-text-secondary lg:table-cell">
+                          {awaitingRx ? (
+                            <PendingNa />
+                          ) : rx.instructions?.trim() ? (
+                            <p
+                              className="line-clamp-4 break-words leading-snug text-primary"
+                              title={rx.instructions}
+                            >
+                              {rx.instructions}
+                            </p>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={rx.status} />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleCardClick(rx)}
+                            className="text-sm font-medium text-primary-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-light/25 focus-visible:ring-offset-2"
+                          >
+                            {awaitingRx ? 'Issue' : 'Details'}
+                          </button>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className={`border-b border-text-secondary/10 ${sectionBg}`}>
+                          <td colSpan={TABLE_COL_COUNT} className="px-3 py-3">
+                            <div
+                              className={`rounded-lg border bg-surface/90 px-3 py-2.5 ${detailBorder}`}
+                            >
+                              <div className="space-y-2.5">
+                                {rx.appointmentId ? (
+                                  appointmentById[rx.appointmentId] ? (
+                                    <DoctorLinkedVisitSection
+                                      appointment={appointmentById[rx.appointmentId]}
+                                      patientLabel={patientLabel}
+                                    />
+                                  ) : (
+                                    <div className="rounded-lg border border-text-secondary/12 bg-background/40 px-3 py-2">
+                                      <p className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                                        Linked visit
+                                      </p>
+                                      <p className="mt-1 text-xs leading-snug text-text-secondary">
+                                        Visit details could not be loaded. Try refreshing the page.
+                                      </p>
+                                    </div>
+                                  )
+                                ) : null}
 
-                      <div className="mt-3 flex items-center justify-end border-t border-text-secondary/5 pt-2 text-xs font-medium text-primary-light opacity-70 transition-opacity group-hover:opacity-100">
-                        <span className="flex items-center gap-1">
-                          {isPendingPlaceholder(rx) ? 'Issue prescription' : 'View details'}
-                          <ChevronRight className="h-3.5 w-3.5" strokeWidth={2} />
-                        </span>
-                      </div>
+                                <div>
+                                  <p className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                                    Prescription details
+                                  </p>
+                                  {awaitingRx ? (
+                                    <div
+                                      className={`mt-2 rounded-md border bg-accent-peach/15 px-2.5 py-2 ${detailBorder}`}
+                                    >
+                                      <p className="text-xs leading-snug text-primary">
+                                        No prescription has been issued for this visit yet. Use{' '}
+                                        <span className="font-semibold">Issue</span> to add medicines
+                                        and send the script to the patient.
+                                      </p>
+                                      <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-text-secondary">
+                                        <span>Status</span>
+                                        <StatusBadge status={rx.status} />
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <div className="mt-2 space-y-2.5">
+                                      <div className="grid gap-3 sm:grid-cols-2 sm:items-start sm:gap-x-8">
+                                        <div className="min-w-0">
+                                          <table className="w-full border-collapse text-left text-xs">
+                                            <tbody>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="w-[5.5rem] shrink-0 py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Rx ID
+                                                </th>
+                                                <td className="break-all py-0.5 font-mono text-[11px] leading-snug text-primary">
+                                                  {rx.id}
+                                                </td>
+                                              </tr>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Issued
+                                                </th>
+                                                <td className="py-0.5 font-medium leading-snug text-primary">
+                                                  {formatIssuedDetail(rx.issuedAt)}
+                                                </td>
+                                              </tr>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Status
+                                                </th>
+                                                <td className="py-0.5">
+                                                  <StatusBadge status={rx.status} />
+                                                </td>
+                                              </tr>
+                                              {rx.diagnosis ? (
+                                                <tr>
+                                                  <th
+                                                    scope="row"
+                                                    className="py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                  >
+                                                    Diagnosis
+                                                  </th>
+                                                  <td className="py-0.5 leading-snug text-primary">
+                                                    <p className="whitespace-pre-wrap">{rx.diagnosis}</p>
+                                                  </td>
+                                                </tr>
+                                              ) : null}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                        <div className="min-w-0">
+                                          <table className="w-full border-collapse text-left text-xs">
+                                            <tbody>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="w-[5.5rem] shrink-0 py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Patient
+                                                </th>
+                                                <td className="py-0.5 font-medium leading-snug text-primary">
+                                                  {patientLabel}
+                                                </td>
+                                              </tr>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Valid period
+                                                </th>
+                                                <td className="py-0.5">
+                                                  <ValidityPill rx={rx} />
+                                                  {(rx.validFrom || rx.validTo) && (
+                                                    <p className="mt-1 text-[11px] leading-snug text-text-secondary">
+                                                      {rx.validFrom && rx.validTo
+                                                        ? `${formatDate(rx.validFrom)} – ${formatDate(rx.validTo)}`
+                                                        : rx.validFrom
+                                                          ? `From ${formatDate(rx.validFrom)}`
+                                                          : rx.validTo
+                                                            ? `Until ${formatDate(rx.validTo)}`
+                                                            : null}
+                                                    </p>
+                                                  )}
+                                                </td>
+                                              </tr>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Visit
+                                                </th>
+                                                <td className="py-0.5 leading-snug text-primary">
+                                                  {appt
+                                                    ? `${formatVisitDateTime(appt.appointmentTime)} · ${appointmentTypeLabel(appt.type)}`
+                                                    : '—'}
+                                                </td>
+                                              </tr>
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </div>
+
+                                      {rx.instructions ? (
+                                        <div className="rounded-md border border-text-secondary/10 bg-background/45 px-2.5 py-2">
+                                          <p className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                                            Instructions
+                                          </p>
+                                          <p
+                                            className="mt-1 line-clamp-4 break-words text-xs leading-relaxed text-primary"
+                                            title={rx.instructions}
+                                          >
+                                            {rx.instructions}
+                                          </p>
+                                        </div>
+                                      ) : null}
+
+                                      <div>
+                                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                                          Medicines
+                                        </p>
+                                        <MedicinesDetailTable raw={rx.medicines} />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })
+              ) : (
+                <tr>
+                  <td colSpan={TABLE_COL_COUNT} className="p-0">
+                    <div className="rx-table-empty">
+                      <p className="text-text-secondary">
+                        {loading
+                          ? 'Loading prescriptions…'
+                          : emptyBecauseFilters
+                            ? 'No prescriptions match your filters. Try adjusting status or date range.'
+                            : allPrescriptions.length === 0
+                              ? 'Issue your first prescription using the button above, or complete a visit that still needs a script.'
+                              : 'No prescriptions found.'}
+                      </p>
+                      {emptyBecauseFilters && !loading && (
+                        <button
+                          type="button"
+                          className="mt-4 text-sm font-medium text-primary-light hover:underline"
+                          onClick={clearFilters}
+                        >
+                          Clear filters
+                        </button>
+                      )}
                     </div>
-                  </div>
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-      ) : (
-        <div className="rx-empty rx-fade-in" style={{ animationDelay: '0.2s' }}>
-          <div className="rx-empty-icon">
-            <ClipboardList className="h-8 w-8" strokeWidth={1.5} />
-          </div>
-          <h3 className="mt-4 text-lg font-semibold text-primary">
-            {loading ? 'Loading prescriptions...' : 'No prescriptions found'}
-          </h3>
-          <p className="mt-1.5 max-w-sm text-sm text-text-secondary">
-            {loading
-              ? 'Please wait while we fetch your prescription data.'
-              : activeFilterCount > 0
-                ? 'Try adjusting your filters or search terms to find what you\'re looking for.'
-                : 'Issue your first prescription using the button above to get started.'}
-          </p>
-          {activeFilterCount > 0 && !loading && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="btn-secondary mt-4 text-sm"
-            >
-              Clear filters
-            </button>
-          )}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
       </div>
 
       {/* ── Issue modal ─────────────────────────────────────────── */}
@@ -725,7 +1262,7 @@ export function DoctorPrescriptions() {
       {/* ── Detail modal ────────────────────────────────────────── */}
       {selectedPrescription && (
         <div
-          className="rx-backdrop-enter fixed inset-0 z-50 flex items-center justify-center bg-primary/20 p-4 backdrop-blur-sm"
+          className="rx-backdrop-enter fixed inset-0 z-[140] flex items-center justify-center bg-primary/20 p-4 backdrop-blur-sm"
           onClick={(e) =>
             e.target === e.currentTarget && setSelectedPrescription(null)
           }

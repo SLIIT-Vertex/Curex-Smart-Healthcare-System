@@ -63,4 +63,69 @@
   .rx-table tbody tr:nth-child(odd) {
     @apply bg-surface;
   }
+
+  /* Recent prescriptions (dashboard): compact card + mini table */
+  .recent-rx-list {
+    @apply list-none p-0;
+  }
+
+  .recent-rx-card {
+    @apply overflow-hidden rounded-xl border border-text-secondary/10 bg-background/50 transition-colors hover:border-primary-light/20;
+  }
+
+  .recent-rx-card__head {
+    @apply flex items-center justify-between gap-2 border-b border-text-secondary/10 px-3 py-2;
+  }
+
+  .recent-rx-card__patient {
+    @apply text-sm leading-snug;
+  }
+
+  .recent-rx-table {
+    @apply w-full border-collapse text-left text-sm leading-snug;
+  }
+
+  .recent-rx-table tbody tr {
+    @apply border-b border-text-secondary/10;
+  }
+
+  .recent-rx-table tbody tr:last-child {
+    @apply border-b-0;
+  }
+
+  .recent-rx-table th[scope='row'] {
+    @apply w-[5.25rem] max-w-[32%] py-1.5 pl-3 pr-2 align-top text-xs font-medium text-text-secondary;
+  }
+
+  .recent-rx-table td {
+    @apply py-1.5 pr-3 align-top text-primary;
+  }
+
+  .recent-rx-table__clamp-2 {
+    @apply line-clamp-2 break-words;
+  }
+
+  .recent-rx-status {
+    @apply shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide;
+  }
+
+  .recent-rx-status--active {
+    @apply bg-accent-mint/15 text-emerald-700;
+  }
+
+  .recent-rx-status--issued {
+    @apply bg-primary-light/15 text-primary-light;
+  }
+
+  .recent-rx-status--completed {
+    @apply bg-accent-sky/15 text-sky-700;
+  }
+
+  .recent-rx-status--pending {
+    @apply bg-accent-peach/15 text-amber-700;
+  }
+
+  .recent-rx-status--cancelled {
+    @apply bg-error/15 text-red-600;
+  }
 }

@@ -96,8 +96,8 @@ public class PrescriptionService {
                 .instructions(request.getInstructions())
                 .validFrom(validFrom)
                 .validTo(validTo)
-                // Stored placeholder; API status is date-derived via resolveEffectiveStatus (except CANCELLED).
-                .status(PrescriptionStatus.PENDING)
+                // Stored value; API status is derived via resolveEffectiveStatus (except CANCELLED).
+                .status(PrescriptionStatus.ISSUED)
                 .issuedAt(LocalDateTime.now())
                 .build();
 
@@ -211,26 +211,30 @@ public class PrescriptionService {
     }
 
     /**
-     * Effective status for API/UI: driven by validFrom / validTo vs today, except
-     * {@link PrescriptionStatus#CANCELLED} which is terminal and stored explicitly.
+     * Effective status for API/UI: driven by whether medicines exist, then validFrom / validTo vs today,
+     * except {@link PrescriptionStatus#CANCELLED} which is terminal and stored explicitly.
      * <ul>
-     *   <li>{@code PENDING} — today is before validFrom (issued but not yet active)</li>
-     *   <li>{@code ACTIVE} — today is on or after validFrom and on or before validTo</li>
-     *   <li>{@code COMPLETED} — today is after validTo (course finished)</li>
+     *   <li>{@code PENDING} — no prescribed medicines (nothing to dispense yet)</li>
+     *   <li>{@code ISSUED} — medicines prescribed, but today is before {@code validFrom} (not yet valid / active)</li>
+     *   <li>{@code ACTIVE} — within {@code validFrom}–{@code validTo} (currently valid)</li>
+     *   <li>{@code COMPLETED} — today is after {@code validTo} (course finished)</li>
      * </ul>
      */
     private String resolveEffectiveStatus(Prescription prescription) {
         if (prescription.getStatus() == PrescriptionStatus.CANCELLED) {
             return PrescriptionStatus.CANCELLED.name();
         }
+        if (!hasPrescribedMedicines(prescription)) {
+            return PrescriptionStatus.PENDING.name();
+        }
         LocalDate from = prescription.getValidFrom();
         LocalDate to = prescription.getValidTo();
         if (from == null || to == null) {
-            return prescription.getStatus().name();
+            return PrescriptionStatus.ISSUED.name();
         }
         LocalDate today = todayForPrescriptionStatus();
         if (today.isBefore(from)) {
-            return PrescriptionStatus.PENDING.name();
+            return PrescriptionStatus.ISSUED.name();
         }
         if (today.isAfter(to)) {
             return PrescriptionStatus.COMPLETED.name();
@@ -238,8 +242,13 @@ public class PrescriptionService {
         return PrescriptionStatus.ACTIVE.name();
     }
 
+    private boolean hasPrescribedMedicines(Prescription prescription) {
+        String m = prescription.getMedicines();
+        return m != null && !m.isBlank();
+    }
+
     /**
-     * Uses {@link #prescriptionStatusZone} so PENDING/ACTIVE/COMPLETED match the same calendar the UI uses for validity
+     * Uses {@link #prescriptionStatusZone} so ISSUED/ACTIVE/COMPLETED match the same calendar the UI uses for validity
      * (Docker JVM default is often UTC, which can lag “today” for users ahead of UTC).
      */
     private LocalDate todayForPrescriptionStatus() {

@@ -315,6 +315,14 @@ public class NotificationEventConsumer {
             String safePatientName = patientName != null ? HtmlUtils.htmlEscape(patientName) : "Patient";
             String safeRxId        = prescriptionId != null ? HtmlUtils.htmlEscape(prescriptionId) : "—";
 
+            if (patientId != null && !patientId.isBlank()
+                    && (patientEmail == null || patientEmail.isBlank())) {
+                String resolved = userPreferenceClient.resolveUserEmail(patientId);
+                if (resolved != null) {
+                    patientEmail = resolved;
+                }
+            }
+
             // ── Patient notifications ──────────────────────────────────────
 
             UserPreferenceClient.NotificationPreferences patientPrefs =

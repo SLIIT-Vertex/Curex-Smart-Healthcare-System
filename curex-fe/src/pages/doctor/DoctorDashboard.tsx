@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Calendar, ClipboardList, Users, Clock, Pill } from 'lucide-react'
+import { Calendar, ClipboardList, Users, Clock } from 'lucide-react'
 import {
   BarChart,
   Bar,
@@ -12,7 +12,12 @@ import {
   Legend,
 } from 'recharts'
 import { StatCard } from '../../components/doctor/StatCard'
-import type { Appointment, Prescription, DashboardStats } from '../../types/doctor'
+import type {
+  Appointment,
+  Prescription,
+  PrescriptionStatus,
+  DashboardStats,
+} from '../../types/doctor'
 import '../../styles/pages/DoctorDashboard.css'
 import { useAuth } from '../../store/hooks'
 import { getDoctorByUserId } from '../../services/doctorService'
@@ -68,24 +73,64 @@ const MOCK_APPOINTMENTS: Appointment[] = [
   },
 ]
 
-const RECENT_RX_LIMIT = 3
+const RECENT_RX_LIMIT = 2
 
 function formatTime(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
-function formatRxDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', {
+function formatRxIssued(iso: string): string {
+  const d = new Date(iso)
+  return `${d.toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'short',
-  })
+    year: 'numeric',
+  })}, ${d.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`
 }
 
-function medicinesSummary(raw: string, maxLen = 72): string {
-  const first = raw.split(';').map((s) => s.trim()).filter(Boolean)[0] ?? raw.trim()
-  if (first.length <= maxLen) return first
-  return `${first.slice(0, maxLen - 1)}…`
+function formatValidRange(from?: string, to?: string): string | null {
+  if (!from?.trim() && !to?.trim()) return null
+  const a = from?.trim()
+    ? new Date(from).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: '2-digit',
+      })
+    : '—'
+  const b = to?.trim()
+    ? new Date(to).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: '2-digit',
+      })
+    : '—'
+  return `${a} → ${b}`
+}
+
+function recentRxStatusLabel(status: PrescriptionStatus | undefined): string {
+  const s = status ?? 'PENDING'
+  if (s === 'ACTIVE') return 'Active'
+  if (s === 'ISSUED') return 'Issued'
+  if (s === 'COMPLETED') return 'Completed'
+  if (s === 'CANCELLED') return 'Cancelled'
+  return 'Pending'
+}
+
+function recentRxStatusClass(status: PrescriptionStatus | undefined): string {
+  const s = status ?? 'PENDING'
+  if (s === 'ACTIVE') {
+    return 'recent-rx-status recent-rx-status--active'
+  }
+  if (s === 'ISSUED') {
+    return 'recent-rx-status recent-rx-status--issued'
+  }
+  if (s === 'COMPLETED') return 'recent-rx-status recent-rx-status--completed'
+  if (s === 'CANCELLED') return 'recent-rx-status recent-rx-status--cancelled'
+  return 'recent-rx-status recent-rx-status--pending'
 }
 
 function getGreeting(): string {
@@ -298,56 +343,66 @@ export function DoctorDashboard() {
               {Array.from({ length: RECENT_RX_LIMIT }).map((_, i) => (
                 <li
                   key={i}
-                  className="h-[4.25rem] animate-pulse rounded-xl bg-background/70"
+                  className="h-[3.5rem] animate-pulse rounded-xl border border-text-secondary/10 bg-background/70"
                 />
               ))}
             </ul>
           ) : recentPrescriptions.length > 0 ? (
             <>
-              <ul className="mt-4 space-y-2.5" role="list">
+              <ul className="recent-rx-list mt-4 space-y-2" role="list">
                 {recentPrescriptions.map((rx) => {
                   const patient =
                     rx.patientName?.trim() || rx.patientId || 'Patient'
-                  const meds = medicinesSummary(rx.medicines)
+                  const validRange = formatValidRange(rx.validFrom, rx.validTo)
+                  const diagnosis = rx.diagnosis?.trim()
                   return (
                     <li key={rx.id}>
-                      <div
-                        className="group flex overflow-hidden rounded-xl border border-text-secondary/10 bg-background/40 transition-shadow hover:shadow-md"
-                        style={{ boxShadow: 'var(--shadow-card)' }}
-                      >
-                        <div
-                          className="w-1 shrink-0 bg-accent-mint"
-                          aria-hidden
-                        />
-                        <div className="min-w-0 flex-1 px-3 py-2.5 sm:px-4">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="truncate text-sm font-semibold text-primary">
+                      <article className="recent-rx-card">
+                        <header className="recent-rx-card__head">
+                          <p className="recent-rx-card__patient min-w-0 truncate">
+                            <span className="text-text-secondary">Patient:</span>{' '}
+                            <span className="font-semibold text-primary">
                               {patient}
-                            </p>
-                            <time
-                              className="shrink-0 text-xs font-medium text-text-secondary"
-                              dateTime={rx.issuedAt}
-                            >
-                              {formatRxDate(rx.issuedAt)}
-                            </time>
-                          </div>
-                          <div className="mt-2 flex items-center gap-2">
-                            <Pill
-                              className="h-3.5 w-3.5 shrink-0 text-primary-light"
-                              strokeWidth={1.5}
-                              aria-hidden
-                            />
-                            <p className="truncate text-xs text-text-secondary">
-                              {meds}
-                            </p>
-                          </div>
-                          {rx.instructions?.trim() && (
-                            <p className="mt-1 line-clamp-1 text-[11px] text-text-secondary/90">
-                              {rx.instructions.trim()}
-                            </p>
-                          )}
-                        </div>
-                      </div>
+                            </span>
+                          </p>
+                          <span
+                            className={recentRxStatusClass(rx.status)}
+                            title="Prescription status"
+                          >
+                            {recentRxStatusLabel(rx.status)}
+                          </span>
+                        </header>
+                        <table className="recent-rx-table">
+                          <tbody>
+                            <tr>
+                              <th scope="row">Issued</th>
+                              <td>
+                                <time dateTime={rx.issuedAt}>
+                                  {formatRxIssued(rx.issuedAt)}
+                                </time>
+                              </td>
+                            </tr>
+                            <tr>
+                              <th scope="row">Diagnosis</th>
+                              <td
+                                className={
+                                  diagnosis
+                                    ? 'recent-rx-table__clamp-2'
+                                    : 'text-text-secondary'
+                                }
+                              >
+                                {diagnosis || '—'}
+                              </td>
+                            </tr>
+                            {validRange && (
+                              <tr>
+                                <th scope="row">Valid</th>
+                                <td>{validRange}</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </article>
                     </li>
                   )
                 })}

@@ -1,43 +1,58 @@
 import axios from 'axios'
 import api from './axiosInstance'
 import type {
-  PatientProfile,
   MedicalHistory,
+  PatientProfile,
   PatientPrescription,
 } from '../types/patient.ts'
-import type { UserInfo } from '../types/auth'
+import type { UserInfo, UserResponse } from '../types/auth'
 
-/** Use mock data when backend is unavailable (e.g. during development). */
-const USE_MOCK_ON_ERROR = true
-
-/*  Mock data (fallback when API unreachable)  */
-
-const MOCK_PROFILE: PatientProfile = {
-  id: 'p1',
-  name: 'Emma Tin',
-  email: 'emma@example.com',
-  phone: '+94 77 456 7890',
-  dateOfBirth: '1996-05-12',
-  gender: 'FEMALE',
-  bloodType: 'O+',
-  address: 'Colombo 03',
-  createdAt: '2024-01-15T10:00:00Z',
-  medicalHistory: {
-    conditions: ['Diabetes (Type 2)'],
-    allergies: ['Penicillin'],
-    pastSurgeries: [],
-  },
-  emergencyContact: {
-    name: 'John Tin',
-    relationship: 'Spouse',
-    phone: '+94 77 111 2222',
-  },
+/** User profile stores allergies / chronic conditions as free text; patient-service uses lists. */
+function splitClinicalText(raw?: string | null): string[] {
+  if (raw == null || !String(raw).trim()) return []
+  return String(raw)
+    .split(/[,;\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
 }
 
-const MOCK_MEDICAL_HISTORY: MedicalHistory = {
-  conditions: ['Diabetes (Type 2)'],
-  allergies: ['Penicillin'],
-  pastSurgeries: [],
+function mergeUniqueClinicalStrings(a: string[], b: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const x of [...a, ...b]) {
+    const t = x.trim()
+    const k = t.toLowerCase()
+    if (!k || seen.has(k)) continue
+    seen.add(k)
+    out.push(t)
+  }
+  return out
+}
+
+/**
+ * Merges patient-service profile with user-service fields. Clinical data
+ * (DOB, blood group, allergies, chronic conditions) is often only persisted on
+ * {@link UserResponse} from registration / settings, not on the patient record.
+ */
+export function enrichPatientProfileWithUser(
+  patient: PatientProfile,
+  user: UserResponse
+): PatientProfile {
+  const userAllergies = splitClinicalText(user.allergies)
+  const userChronic = splitClinicalText(user.chronicConditions)
+  const pAllergies = patient.medicalHistory?.allergies ?? []
+  const pConditions = patient.medicalHistory?.conditions ?? []
+
+  return {
+    ...patient,
+    dateOfBirth: patient.dateOfBirth || user.dob || undefined,
+    bloodType: patient.bloodType || user.bloodGroup || undefined,
+    medicalHistory: {
+      allergies: mergeUniqueClinicalStrings(pAllergies, userAllergies),
+      conditions: mergeUniqueClinicalStrings(pConditions, userChronic),
+      pastSurgeries: patient.medicalHistory?.pastSurgeries ?? [],
+    },
+  }
 }
 
 /*  API functions  */
@@ -82,16 +97,49 @@ export async function getPatientByUserId(
 }
 
 export async function getProfile(patientId: string): Promise<PatientProfile> {
+  const { data } = await api.get<PatientProfile>(
+    `/api/patients/${patientId}`
+  )
+  return data
+}
+
+/**
+ * Resolves a patient profile when the identifier might be either:
+ * - patient-service profile id (`GET /api/patients/{id}`), or
+ * - auth user id (`GET /api/patients/by-user/{userId}`), which is what
+ *   appointments and prescriptions use for `patientId` in this app.
+ */
+export async function getPatientProfileResolved(
+  patientIdOrUserId: string
+): Promise<PatientProfile> {
   try {
-    const { data } = await api.get<PatientProfile>(
-      `/api/patients/${patientId}`
-    )
-    return data
+    return await getProfile(patientIdOrUserId)
   } catch (err) {
-    if (USE_MOCK_ON_ERROR) {
-      return { ...MOCK_PROFILE, id: patientId }
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      const { data } = await api.get<PatientProfile>(
+        `/api/patients/by-user/${patientIdOrUserId}`
+      )
+      return data
     }
     throw err
+  }
+}
+
+/**
+ * Full patient context for doctor flows: patient-service identity + user-service
+ * clinical fields (same `appointmentPatientUserId` as on appointments).
+ */
+export async function getPatientClinicalProfileForAppointment(
+  appointmentPatientUserId: string
+): Promise<PatientProfile> {
+  const patient = await getPatientProfileResolved(appointmentPatientUserId)
+  try {
+    const { data: user } = await api.get<UserResponse>(
+      `/api/users/${appointmentPatientUserId}`
+    )
+    return enrichPatientProfileWithUser(patient, user)
+  } catch {
+    return patient
   }
 }
 
@@ -99,34 +147,20 @@ export async function updateProfile(
   patientId: string,
   data: Partial<PatientProfile>
 ): Promise<PatientProfile> {
-  try {
-    const { data: updated } = await api.put<PatientProfile>(
-      `/api/patients/${patientId}`,
-      data
-    )
-    return updated
-  } catch (err) {
-    if (USE_MOCK_ON_ERROR) {
-      return { ...MOCK_PROFILE, ...data, id: patientId } as PatientProfile
-    }
-    throw err
-  }
+  const { data: updated } = await api.put<PatientProfile>(
+    `/api/patients/${patientId}`,
+    data
+  )
+  return updated
 }
 
 export async function getMedicalHistory(
   patientId: string
 ): Promise<MedicalHistory> {
-  try {
-    const { data } = await api.get<MedicalHistory>(
-      `/api/patients/${patientId}/history`
-    )
-    return data
-  } catch (err) {
-    if (USE_MOCK_ON_ERROR) {
-      return MOCK_MEDICAL_HISTORY
-    }
-    throw err
-  }
+  const { data } = await api.get<MedicalHistory>(
+    `/api/patients/${patientId}/history`
+  )
+  return data
 }
 
 export async function getPrescriptions(
