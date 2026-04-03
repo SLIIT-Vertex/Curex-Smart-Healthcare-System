@@ -281,6 +281,7 @@ public class Notification {
         DOCTOR_REJECTION,
         PAYMENT_CONFIRMATION,
         PRESCRIPTION_READY,
+        PRESCRIPTION_CANCELLED,
         CONSULTATION_REMINDER,
         SYSTEM_ALERT
     }

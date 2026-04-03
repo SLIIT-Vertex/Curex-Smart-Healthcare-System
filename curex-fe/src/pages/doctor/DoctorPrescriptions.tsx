@@ -1,4 +1,12 @@
-import { useState, useMemo, useEffect, useCallback, Fragment } from 'react'
+import {
+  useState,
+  useMemo,
+  useEffect,
+  useCallback,
+  Fragment,
+  type ComponentType,
+  type ReactNode,
+} from 'react'
 import {
   Plus,
   Search,
@@ -15,6 +23,7 @@ import {
   ChevronDown,
   ChevronUp,
   CalendarClock,
+  Ban,
 } from 'lucide-react'
 import { PrescriptionForm } from '../../components/doctor/PrescriptionForm'
 import type { Prescription, PrescriptionStatus } from '../../types/doctor'
@@ -24,9 +33,16 @@ import { getApiErrorMessage } from '../../services/axiosInstance'
 import {
   getPrescriptionsByDoctor,
   issuePrescription,
+  updatePrescriptionStatus,
 } from '../../services/prescriptionService'
+import {
+  doctorCancellationDeadlineEnd,
+  isWithinDoctorCancellationWindow,
+} from '../../lib/prescriptionCancellation'
 import { getAppointmentsByDoctor } from '../../services/appointmentService'
 import type { AppointmentRecord } from '../../types/appointment'
+import type { PatientProfile } from '../../types/patient'
+import { getPatientClinicalProfileForAppointment } from '../../services/patientService'
 import { useAuth } from '../../store/hooks'
 import { useToast } from '../../store/hooks'
 import '../../styles/pages/DoctorPrescriptions.css'
@@ -105,6 +121,59 @@ function parseMedicines(raw: string): string[] {
     .split(';')
     .map((s) => s.trim())
     .filter(Boolean)
+}
+
+function ageFromDateOfBirth(iso?: string): string | null {
+  if (!iso?.trim()) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  const today = new Date()
+  let age = today.getFullYear() - d.getFullYear()
+  const m = today.getMonth() - d.getMonth()
+  if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age -= 1
+  if (age < 0 || age > 130) return null
+  return String(age)
+}
+
+function formatClinicalList(items: string[] | undefined, emptyLabel: string): string {
+  if (!items?.length) return emptyLabel
+  return items.join(', ')
+}
+
+function RxDetailDetailBlock({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="space-y-0.5">
+      <dt className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+        {label}
+      </dt>
+      <dd className="text-sm font-medium leading-snug text-primary">{value}</dd>
+    </div>
+  )
+}
+
+function RxDetailPanelCard({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <section
+      className="rounded-2xl border border-text-secondary/12 bg-surface p-4 shadow-sm"
+      style={{ boxShadow: 'var(--shadow-card)' }}
+    >
+      <div className="mb-3 flex items-center gap-2 border-b border-text-secondary/10 pb-2">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-light/10 text-primary-light">
+          <Icon className="h-4 w-4" strokeWidth={1.75} />
+        </div>
+        <h3 className="text-sm font-semibold text-primary">{title}</h3>
+      </div>
+      {children}
+    </section>
+  )
 }
 
 /** Days before validTo to highlight as “expiring soon” (same as patient view). */
@@ -466,8 +535,14 @@ export function DoctorPrescriptions() {
   const [statusFilter, setStatusFilter] = useState<PrescriptionStatus | ''>('')
   const [selectedPrescription, setSelectedPrescription] =
     useState<Prescription | null>(null)
+  const [detailPatientProfile, setDetailPatientProfile] =
+    useState<PatientProfile | null>(null)
+  const [detailProfileResolvedForPatientId, setDetailProfileResolvedForPatientId] =
+    useState<string | null>(null)
   const [prefill, setPrefill] = useState<{ patientId: string; appointmentId: string } | undefined>(undefined)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
+  const [cancelSubmitting, setCancelSubmitting] = useState(false)
 
   const patientNames = useMemo(() => {
     const map: Record<string, string> = {}
@@ -487,6 +562,42 @@ export function DoctorPrescriptions() {
     })
     return map
   }, [appointments])
+
+  useEffect(() => {
+    const pid = selectedPrescription?.patientId
+    if (!pid) {
+      setDetailPatientProfile(null)
+      setDetailProfileResolvedForPatientId(null)
+      return
+    }
+    let cancelled = false
+    setDetailProfileResolvedForPatientId(null)
+    getPatientClinicalProfileForAppointment(pid)
+      .then((profile) => {
+        if (!cancelled) {
+          setDetailPatientProfile(profile)
+          setDetailProfileResolvedForPatientId(pid)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDetailPatientProfile({
+            id: pid,
+            name: '',
+            email: '',
+            createdAt: '',
+          })
+          setDetailProfileResolvedForPatientId(pid)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedPrescription?.patientId])
+
+  useEffect(() => {
+    setCancelConfirmOpen(false)
+  }, [selectedPrescription?.id])
 
   const eligibleAppointments = useMemo(() => {
     return appointments.filter(
@@ -698,6 +809,40 @@ export function DoctorPrescriptions() {
 
   const displayName = (rx: Prescription) =>
     rx.patientName ?? patientNames[rx.patientId] ?? rx.patientId
+
+  const detailCancelEligibility = useMemo(() => {
+    if (!selectedPrescription || isPendingPlaceholder(selectedPrescription)) {
+      return null
+    }
+    if (normalizeRxStatus(selectedPrescription.status) === 'CANCELLED') {
+      return { show: false as const, reason: 'cancelled' as const }
+    }
+    const withinWindow = isWithinDoctorCancellationWindow(
+      selectedPrescription.issuedAt,
+      selectedPrescription.validFrom
+    )
+    const deadlineEnd = doctorCancellationDeadlineEnd(
+      selectedPrescription.issuedAt,
+      selectedPrescription.validFrom
+    )
+    return { show: true as const, withinWindow, deadlineEnd }
+  }, [selectedPrescription])
+
+  const handleConfirmCancelPrescription = useCallback(async () => {
+    if (!selectedPrescription) return
+    setCancelSubmitting(true)
+    try {
+      await updatePrescriptionStatus(selectedPrescription.id, 'CANCELLED')
+      toast('Prescription cancelled', 'success')
+      setCancelConfirmOpen(false)
+      setSelectedPrescription(null)
+      await fetchDoctorAndData()
+    } catch (err: unknown) {
+      toast(getApiErrorMessage(err, 'Failed to cancel prescription'), 'error')
+    } finally {
+      setCancelSubmitting(false)
+    }
+  }, [selectedPrescription, toast, fetchDoctorAndData])
 
   if (loading && !doctorId) {
     return (
@@ -1262,158 +1407,325 @@ export function DoctorPrescriptions() {
       {/* ── Detail modal ────────────────────────────────────────── */}
       {selectedPrescription && (
         <div
-          className="rx-backdrop-enter fixed inset-0 z-[140] flex items-center justify-center bg-primary/20 p-4 backdrop-blur-sm"
+          className="rx-backdrop-enter fixed inset-0 z-[140] flex items-center justify-center bg-primary/25 p-3 backdrop-blur-sm sm:p-5"
           onClick={(e) =>
             e.target === e.currentTarget && setSelectedPrescription(null)
           }
+          role="presentation"
         >
           <div
-            className="rx-modal-enter relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface"
-            style={{ boxShadow: '0 24px 80px rgb(28 39 76 / 0.15)' }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rx-detail-modal-title"
+            className="rx-modal-enter relative flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-surface shadow-2xl ring-1 ring-primary/8"
+            style={{ boxShadow: '0 24px 80px rgb(28 39 76 / 0.18)' }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal header */}
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-text-secondary/10 bg-surface/95 px-6 py-4 backdrop-blur-md">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-light/10">
+            <div className="flex shrink-0 items-center justify-between border-b border-text-secondary/10 bg-surface px-5 py-4 sm:px-7 sm:py-5">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-light/10">
                   <FileText className="h-5 w-5 text-primary-light" strokeWidth={1.5} />
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold text-primary">
+                <div className="min-w-0">
+                  <h2
+                    id="rx-detail-modal-title"
+                    className="truncate text-lg font-semibold tracking-tight text-primary sm:text-xl"
+                  >
                     Prescription Details
                   </h2>
-                  <p className="text-xs text-text-secondary">
-                    ID: {selectedPrescription.id.slice(0, 12)}...
+                  <p className="mt-0.5 break-all font-mono text-[11px] leading-snug text-text-secondary sm:text-xs">
+                    {selectedPrescription.id}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedPrescription(null)}
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-text-secondary transition-colors hover:bg-primary-light/10 hover:text-primary"
+                className="ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-text-secondary transition-colors hover:bg-primary-light/10 hover:text-primary"
                 aria-label="Close"
               >
                 <X className="h-5 w-5" strokeWidth={1.5} />
               </button>
             </div>
 
-            {/* Modal body */}
-            <div className="space-y-5 p-6">
-              {/* Patient & Status */}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-light/8">
-                    <User className="h-6 w-6 text-primary-light" strokeWidth={1.5} />
+            <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+              <aside className="flex max-h-[42vh] shrink-0 flex-col gap-4 overflow-y-auto border-b border-text-secondary/10 bg-background/50 p-4 sm:p-5 lg:max-h-none lg:w-[min(100%,20rem)] lg:border-b-0 lg:border-r xl:w-[22rem]">
+                <RxDetailPanelCard icon={User} title="Patient details">
+                  {(() => {
+                    const pid = selectedPrescription.patientId
+                    const detailLoading =
+                      Boolean(pid) && detailProfileResolvedForPatientId !== pid
+                    const appt = selectedPrescription.appointmentId
+                      ? appointmentById[selectedPrescription.appointmentId]
+                      : undefined
+                    const emailFromProfile =
+                      detailPatientProfile?.email?.trim() || ''
+                    const emailFromAppt = appt?.patientEmail?.trim() || ''
+                    const emailLine =
+                      emailFromProfile || emailFromAppt || null
+                    const patientAge = detailPatientProfile
+                      ? ageFromDateOfBirth(detailPatientProfile.dateOfBirth)
+                      : null
+                    const bloodDisplay =
+                      detailPatientProfile?.bloodType?.trim() || null
+                    const allergiesDisplay = detailPatientProfile
+                      ? formatClinicalList(
+                          detailPatientProfile.medicalHistory?.allergies,
+                          'None on file'
+                        )
+                      : null
+                    const chronicDisplay = detailPatientProfile
+                      ? formatClinicalList(
+                          detailPatientProfile.medicalHistory?.conditions,
+                          'None on file'
+                        )
+                      : null
+
+                    if (detailLoading) {
+                      return (
+                        <p className="text-sm text-text-secondary">
+                          Loading patient details…
+                        </p>
+                      )
+                    }
+
+                    return (
+                      <dl className="space-y-3">
+                        <RxDetailDetailBlock
+                          label="Name"
+                          value={displayName(selectedPrescription)}
+                        />
+                        {emailLine ? (
+                          <RxDetailDetailBlock label="Email" value={emailLine} />
+                        ) : null}
+                        <RxDetailDetailBlock
+                          label="Age"
+                          value={
+                            patientAge != null
+                              ? `${patientAge} years`
+                              : detailPatientProfile?.dateOfBirth
+                                ? '—'
+                                : 'Not on file'
+                          }
+                        />
+                        <RxDetailDetailBlock
+                          label="Blood group"
+                          value={bloodDisplay ?? 'Not on file'}
+                        />
+                        <RxDetailDetailBlock
+                          label="Known allergies"
+                          value={allergiesDisplay ?? '—'}
+                        />
+                        <RxDetailDetailBlock
+                          label="Chronic conditions"
+                          value={chronicDisplay ?? '—'}
+                        />
+                      </dl>
+                    )
+                  })()}
+                </RxDetailPanelCard>
+
+                <RxDetailPanelCard icon={CalendarClock} title="Appointment details">
+                  {(() => {
+                    const aid = selectedPrescription.appointmentId
+                    const appt = aid ? appointmentById[aid] : undefined
+                    if (!aid) {
+                      return (
+                        <p className="text-sm text-text-secondary">
+                          This prescription is not linked to an appointment in your
+                          schedule.
+                        </p>
+                      )
+                    }
+                    if (!appt) {
+                      return (
+                        <p className="text-sm text-text-secondary">
+                          Appointment details are not available (the visit may have
+                          been removed from your list).
+                        </p>
+                      )
+                    }
+                    return (
+                      <dl className="space-y-3">
+                        <RxDetailDetailBlock
+                          label="Date & time"
+                          value={formatVisitDateTime(appt.appointmentTime)}
+                        />
+                        <RxDetailDetailBlock
+                          label="Visit type"
+                          value={appointmentTypeLabel(appt.type)}
+                        />
+                        <RxDetailDetailBlock
+                          label="Visit status"
+                          value={appointmentStatusLabel(appt.status)}
+                        />
+                      </dl>
+                    )
+                  })()}
+                </RxDetailPanelCard>
+              </aside>
+
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4 sm:p-6 lg:p-7">
+                <div className="flex flex-col gap-4 rounded-2xl border border-text-secondary/12 bg-surface p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-5">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+                      Status
+                    </span>
+                    <StatusBadge status={selectedPrescription.status} />
                   </div>
-                  <div>
-                    <p className="font-semibold text-primary">
-                      {displayName(selectedPrescription)}
-                    </p>
-                    <p className="text-xs text-text-secondary">Patient</p>
+                  <div className="grid flex-1 gap-4 sm:min-w-[12rem] sm:grid-cols-2 lg:grid-cols-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+                        Issued
+                      </p>
+                      <p className="mt-1 text-sm font-medium leading-snug text-primary">
+                        {formatIssuedDetail(selectedPrescription.issuedAt)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+                        Valid period
+                      </p>
+                      <div className="mt-1">
+                        <ValidityPill rx={selectedPrescription} />
+                        {(selectedPrescription.validFrom ||
+                          selectedPrescription.validTo) && (
+                          <p className="mt-1.5 text-xs leading-snug text-text-secondary">
+                            {selectedPrescription.validFrom &&
+                            selectedPrescription.validTo
+                              ? `${formatDate(selectedPrescription.validFrom)} – ${formatDate(selectedPrescription.validTo)}`
+                              : selectedPrescription.validFrom
+                                ? `From ${formatDate(selectedPrescription.validFrom)}`
+                                : selectedPrescription.validTo
+                                  ? `Until ${formatDate(selectedPrescription.validTo)}`
+                                  : null}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <StatusBadge status={selectedPrescription.status} />
-              </div>
 
-              {/* Details grid */}
-              <div className="rx-detail-section">
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div>
-                    <p className="rx-detail-label">Issued</p>
-                    <p className="rx-detail-value">
-                      {formatDate(selectedPrescription.issuedAt)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="rx-detail-label">Valid from</p>
-                    <p className="rx-detail-value">
-                      {selectedPrescription.validFrom
-                        ? formatDate(selectedPrescription.validFrom)
-                        : '—'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="rx-detail-label">Valid to</p>
-                    <p className="rx-detail-value">
-                      {selectedPrescription.validTo
-                        ? formatDate(selectedPrescription.validTo)
-                        : '—'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Diagnosis */}
-              {selectedPrescription.diagnosis && (
-                <div>
-                  <div className="mb-2 flex items-center gap-2">
-                    <Stethoscope className="h-4 w-4 text-primary-light" strokeWidth={1.5} />
-                    <h3 className="text-sm font-semibold text-primary">Diagnosis</h3>
-                  </div>
-                  <div className="rx-detail-section">
-                    <p className="text-sm leading-relaxed text-primary whitespace-pre-wrap">
+                {selectedPrescription.diagnosis ? (
+                  <section className="overflow-hidden rounded-2xl border border-text-secondary/12 bg-background/40">
+                    <div className="flex items-center gap-2 border-b border-text-secondary/10 bg-surface/80 px-4 py-3">
+                      <Stethoscope
+                        className="h-4 w-4 shrink-0 text-primary-light"
+                        strokeWidth={1.5}
+                      />
+                      <h3 className="text-sm font-semibold text-primary">Diagnosis</h3>
+                    </div>
+                    <p className="px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-primary">
                       {selectedPrescription.diagnosis}
                     </p>
-                  </div>
-                </div>
-              )}
+                  </section>
+                ) : null}
 
-              {/* Medicines */}
-              <div>
-                <div className="mb-2 flex items-center gap-2">
-                  <Pill className="h-4 w-4 text-primary-light" strokeWidth={1.5} />
-                  <h3 className="text-sm font-semibold text-primary">Medicines</h3>
-                </div>
-                <div className="space-y-2">
-                  {parseMedicines(selectedPrescription.medicines).map(
-                    (med, i) => (
-                      <div key={i} className="rx-medicine-row">
-                        <div className="rx-medicine-pill">{i + 1}</div>
-                        <p className="text-sm text-primary">{med}</p>
-                      </div>
-                    )
-                  )}
-                </div>
-              </div>
-
-              {/* Instructions */}
-              {selectedPrescription.instructions && (
-                <div>
-                  <div className="mb-2 flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-primary-light" strokeWidth={1.5} />
-                    <h3 className="text-sm font-semibold text-primary">
-                      Instructions
-                    </h3>
+                <section className="overflow-hidden rounded-2xl border border-text-secondary/12 bg-background/40">
+                  <div className="flex items-center gap-2 border-b border-text-secondary/10 bg-surface/80 px-4 py-3">
+                    <Pill className="h-4 w-4 shrink-0 text-primary-light" strokeWidth={1.5} />
+                    <h3 className="text-sm font-semibold text-primary">Medicines</h3>
                   </div>
-                  <div className="rx-detail-section">
-                    <p className="text-sm leading-relaxed text-primary whitespace-pre-wrap">
+                  <div className="p-3 sm:p-4">
+                    <MedicinesDetailTable raw={selectedPrescription.medicines} />
+                  </div>
+                </section>
+
+                {selectedPrescription.instructions ? (
+                  <section className="overflow-hidden rounded-2xl border border-text-secondary/12 bg-background/40">
+                    <div className="flex items-center gap-2 border-b border-text-secondary/10 bg-surface/80 px-4 py-3">
+                      <FileText
+                        className="h-4 w-4 shrink-0 text-primary-light"
+                        strokeWidth={1.5}
+                      />
+                      <h3 className="text-sm font-semibold text-primary">
+                        Instructions
+                      </h3>
+                    </div>
+                    <p className="px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-primary">
                       {selectedPrescription.instructions}
                     </p>
-                  </div>
+                  </section>
+                ) : null}
                 </div>
-              )}
 
-              {/* Linked visit (human-readable; no appointment ID) */}
-              {selectedPrescription.appointmentId &&
-                appointmentById[selectedPrescription.appointmentId] && (
-                  <div className="rx-detail-section">
-                    <p className="rx-detail-label">Visit</p>
-                    <p className="mt-1 text-sm font-medium text-primary">
-                      {formatVisitDateTime(
-                        appointmentById[selectedPrescription.appointmentId].appointmentTime
-                      )}
-                    </p>
-                    <p className="mt-1 text-xs text-text-secondary">
-                      {appointmentTypeLabel(
-                        appointmentById[selectedPrescription.appointmentId].type
-                      )}
-                      <span className="mx-1.5 text-text-secondary/40">·</span>
-                      {appointmentStatusLabel(
-                        appointmentById[selectedPrescription.appointmentId].status
-                      )}
-                    </p>
+                {detailCancelEligibility?.show ? (
+                  <div className="shrink-0 border-t border-text-secondary/10 bg-surface/95 px-4 py-4 sm:px-6 lg:px-7">
+                    <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-4">
+                      <p className="max-w-xl text-right text-xs leading-snug text-text-secondary">
+                        {detailCancelEligibility.withinWindow
+                          ? `Cancellation allowed until ${formatIssuedDetail(
+                              detailCancelEligibility.deadlineEnd.toISOString()
+                            )} (1 hour from issue or from when it becomes active; server is authoritative).`
+                          : `Cancellation window closed (deadline was ${formatIssuedDetail(
+                              detailCancelEligibility.deadlineEnd.toISOString()
+                            )}).`}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={!detailCancelEligibility.withinWindow || cancelSubmitting}
+                        onClick={() => setCancelConfirmOpen(true)}
+                        className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-error/35 bg-error/10 px-4 py-2.5 text-sm font-semibold text-error transition hover:bg-error/15 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <Ban className="h-4 w-4" strokeWidth={1.75} />
+                        Cancel prescription
+                      </button>
+                    </div>
                   </div>
-                )}
+                ) : null}
+
+                {cancelConfirmOpen && detailCancelEligibility?.show ? (
+                  <div
+                    className="absolute inset-0 z-[160] flex items-center justify-center rounded-3xl bg-primary/35 p-4 backdrop-blur-sm"
+                    role="presentation"
+                    onClick={(e) =>
+                      e.target === e.currentTarget && !cancelSubmitting && setCancelConfirmOpen(false)
+                    }
+                  >
+                    <div
+                      role="alertdialog"
+                      aria-modal="true"
+                      aria-labelledby="rx-cancel-title"
+                      aria-describedby="rx-cancel-desc"
+                      className="w-full max-w-md rounded-2xl border border-text-secondary/12 bg-surface p-6 shadow-xl"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <h3
+                        id="rx-cancel-title"
+                        className="text-lg font-semibold text-primary"
+                      >
+                        Cancel this prescription?
+                      </h3>
+                      <p
+                        id="rx-cancel-desc"
+                        className="mt-2 text-sm leading-relaxed text-text-secondary"
+                      >
+                        Are you sure? This will mark the prescription as cancelled. The patient
+                        will see it as cancelled. This cannot be undone from the app.
+                      </p>
+                      <div className="mt-6 flex flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={cancelSubmitting}
+                          onClick={() => setCancelConfirmOpen(false)}
+                          className="btn-secondary"
+                        >
+                          No, keep it
+                        </button>
+                        <button
+                          type="button"
+                          disabled={cancelSubmitting}
+                          onClick={() => void handleConfirmCancelPrescription()}
+                          className="rounded-xl bg-error px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-error/90 disabled:opacity-50"
+                        >
+                          {cancelSubmitting ? 'Cancelling…' : 'Yes, cancel prescription'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>

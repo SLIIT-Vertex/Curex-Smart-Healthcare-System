@@ -6,6 +6,7 @@ import com.curex.doctor.dto.PrescriptionResponse;
 import com.curex.doctor.entity.Doctor;
 import com.curex.doctor.entity.Prescription;
 import com.curex.doctor.entity.PrescriptionStatus;
+import com.curex.doctor.event.PrescriptionCancelledEvent;
 import com.curex.doctor.event.PrescriptionIssuedEvent;
 import com.curex.doctor.exception.ForbiddenException;
 import com.curex.doctor.exception.InvalidPrescriptionException;
@@ -54,11 +55,15 @@ public class PrescriptionService {
         Doctor doctor = doctorRepository.findById(request.getDoctorId())
                 .orElseThrow(() -> new ResourceNotFoundException("Doctor not found with id: " + request.getDoctorId()));
 
-        // Validate validity period
+        // Validate validity period (matches UI: validFrom not in the past; validTo strictly after validFrom)
         LocalDate validFrom = request.getValidFrom();
         LocalDate validTo = request.getValidTo();
-        if (validTo.isBefore(validFrom)) {
-            throw new InvalidPrescriptionException("Valid to date must be on or after valid from date");
+        LocalDate today = todayForPrescriptionStatus();
+        if (validFrom.isBefore(today)) {
+            throw new InvalidPrescriptionException("Valid from cannot be before today");
+        }
+        if (!validTo.isAfter(validFrom)) {
+            throw new InvalidPrescriptionException("Valid to must be after valid from");
         }
 
         // Validate appointment exists and is eligible (IN_SESSION or COMPLETED)
@@ -170,6 +175,29 @@ public class PrescriptionService {
         prescription.setStatus(PrescriptionStatus.CANCELLED);
         prescription = prescriptionRepository.save(prescription);
         log.info("Cancelled prescription {} by doctor user {}", prescriptionId, requestingUserId);
+
+        PrescriptionCancelledEvent cancelEvent = PrescriptionCancelledEvent.builder()
+                .prescriptionId(prescription.getId())
+                .doctorId(doctor.getId())
+                .doctorUserId(doctor.getUserId())
+                .doctorName(doctor.getFullName())
+                .doctorEmail(doctor.getEmail())
+                .patientId(prescription.getPatientId())
+                .patientName(prescription.getPatientName())
+                .diagnosis(prescription.getDiagnosis())
+                .medicines(prescription.getMedicines())
+                .cancelledAt(LocalDateTime.now())
+                .build();
+        final String cancelledRxId = prescription.getId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                rabbitTemplate.convertAndSend(RabbitMQConfig.DOCTOR_EXCHANGE,
+                        RabbitMQConfig.PRESCRIPTION_CANCELLED_KEY, cancelEvent);
+                log.info("Published prescription.cancelled event for prescription {}", cancelledRxId);
+            }
+        });
+
         return toPrescriptionResponse(prescription);
     }
 

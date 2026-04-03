@@ -153,6 +153,8 @@ public class SmsService {
                     "Curex: Payment confirmed. " + base;
             case PRESCRIPTION_READY ->
                     "Curex: Your prescription is ready. " + base;
+            case PRESCRIPTION_CANCELLED ->
+                    "Curex: A prescription was cancelled by your doctor. " + base;
             case CONSULTATION_REMINDER ->
                     "Curex: Consultation reminder. " + base;
             default ->
