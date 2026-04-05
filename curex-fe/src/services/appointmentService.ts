@@ -1,5 +1,10 @@
 import api from "./axiosInstance";
-import { getDoctorAvailability, parseDateSlotKey } from "./availabilityService";
+import {
+  dateSlotKey,
+  getDoctorAvailability,
+  parseDateSlotKey,
+  toDateKey,
+} from "./availabilityService";
 import type {
   AppointmentRecord,
   BookAppointmentPayload,
@@ -67,6 +72,11 @@ const DAY_NAMES = [
 function dayForDateKey(dateKey: string): string {
   const d = new Date(`${dateKey}T00:00:00`);
   return DAY_NAMES[d.getDay()];
+}
+
+function normalizeStartTime(startTime: string): string {
+  const raw = startTime.slice(0, 5);
+  return `${raw}:00`;
 }
 
 function endTimeFromStart(startTime: string): string {
@@ -291,7 +301,7 @@ export async function getDoctorDirectory(
           age: toAge(user?.dob),
           yearsOfExperience: user?.yearsOfExperience,
           bio: profile?.bio,
-          avatarUrl: profile?.avatarUrl,
+          avatarUrl: profile?.avatarUrl || user?.profileImageUrl,
           consultationFee: normalizeFee(profile?.consultationFee),
           hospital: "Curex Health Network",
         };
@@ -478,6 +488,65 @@ export async function getDoctorSlots(
     });
     return localSlotsFallback(doctorId);
   }
+}
+
+export async function saveDoctorSlots(
+  doctorUserId: string,
+  slotKeys: string[],
+): Promise<AvailabilitySlotResponse[]> {
+  const doctorProfileId = await resolveDoctorProfileId(doctorUserId);
+  if (!doctorProfileId) {
+    throw new Error("Could not resolve doctor profile id for availability save");
+  }
+
+  const unique = new Set<string>();
+  const slots = slotKeys
+    .map((key) => parseDateSlotKey(key))
+    .filter((parsed): parsed is { dateKey: string; time: string } => Boolean(parsed))
+    .map(({ dateKey, time }) => ({
+      day: dayForDateKey(dateKey),
+      startTime: normalizeStartTime(time),
+      endTime: endTimeFromStart(time),
+    }))
+    .filter((slot) => {
+      const composite = `${slot.day}_${slot.startTime}_${slot.endTime}`;
+      if (unique.has(composite)) {
+        return false;
+      }
+      unique.add(composite);
+      return true;
+    });
+
+  const { data } = await api.put<AvailabilitySlotResponse[]>(
+    `/api/doctors/${doctorProfileId}/availability`,
+    { slots },
+  );
+
+  // Mirror as local fallback cache only; source of truth is backend.
+  const normalizedLocal = (Array.isArray(data) ? data : []).flatMap((slot) => {
+    const start = String(slot.startTime).slice(0, 5);
+    const candidateDates = Array.from({ length: 30 }, (_, i) => {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() + i);
+      return d;
+    });
+
+    return candidateDates
+      .filter((date) => dayForDateKey(toDateKey(date)) === String(slot.day))
+      .map((date) => dateSlotKey(toDateKey(date), start));
+  });
+
+  try {
+    localStorage.setItem(
+      `curex_availability_${doctorUserId}`,
+      JSON.stringify(Array.from(new Set(normalizedLocal))),
+    );
+  } catch {
+    // Best-effort local cache.
+  }
+
+  return Array.isArray(data) ? data : [];
 }
 
 /** Fetch appointments for a specific doctor from appointment service */

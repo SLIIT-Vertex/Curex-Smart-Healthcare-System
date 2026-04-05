@@ -5,15 +5,17 @@ import { Link } from "react-router-dom";
 import {
   bookAppointment,
   getAppointmentsByPatient,
-  getDoctorAppointments,
   getDoctorDirectory,
   getDoctorSlots,
 } from "../../services/appointmentService";
 import {
+  getPatientPayments,
+  type PaymentRecord,
+} from "../../services/paymentService";
+import {
   createTelemedicineSession,
   getTelemedicineSession,
 } from "../../services/telemedicineService";
-import { confirmPayment } from "../../services/paymentService";
 import {
   dateSlotKey,
   getUpcomingDateKeys,
@@ -27,8 +29,6 @@ import {
 import type { TelemedicineSessionRecord } from "../../types/telemedicine";
 import { useAuth, useToast } from "../../store/hooks";
 import "../../styles/pages/AppointmentFlow.css";
-
-const PENDING_PAYMENT_STORAGE_KEY = "curex.pendingPayment";
 
 function generateTimeSlots(): string[] {
   const slots: string[] = [];
@@ -259,6 +259,9 @@ export function PatientAppointments() {
   const [loading, setLoading] = useState(false);
   const [booking, setBooking] = useState(false);
   const [payingAppointmentId, setPayingAppointmentId] = useState<string | null>(null);
+  const [paymentsByAppointmentId, setPaymentsByAppointmentId] = useState<
+    Record<string, PaymentRecord>
+  >({});
   const [bookingTableSearch, setBookingTableSearch] = useState("");
   const [bookingTypeFilter, setBookingTypeFilter] = useState<
     "ALL" | "TELEMEDICINE" | "IN_PERSON"
@@ -282,8 +285,36 @@ export function PatientAppointments() {
 
     try {
       setLoading(true);
-      const patientData = await getAppointmentsByPatient(patientId);
+      const [appointmentsResult, paymentsResult] = await Promise.allSettled([
+        getAppointmentsByPatient(patientId),
+        getPatientPayments(patientId),
+      ]);
+
+      const patientData =
+        appointmentsResult.status === "fulfilled" ? appointmentsResult.value : [];
       setMyAppointments(patientData);
+
+      if (paymentsResult.status === "fulfilled") {
+        const map: Record<string, PaymentRecord> = {};
+        for (const payment of paymentsResult.value) {
+          if (!payment.appointmentId) {
+            continue;
+          }
+          const existing = map[payment.appointmentId];
+          if (!existing) {
+            map[payment.appointmentId] = payment;
+            continue;
+          }
+          const currentTs = new Date(payment.updatedAt ?? payment.createdAt).getTime();
+          const existingTs = new Date(
+            existing.updatedAt ?? existing.createdAt,
+          ).getTime();
+          if (currentTs >= existingTs) {
+            map[payment.appointmentId] = payment;
+          }
+        }
+        setPaymentsByAppointmentId(map);
+      }
 
       if (patientData.length > 0) {
         const firstDate = toDateKey(new Date(patientData[0].appointmentTime));
@@ -298,6 +329,29 @@ export function PatientAppointments() {
       setLoading(false);
     }
   }, [patientId, toast]);
+
+  const isPaymentCompleted = useCallback(
+    (appointmentId: string): boolean => {
+      const payment = paymentsByAppointmentId[appointmentId];
+      if (!payment) {
+        return false;
+      }
+      const status = String(payment.status).toUpperCase();
+      return status === "SUCCESS" || status === "COMPLETED";
+    },
+    [paymentsByAppointmentId],
+  );
+
+  const shouldShowPayNow = useCallback(
+    (appt: AppointmentRecord): boolean => {
+      const status = String(appt.status).toUpperCase();
+      if (status !== "PENDING") {
+        return false;
+      }
+      return !isPaymentCompleted(appt.id);
+    },
+    [isPaymentCompleted],
+  );
 
   const extractServerMessage = (err: unknown): string | undefined =>
     (err as { response?: { data?: { message?: string } } })?.response?.data
@@ -345,38 +399,22 @@ export function PatientAppointments() {
   useEffect(() => {
     if (!selectedDoctorId) return;
 
-    const fetchDoctorAppointments = async () => {
-      try {
-        const selected = doctors.find((d) => d.id === selectedDoctorId);
-        const idsToCheck = [selectedDoctorId, selected?.profileId].filter(
-          (id): id is string => Boolean(id),
-        );
+    const selected = doctors.find((d) => d.id === selectedDoctorId);
+    const idsToCheck = new Set(
+      [selectedDoctorId, selected?.profileId].filter(
+        (id): id is string => Boolean(id),
+      ),
+    );
 
-        const settled = await Promise.allSettled(
-          idsToCheck.map((id) => getDoctorAppointments(id)),
-        );
-        const merged = settled
-          .filter(
-            (result): result is PromiseFulfilledResult<AppointmentRecord[]> =>
-              result.status === "fulfilled",
-          )
-          .flatMap((result) => result.value)
-          .flat()
-          .filter(
-            (appt, idx, arr) => arr.findIndex((x) => x.id === appt.id) === idx,
-          );
+    // Patient pages cannot call doctor-only appointment endpoints (403).
+    // Use the patient's own appointment list to infer booked slots for selected doctor.
+    const merged = myAppointments.filter((appt) => idsToCheck.has(appt.doctorId));
 
-        setDoctorAppointmentsById((prev) => ({
-          ...prev,
-          [selectedDoctorId]: merged,
-        }));
-      } catch (err) {
-        console.error("Failed to fetch doctor appointments:", err);
-      }
-    };
-
-    fetchDoctorAppointments();
-  }, [selectedDoctorId, doctors]);
+    setDoctorAppointmentsById((prev) => ({
+      ...prev,
+      [selectedDoctorId]: merged,
+    }));
+  }, [selectedDoctorId, doctors, myAppointments]);
 
   const selectedDoctor = useMemo(() => {
     if (!selectedDoctorId) return null;
@@ -556,13 +594,13 @@ export function PatientAppointments() {
   const visibleSlots = useMemo(() => {
     return availableSlotsForSelectedDoctor.slice(
       slotStartIndex,
-      slotStartIndex + 8,
+      slotStartIndex + 5,
     );
   }, [availableSlotsForSelectedDoctor, slotStartIndex]);
 
   const canGoPrevSlots = slotStartIndex > 0;
   const canGoNextSlots =
-    slotStartIndex + 8 < availableSlotsForSelectedDoctor.length;
+    slotStartIndex + 5 < availableSlotsForSelectedDoctor.length;
 
   const sortedMyAppointments = useMemo(() => {
     return [...myAppointments].sort(
@@ -701,38 +739,20 @@ export function PatientAppointments() {
       setActiveTab("bookings");
 
       const handleSuccessReturn = async () => {
-        toast("Payment successful. Updating your appointment status...", "success");
+        toast("Payment successful. Updating booking status...", "success");
 
-        const appointmentIdFromQuery = params.get("id");
-        const pendingRaw = sessionStorage.getItem(PENDING_PAYMENT_STORAGE_KEY);
-
-        if (pendingRaw) {
-          try {
-            const pending = JSON.parse(pendingRaw) as {
-              paymentId?: string;
-              appointmentId?: string;
-            };
-
-            const appointmentMatches =
-              !appointmentIdFromQuery ||
-              !pending.appointmentId ||
-              pending.appointmentId === appointmentIdFromQuery;
-
-            if (pending.paymentId && appointmentMatches) {
-              await confirmPayment(pending.paymentId);
-            }
-          } catch {
-            // Continue with refresh path even if payment confirmation call fails.
-          } finally {
-            sessionStorage.removeItem(PENDING_PAYMENT_STORAGE_KEY);
+        const appointmentId = params.get("id");
+        let polls = 0;
+        while (polls < 8) {
+          await loadPatientAppointments();
+          if (!appointmentId || isPaymentCompleted(appointmentId)) {
+            break;
           }
+          polls += 1;
+          await new Promise((resolve) => window.setTimeout(resolve, 1500));
         }
 
-        await loadPatientAppointments();
-
-        window.setTimeout(() => {
-          void loadPatientAppointments();
-        }, 1500);
+        sessionStorage.removeItem("curex.pendingPayment");
 
         navigate("/patient/appointments", { replace: true });
       };
@@ -746,7 +766,7 @@ export function PatientAppointments() {
       toast("Payment was cancelled.", "warning");
       navigate("/patient/appointments", { replace: true });
     }
-  }, [location.search, loadPatientAppointments, navigate, toast]);
+  }, [location.search, loadPatientAppointments, navigate, toast, isPaymentCompleted]);
 
   useEffect(() => {
     let active = true;
@@ -918,21 +938,14 @@ export function PatientAppointments() {
         [selectedDoctor.id]: slots,
       }));
 
-      const idsToCheck = [selectedDoctor.id, selectedDoctor.profileId].filter(
-        (id): id is string => Boolean(id),
+      const idsToCheck = new Set(
+        [selectedDoctor.id, selectedDoctor.profileId].filter(
+          (id): id is string => Boolean(id),
+        ),
       );
-      const latestSettled = await Promise.allSettled(
-        idsToCheck.map((id) => getDoctorAppointments(id)),
+      const mergedAppointments = patientData.filter((appt) =>
+        idsToCheck.has(appt.doctorId),
       );
-      const mergedAppointments = latestSettled
-        .filter(
-          (result): result is PromiseFulfilledResult<AppointmentRecord[]> =>
-            result.status === "fulfilled",
-        )
-        .flatMap((result) => result.value)
-        .filter(
-          (appt, idx, arr) => arr.findIndex((x) => x.id === appt.id) === idx,
-        );
       setDoctorAppointmentsById((prev) => ({
         ...prev,
         [selectedDoctor.id]: mergedAppointments,
@@ -1197,7 +1210,7 @@ export function PatientAppointments() {
                         <button
                           type="button"
                           onClick={() =>
-                            setSlotStartIndex((v) => Math.max(0, v - 8))
+                            setSlotStartIndex((v) => Math.max(0, v - 5))
                           }
                           disabled={!canGoPrevSlots}
                           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary disabled:opacity-40"
@@ -1205,7 +1218,7 @@ export function PatientAppointments() {
                           <ChevronLeft className="h-4 w-4" />
                         </button>
 
-                        <div className="grid flex-1 grid-cols-8 gap-2">
+                        <div className="grid flex-1 grid-cols-3 gap-2 md:grid-cols-4 lg:grid-cols-5">
                           {visibleSlots.map((slot) => (
                             <button
                               key={slot.key}
@@ -1260,7 +1273,7 @@ export function PatientAppointments() {
 
                         <button
                           type="button"
-                          onClick={() => setSlotStartIndex((v) => v + 8)}
+                          onClick={() => setSlotStartIndex((v) => v + 5)}
                           disabled={!canGoNextSlots}
                           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary disabled:opacity-40"
                         >
@@ -1271,7 +1284,7 @@ export function PatientAppointments() {
                       <p className="mt-2 text-xs text-text-secondary">
                         Showing {slotStartIndex + 1}-
                         {Math.min(
-                          slotStartIndex + 8,
+                          slotStartIndex + 5,
                           availableSlotsForSelectedDoctor.length,
                         )}{" "}
                         of {availableSlotsForSelectedDoctor.length} slots
@@ -1629,7 +1642,7 @@ export function PatientAppointments() {
                                   telemedicineSessions[appt.id],
                                 )}
                               </span>
-                              {appt.status.toUpperCase() === "PENDING" && (
+                              {shouldShowPayNow(appt) && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -1646,6 +1659,13 @@ export function PatientAppointments() {
                                   {payingAppointmentId === appt.id ? "Processing..." : "PAY NOW"}
                                 </button>
                               )}
+                              {!shouldShowPayNow(appt) &&
+                                isPaymentCompleted(appt.id) &&
+                                String(appt.status).toUpperCase() === "PENDING" && (
+                                  <span className="rounded-full bg-accent-mint/20 px-3 py-0.5 text-[10px] font-bold text-primary">
+                                    Paid - Confirming
+                                  </span>
+                                )}
                             </div>
                             {date.toLocaleTimeString("en-GB", {
                               hour: "2-digit",
@@ -1670,13 +1690,12 @@ export function PatientAppointments() {
                 All Bookings
               </h3>
               <div className="mb-3 grid gap-3 md:grid-cols-[1fr_170px_180px]">
-                <label className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                <label className="flex-1">
                   <input
                     value={bookingTableSearch}
                     onChange={(e) => setBookingTableSearch(e.target.value)}
                     placeholder="Search by doctor, specialty, status"
-                    className="patient-page-input w-full pl-10"
+                    className="patient-page-input w-full"
                   />
                 </label>
                 <div className="flex gap-2">
@@ -1689,9 +1708,9 @@ export function PatientAppointments() {
                     }
                     className="patient-page-input border-primary-light/30 bg-primary-light/5 font-medium text-primary outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
                   >
-                    <option value="ALL">🔍 All Types</option>
-                    <option value="TELEMEDICINE">📹 Telemedicine</option>
-                    <option value="IN_PERSON">🏥 In-person</option>
+                    <option value="ALL">All Types</option>
+                    <option value="TELEMEDICINE">Telemedicine</option>
+                    <option value="IN_PERSON">In-person</option>
                   </select>
                   <select
                     value={bookingStatusFilter}
@@ -1708,12 +1727,12 @@ export function PatientAppointments() {
                     }
                     className="patient-page-input border-primary-light/30 bg-primary-light/5 font-medium text-primary outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
                   >
-                    <option value="ALL">📌 All Status</option>
-                    <option value="PENDING">⏳ PENDING</option>
-                    <option value="CONFIRMED">✅ CONFIRMED</option>
-                    <option value="IN_SESSION">🔵 IN_SESSION</option>
-                    <option value="COMPLETED">🏁 COMPLETED</option>
-                    <option value="CANCELLED">❌ CANCELLED</option>
+                    <option value="ALL">All Status</option>
+                    <option value="PENDING">PENDING</option>
+                    <option value="CONFIRMED">CONFIRMED</option>
+                    <option value="IN_SESSION">IN_SESSION</option>
+                    <option value="COMPLETED">COMPLETED</option>
+                    <option value="CANCELLED">CANCELLED</option>
                   </select>
                 </div>
               </div>
@@ -1774,7 +1793,7 @@ export function PatientAppointments() {
                             </span>
                           </td>
                           <td className="px-3 py-2">
-                            {String(appt.status).toUpperCase() === "PENDING" ? (
+                            {shouldShowPayNow(appt) ? (
                               <button
                                 type="button"
                                 onClick={() => navigate(`/patient/checkout/${appt.id}`)}
@@ -1782,6 +1801,11 @@ export function PatientAppointments() {
                               >
                                 Pay Now
                               </button>
+                            ) : isPaymentCompleted(appt.id) &&
+                              String(appt.status).toUpperCase() === "PENDING" ? (
+                              <span className="rounded-full bg-accent-mint/20 px-2.5 py-1 text-xs font-semibold text-primary">
+                                Paid - Confirming
+                              </span>
                             ) : String(appt.status).toUpperCase() === "CONFIRMED" ||
                               String(appt.status).toUpperCase() === "IN_SESSION" ||
                               String(appt.status).toUpperCase() === "COMPLETED" ? (

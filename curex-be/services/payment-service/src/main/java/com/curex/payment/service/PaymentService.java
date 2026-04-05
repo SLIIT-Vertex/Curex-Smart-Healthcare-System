@@ -13,13 +13,9 @@ public interface PaymentService {
 
     PaymentResponse getPayment(UUID id);
 
-    /**
-     * Marks a payment as SUCCESS and publishes payment.confirmed event.
-     * Useful for manual/integration testing without Stripe webhooks.
-     */
-    PaymentResponse confirmPayment(UUID paymentId);
-
     List<PaymentResponse> getPaymentsForPatient(String patientId);
+
+    List<PaymentResponse> getAdminPayments(String status, String patientId, String appointmentId);
 
     long purgeUserData(String userId);
 

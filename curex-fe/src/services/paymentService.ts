@@ -89,13 +89,6 @@ export async function getPatientPayments(patientId: string): Promise<PaymentReco
   return unwrapApiData(data)
 }
 
-export async function confirmPayment(id: string): Promise<PaymentRecord> {
-  const { data } = await api.post<FlexibleApiResponse<PaymentRecord>>(
-    `/api/payments/${id}/confirm`
-  )
-  return unwrapApiData(data)
-}
-
 export async function getAdminPayments(query: AdminPaymentsQuery = {}): Promise<PaymentRecord[]> {
   const { data } = await api.get<FlexibleApiResponse<PaymentRecord[]>>(
     `/api/payments/admin`,

@@ -5,6 +5,7 @@ import com.curex.payment.dto.ApiResponse;
 import com.curex.payment.dto.CreatePaymentRequest;
 import com.curex.payment.dto.PaymentResponse;
 import com.curex.payment.dto.StripeCheckoutResponse;
+import com.curex.payment.exception.AuthorizationException;
 import com.curex.payment.service.PaymentService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -12,6 +13,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.util.StreamUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
@@ -48,15 +51,24 @@ public class PaymentController {
         return ResponseEntity.ok(ApiResponse.of("Payment details", paymentService.getPayment(id)));
     }
 
-    @PostMapping("/payments/{id}/confirm")
-    public ResponseEntity<ApiResponse<PaymentResponse>> confirmPayment(@PathVariable UUID id) {
-        PaymentResponse payload = paymentService.confirmPayment(id);
-        return ResponseEntity.ok(ApiResponse.of("Payment confirmed", payload));
+    @GetMapping("/payments/patients/{patientId}")
+    public ResponseEntity<ApiResponse<List<PaymentResponse>>> listPayments(
+            @PathVariable @NotBlank String patientId,
+            @RequestHeader(name = "X-User-Id", required = false) String userId,
+            @RequestHeader(name = "X-User-Role", required = false) String userRole) {
+        requirePatientOrAdmin(patientId, userId, userRole);
+        return ResponseEntity.ok(ApiResponse.of("Patient payments", paymentService.getPaymentsForPatient(patientId)));
     }
 
-    @GetMapping("/payments/patients/{patientId}")
-    public ResponseEntity<ApiResponse<List<PaymentResponse>>> listPayments(@PathVariable @NotBlank String patientId) {
-        return ResponseEntity.ok(ApiResponse.of("Patient payments", paymentService.getPaymentsForPatient(patientId)));
+    @GetMapping("/payments/admin")
+    public ResponseEntity<ApiResponse<List<PaymentResponse>>> listAdminPayments(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String patientId,
+            @RequestParam(required = false) String appointmentId,
+            @RequestHeader(name = "X-User-Role", required = false) String userRole) {
+        requireAdmin(userRole);
+        List<PaymentResponse> payload = paymentService.getAdminPayments(status, patientId, appointmentId);
+        return ResponseEntity.ok(ApiResponse.of("Admin payments", payload));
     }
 
     /**
@@ -74,5 +86,23 @@ public class PaymentController {
 
         paymentService.handleStripeWebhook(payload, stripeSignature);
         return ResponseEntity.ok(ApiMessageResponse.of("Webhook received"));
+    }
+
+    private void requireAdmin(String userRole) {
+        if (!"ADMIN".equalsIgnoreCase(userRole)) {
+            throw new AuthorizationException("Admin access required");
+        }
+    }
+
+    private void requirePatientOrAdmin(String patientId, String userId, String userRole) {
+        if ("ADMIN".equalsIgnoreCase(userRole)) {
+            return;
+        }
+        if (!StringUtils.hasText(userId)) {
+            throw new AuthorizationException("Missing authenticated user id");
+        }
+        if (!patientId.trim().equals(userId.trim())) {
+            throw new AuthorizationException("Cannot access another patient's payments");
+        }
     }
 }

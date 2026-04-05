@@ -64,6 +64,12 @@ public class DoctorController {
         return ResponseEntity.status(HttpStatus.CREATED).body(doctorService.addAvailability(id, request));
     }
 
+    @PutMapping("/{id}/availability")
+    public ResponseEntity<List<AvailabilitySlotResponse>> replaceAvailability(@PathVariable String id,
+                                                                              @Valid @RequestBody CreateAvailabilityBulkRequest request) {
+        return ResponseEntity.ok(doctorService.replaceAvailability(id, request));
+    }
+
     @GetMapping("/{id}/availability")
     public ResponseEntity<List<AvailabilitySlotResponse>> getAvailability(@PathVariable String id) {
         return ResponseEntity.ok(doctorService.getAvailability(id));
