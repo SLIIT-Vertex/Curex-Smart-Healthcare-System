@@ -23,8 +23,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashMap;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -154,6 +156,63 @@ public class DoctorService {
                 .collect(Collectors.toList());
     }
 
+        /**
+         * Replace the doctor's editable availability with the provided slots.
+         * Existing booked slots are preserved to avoid breaking appointment history.
+         */
+        @Transactional
+        public List<AvailabilitySlotResponse> replaceAvailability(String doctorId, CreateAvailabilityBulkRequest request) {
+        Doctor doctor = doctorRepository.findById(doctorId)
+            .orElseThrow(() -> new ResourceNotFoundException("Doctor not found with id: " + doctorId));
+
+        Set<SlotKey> desired = request.getSlots().stream()
+            .map(req -> new SlotKey(req.getDay().name(), req.getStartTime().toString(), req.getEndTime().toString()))
+            .collect(Collectors.toCollection(HashSet::new));
+
+        List<DoctorAvailability> existing = availabilityRepository.findByDoctor_Id(doctorId);
+
+        // Keep booked slots regardless of current desired selection.
+        Set<SlotKey> keysToKeep = existing.stream()
+            .filter(DoctorAvailability::isBooked)
+            .map(this::toSlotKey)
+            .collect(Collectors.toCollection(HashSet::new));
+        keysToKeep.addAll(desired);
+
+        List<DoctorAvailability> toDelete = existing.stream()
+            .filter(slot -> !slot.isBooked())
+            .filter(slot -> !keysToKeep.contains(toSlotKey(slot)))
+            .toList();
+        if (!toDelete.isEmpty()) {
+            availabilityRepository.deleteAll(toDelete);
+        }
+
+        Set<SlotKey> existingKeys = availabilityRepository.findByDoctor_Id(doctorId).stream()
+            .map(this::toSlotKey)
+            .collect(Collectors.toCollection(HashSet::new));
+
+        List<DoctorAvailability> toCreate = request.getSlots().stream()
+            .filter(req -> !existingKeys.contains(new SlotKey(req.getDay().name(), req.getStartTime().toString(), req.getEndTime().toString())))
+            .map(req -> DoctorAvailability.builder()
+                .doctor(doctor)
+                .day(req.getDay())
+                .startTime(req.getStartTime())
+                .endTime(req.getEndTime())
+                .isBooked(false)
+                .build())
+            .toList();
+
+        if (!toCreate.isEmpty()) {
+            availabilityRepository.saveAll(toCreate);
+        }
+
+        log.info("Replaced availability for doctor {}. desired={}, deleted={}, created={}",
+            doctorId, desired.size(), toDelete.size(), toCreate.size());
+
+        return availabilityRepository.findByDoctor_IdOrderByDayAscStartTimeAsc(doctorId).stream()
+            .map(this::toAvailabilitySlotResponse)
+            .collect(Collectors.toList());
+        }
+
     @Transactional(readOnly = true)
     public List<AvailabilitySlotResponse> getAvailability(String doctorId) {
         if (!doctorRepository.existsById(doctorId)) {
@@ -245,5 +304,28 @@ public class DoctorService {
                 .endTime(slot.getEndTime())
                 .booked(slot.isBooked())
                 .build();
+    }
+
+    private SlotKey toSlotKey(DoctorAvailability slot) {
+        return new SlotKey(
+                slot.getDay().name(),
+                slot.getStartTime().toString(),
+                slot.getEndTime().toString());
+    }
+
+    private record SlotKey(String day, String startTime, String endTime) {
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof SlotKey slotKey)) return false;
+            return Objects.equals(day, slotKey.day)
+                    && Objects.equals(startTime, slotKey.startTime)
+                    && Objects.equals(endTime, slotKey.endTime);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(day, startTime, endTime);
+        }
     }
 }

@@ -11,6 +11,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
     List<Payment> findByPatientIdOrderByCreatedAtDesc(String patientId);
 
+    List<Payment> findAllByOrderByCreatedAtDesc();
+
     Optional<Payment> findByStripeSessionId(String stripeSessionId);
 
     long deleteByPatientId(String patientId);

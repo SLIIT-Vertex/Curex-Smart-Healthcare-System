@@ -82,7 +82,13 @@ stripe login
 2. Forward events to the service:
 
 ```powershell
-stripe listen --forward-to http://localhost:8087/payments/webhook
+stripe listen --forward-to http://localhost:8087/api/payments/webhook
+```
+
+If you are running through the API gateway, use:
+
+```powershell
+stripe listen --forward-to http://localhost:8080/api/payments/webhook
 ```
 
 Copy the printed `whsec_...` value and set it as `STRIPE_WEBHOOK_SECRET`.
@@ -100,7 +106,7 @@ When payment succeeds, Stripe sends `checkout.session.completed` to the webhook.
 ### Create Checkout Session
 
 ```powershell
-curl.exe -X POST "http://localhost:8087/payments/appointments/APPT-123" -H "Content-Type: application/json" -d "{\"patientId\":\"PAT-001\",\"amount\":2500.00,\"currency\":\"lkr\"}"
+curl.exe -X POST "http://localhost:8087/api/payments/appointments/APPT-123" -H "Content-Type: application/json" -d "{\"patientId\":\"PAT-001\",\"amount\":2500.00,\"currency\":\"lkr\"}"
 ```
 
 Response contains:
@@ -112,13 +118,13 @@ Response contains:
 ### Get payment by id
 
 ```powershell
-curl.exe "http://localhost:8087/payments/{paymentId}"
+curl.exe "http://localhost:8087/api/payments/{paymentId}"
 ```
 
 ### List payments for a patient
 
 ```powershell
-curl.exe "http://localhost:8087/patients/PAT-001/payments"
+curl.exe "http://localhost:8087/api/payments/patients/PAT-001"
 ```
 
 ## RabbitMQ event published on success

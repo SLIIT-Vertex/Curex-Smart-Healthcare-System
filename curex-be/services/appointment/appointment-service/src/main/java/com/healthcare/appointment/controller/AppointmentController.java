@@ -95,12 +95,9 @@ public class AppointmentController {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "Doctors can only view their own appointments");
             }
+            return ResponseEntity.ok(appointmentService.getByDoctorForUser(userId, pathDoctorId));
         }
-        String lookupDoctorId = pathDoctorId;
-        if (userId.equals(pathDoctorId)) {
-            lookupDoctorId = appointmentService.resolveDoctorProfileIdForDoctorUser(userId);
-        }
-        return ResponseEntity.ok(appointmentService.getByDoctor(lookupDoctorId));
+        return ResponseEntity.ok(appointmentService.getByDoctor(pathDoctorId));
     }
 
     //  PATCH /api/appointments/{id} 

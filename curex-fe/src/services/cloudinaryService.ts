@@ -1,5 +1,14 @@
-const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string
-const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET as string
+const CLOUD_NAME = (import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string | undefined)?.trim()
+const UPLOAD_PRESET = (import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET as string | undefined)?.trim()
+
+function assertCloudinaryConfig(): void {
+  if (!CLOUD_NAME) {
+    throw new Error('Missing VITE_CLOUDINARY_CLOUD_NAME in frontend environment (.env).')
+  }
+  if (!UPLOAD_PRESET) {
+    throw new Error('Missing VITE_CLOUDINARY_UPLOAD_PRESET in frontend environment (.env).')
+  }
+}
 
 export interface CloudinaryUploadResult {
   secure_url: string
@@ -29,9 +38,11 @@ export const cloudinaryService = {
     file: File,
     folder = 'curex/profiles',
   ): Promise<CloudinaryUploadResult> {
+    assertCloudinaryConfig()
+
     const body = new FormData()
     body.append('file', file)
-    body.append('upload_preset', UPLOAD_PRESET)
+    body.append('upload_preset', UPLOAD_PRESET as string)
     body.append('folder', folder)
 
     const res = await fetch(
@@ -58,9 +69,11 @@ export const cloudinaryService = {
     file: File,
     folder = 'curex/documents',
   ): Promise<CloudinaryUploadResult> {
+    assertCloudinaryConfig()
+
     const body = new FormData()
     body.append('file', file)
-    body.append('upload_preset', UPLOAD_PRESET)
+    body.append('upload_preset', UPLOAD_PRESET as string)
     body.append('folder', folder)
 
     const res = await fetch(

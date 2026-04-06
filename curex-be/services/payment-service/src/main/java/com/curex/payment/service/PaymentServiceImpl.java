@@ -14,17 +14,20 @@ import com.stripe.model.Event;
 import com.stripe.model.EventDataObjectDeserializer;
 import com.stripe.model.StripeObject;
 import com.stripe.model.checkout.Session;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PaymentServiceImpl implements PaymentService {
 
     private final PaymentRepository paymentRepository;
@@ -77,44 +80,38 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    @Transactional
-    public PaymentResponse confirmPayment(UUID paymentId) {
-        Payment payment = paymentRepository.findById(paymentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Payment not found: " + paymentId));
-
-        if (payment.getStatus() != PaymentStatus.SUCCESS) {
-            payment.setStatus(PaymentStatus.SUCCESS);
-            if (!StringUtils.hasText(payment.getPaymentMethod())) {
-                payment.setPaymentMethod("MANUAL_TEST");
-            }
-            if (!StringUtils.hasText(payment.getStripePaymentIntentId())) {
-                payment.setStripePaymentIntentId("manual-" + payment.getId());
-            }
-
-            Payment saved = paymentRepository.save(payment);
-            PaymentConfirmedEvent confirmedEvent = PaymentConfirmedEvent.builder()
-                    .paymentId(saved.getId())
-                    .appointmentId(saved.getAppointmentId())
-                    .patientId(saved.getPatientId())
-                    .amount(saved.getAmount())
-                    .currency(saved.getCurrency())
-                    .status(saved.getStatus())
-                    .timestamp(saved.getUpdatedAt())
-                    .build();
-            paymentEventPublisher.publishPaymentConfirmed(confirmedEvent);
-            return toResponse(saved);
-        }
-
-        return toResponse(payment);
-    }
-
-    @Override
     @Transactional(readOnly = true)
     public List<PaymentResponse> getPaymentsForPatient(String patientId) {
         if (!StringUtils.hasText(patientId)) {
             throw new PaymentException("patientId is required");
         }
         return paymentRepository.findByPatientIdOrderByCreatedAtDesc(patientId).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaymentResponse> getAdminPayments(String status, String patientId, String appointmentId) {
+        String normalizedStatus = StringUtils.hasText(status) ? status.trim().toUpperCase(Locale.ROOT) : null;
+        String normalizedPatientId = StringUtils.hasText(patientId) ? patientId.trim() : null;
+        String normalizedAppointmentId = StringUtils.hasText(appointmentId) ? appointmentId.trim() : null;
+
+        PaymentStatus requestedStatus = null;
+        if (normalizedStatus != null) {
+            try {
+                requestedStatus = PaymentStatus.valueOf(normalizedStatus);
+            } catch (IllegalArgumentException ex) {
+                throw new PaymentException("Invalid status filter: " + status);
+            }
+        }
+
+        PaymentStatus finalRequestedStatus = requestedStatus;
+        return paymentRepository.findAllByOrderByCreatedAtDesc().stream()
+                .filter(payment -> finalRequestedStatus == null || payment.getStatus() == finalRequestedStatus)
+                .filter(payment -> normalizedPatientId == null || normalizedPatientId.equals(payment.getPatientId()))
+                .filter(payment -> normalizedAppointmentId == null
+                        || normalizedAppointmentId.equals(payment.getAppointmentId()))
                 .map(this::toResponse)
                 .toList();
     }
@@ -132,12 +129,13 @@ public class PaymentServiceImpl implements PaymentService {
     @Transactional
     public void handleStripeWebhook(String payload, String signatureHeader) {
         Event event = stripeService.verifyAndConstructEvent(payload, signatureHeader);
+        log.info("Stripe webhook verified: type={} id={}", event.getType(), event.getId());
 
         switch (event.getType()) {
             case "checkout.session.completed" -> handleCheckoutSessionCompleted(event);
             case "checkout.session.expired" -> handleCheckoutSessionExpired(event);
             default -> {
-                // Safely ignore unsupported event types.
+                log.info("Ignoring unsupported Stripe event type={}", event.getType());
             }
         }
     }
@@ -149,12 +147,17 @@ public class PaymentServiceImpl implements PaymentService {
         Session session = deserializeSession(event)
                 .orElse(null);
         if (session == null || !StringUtils.hasText(session.getId())) {
+            log.warn("checkout.session.completed received without valid session payload. eventId={}", event.getId());
             return;
         }
+
+        log.info("Processing checkout.session.completed for stripeSessionId={}", session.getId());
 
         paymentRepository.findByStripeSessionId(session.getId()).ifPresent(payment -> {
             // Idempotency: Stripe may retry webhooks; only publish once when transitioning.
             if (payment.getStatus() == PaymentStatus.SUCCESS) {
+                log.info("Payment already SUCCESS for stripeSessionId={} paymentId={} (idempotent skip)",
+                        session.getId(), payment.getId());
                 return;
             }
 
@@ -175,8 +178,14 @@ public class PaymentServiceImpl implements PaymentService {
                     .timestamp(saved.getUpdatedAt())
                     .build();
 
+            log.info("Publishing payment.confirmed for appointmentId={} paymentId={}",
+                    saved.getAppointmentId(), saved.getId());
             paymentEventPublisher.publishPaymentConfirmed(confirmedEvent);
         });
+
+        if (paymentRepository.findByStripeSessionId(session.getId()).isEmpty()) {
+            log.warn("No payment row found for stripeSessionId={}. Webhook cannot mark payment SUCCESS.", session.getId());
+        }
     }
 
     private void handleCheckoutSessionExpired(Event event) {
@@ -196,12 +205,21 @@ public class PaymentServiceImpl implements PaymentService {
     private Optional<Session> deserializeSession(Event event) {
         EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
         Optional<StripeObject> stripeObject = deserializer.getObject();
-        if (stripeObject.isEmpty()) {
-            return Optional.empty();
-        }
-        if (stripeObject.get() instanceof Session session) {
+        if (stripeObject.isPresent() && stripeObject.get() instanceof Session session) {
             return Optional.of(session);
         }
+
+        // Fallback for Stripe API-version mismatches where safe deserialization is unavailable.
+        try {
+            StripeObject unsafe = deserializer.deserializeUnsafe();
+            if (unsafe instanceof Session session) {
+                return Optional.of(session);
+            }
+        } catch (Exception ex) {
+            log.warn("Unsafe Stripe event deserialization failed for eventId={}: {}",
+                    event.getId(), ex.getMessage());
+        }
+
         return Optional.empty();
     }
 

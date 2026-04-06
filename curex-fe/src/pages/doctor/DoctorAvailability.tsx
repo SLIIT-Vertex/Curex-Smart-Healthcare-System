@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { getAppointmentsByDoctor } from '../../services/appointmentService'
+import {
+  getAppointmentsByDoctor,
+  getDoctorSlots,
+  saveDoctorSlots,
+  type AvailabilitySlotResponse,
+} from '../../services/appointmentService'
 import { getTelemedicineSession } from '../../services/telemedicineService'
 import {
   dateSlotKey,
-  getDoctorAvailability,
   getUpcomingDateKeys,
   parseDateSlotKey,
-  saveDoctorAvailability,
   toDateKey,
 } from '../../services/availabilityService'
 import type { AppointmentRecord } from '../../types/appointment'
@@ -18,11 +21,20 @@ import '../../styles/pages/DoctorDashboard.css'
 import { useAuth, useToast } from '../../store/hooks'
 
 type SlotState = 'unavailable' | 'available' | 'booked'
-function hydrateGridFromStorage(doctorId: string): Record<string, SlotState> {
-  const storedSlots = getDoctorAvailability(doctorId)
+function hydrateGridFromSlots(
+  slots: AvailabilitySlotResponse[],
+  dateKeys: string[]
+): Record<string, SlotState> {
   const grid: Record<string, SlotState> = {}
-  for (const key of storedSlots) {
-    grid[key] = 'available'
+  for (const slot of slots) {
+    const day = String(slot.day)
+    const time = String(slot.startTime).slice(0, 5)
+    for (const dateKey of dateKeys) {
+      if (weekdayKey(dateKey) === (['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'].indexOf(day))) {
+        const key = dateSlotKey(dateKey, time)
+        grid[key] = slot.booked ? 'booked' : 'available'
+      }
+    }
   }
   return grid
 }
@@ -190,12 +202,8 @@ export function DoctorAvailability() {
   const { toast } = useToast()
   const doctorId = user?.id ?? ''
   const [activeTab, setActiveTab] = useState<'availability' | 'booked'>('availability')
-  const [grid, setGrid] = useState<Record<string, SlotState>>(() =>
-    hydrateGridFromStorage('')
-  )
-  const [savedGridSnapshot, setSavedGridSnapshot] = useState<Record<string, SlotState>>(() =>
-    hydrateGridFromStorage('')
-  )
+  const [grid, setGrid] = useState<Record<string, SlotState>>({})
+  const [savedGridSnapshot, setSavedGridSnapshot] = useState<Record<string, SlotState>>({})
   const [hasChanges, setHasChanges] = useState(false)
   const [bookedAppointments, setBookedAppointments] = useState<AppointmentRecord[]>([])
   const [telemedicineSessions, setTelemedicineSessions] = useState<
@@ -286,10 +294,29 @@ export function DoctorAvailability() {
     if (!doctorId) {
       return
     }
-    const hydrated = hydrateGridFromStorage(doctorId)
-    setGrid(hydrated)
-    setSavedGridSnapshot(hydrated)
-  }, [doctorId])
+
+    let active = true
+    async function loadAvailability() {
+      try {
+        const slots = await getDoctorSlots(doctorId)
+        const hydrated = hydrateGridFromSlots(slots, dateKeys)
+        if (!active) {
+          return
+        }
+        setGrid(hydrated)
+        setSavedGridSnapshot(hydrated)
+      } catch {
+        if (active) {
+          toast('Could not load saved availability.', 'error')
+        }
+      }
+    }
+
+    loadAvailability()
+    return () => {
+      active = false
+    }
+  }, [doctorId, dateKeys, toast])
 
   useEffect(() => {
     async function loadBookedAppointments() {
@@ -351,7 +378,7 @@ export function DoctorAvailability() {
     }
   }, [bookedAppointments])
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!doctorId) {
       return
     }
@@ -360,9 +387,16 @@ export function DoctorAvailability() {
       .filter(([, state]) => state === 'available')
       .map(([key]) => key)
 
-    saveDoctorAvailability(doctorId, availableSlotKeys)
-    setSavedGridSnapshot({ ...grid })
-    setHasChanges(false)
+    try {
+      const saved = await saveDoctorSlots(doctorId, availableSlotKeys)
+      const normalized = hydrateGridFromSlots(saved, dateKeys)
+      setGrid(normalized)
+      setSavedGridSnapshot(normalized)
+      setHasChanges(false)
+      toast('Availability saved successfully.', 'success')
+    } catch {
+      toast('Failed to save availability. Please try again.', 'error')
+    }
   }
 
   const handleCancelChanges = () => {

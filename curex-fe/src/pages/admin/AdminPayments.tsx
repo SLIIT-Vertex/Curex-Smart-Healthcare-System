@@ -9,7 +9,6 @@ import {
 import { isAxiosError } from "axios";
 import { getAdminAppointments } from "../../services/appointmentService";
 import {
-  confirmPayment,
   getAdminPayments,
   getPatientPayments,
   getPaymentDetails,
@@ -118,7 +117,6 @@ export function AdminPayments() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<PaymentStatusFilter>("ALL");
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -216,23 +214,6 @@ export function AdminPayments() {
     };
   }, [payments]);
 
-  const handleConfirm = async (paymentId: string) => {
-    try {
-      setConfirmingId(paymentId);
-      const updated = await confirmPayment(paymentId);
-      setPayments((prev) =>
-        prev.map((item) =>
-          item.id === updated.id ? { ...item, ...updated } : item,
-        ),
-      );
-      toast("Payment confirmed successfully.", "success");
-    } catch {
-      toast("Could not confirm payment.", "error");
-    } finally {
-      setConfirmingId(null);
-    }
-  };
-
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -240,7 +221,7 @@ export function AdminPayments() {
           Payments
         </h1>
         <p className="mt-1 text-sm text-text-secondary">
-          Track transactions and resolve payment exceptions.
+          Track transactions and monitor payment status.
         </p>
       </div>
 
@@ -364,16 +345,13 @@ export function AdminPayments() {
                 <th className="px-4 py-3 text-xs uppercase tracking-wider text-text-secondary">
                   Created
                 </th>
-                <th className="px-4 py-3 text-right text-xs uppercase tracking-wider text-text-secondary">
-                  Action
-                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-text-secondary/10">
               {loading ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={6}
                     className="px-4 py-10 text-center text-sm text-text-secondary"
                   >
                     Loading payments...
@@ -382,7 +360,7 @@ export function AdminPayments() {
               ) : filteredPayments.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={6}
                     className="px-4 py-10 text-center text-sm text-text-secondary"
                   >
                     No payment records found for selected filters.
@@ -390,8 +368,6 @@ export function AdminPayments() {
                 </tr>
               ) : (
                 filteredPayments.map((payment) => {
-                  const canConfirm =
-                    payment.status === "PENDING" || payment.status === "FAILED";
                   return (
                     <tr key={payment.id} className="hover:bg-primary-light/5">
                       <td className="px-4 py-3 text-sm font-medium text-primary">
@@ -415,18 +391,6 @@ export function AdminPayments() {
                       </td>
                       <td className="px-4 py-3 text-sm text-text-secondary">
                         {formatDateTime(payment.createdAt)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          disabled={!canConfirm || confirmingId === payment.id}
-                          onClick={() => handleConfirm(payment.id)}
-                          className="rounded-lg border border-primary/30 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary-light/10 disabled:cursor-not-allowed disabled:opacity-45"
-                        >
-                          {confirmingId === payment.id
-                            ? "Confirming..."
-                            : "Confirm"}
-                        </button>
                       </td>
                     </tr>
                   );

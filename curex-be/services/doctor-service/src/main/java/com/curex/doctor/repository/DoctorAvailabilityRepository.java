@@ -7,5 +7,7 @@ import java.util.List;
 
 public interface DoctorAvailabilityRepository extends JpaRepository<DoctorAvailability, String> {
 
+    List<DoctorAvailability> findByDoctor_Id(String doctorId);
+
     List<DoctorAvailability> findByDoctor_IdOrderByDayAscStartTimeAsc(String doctorId);
 }

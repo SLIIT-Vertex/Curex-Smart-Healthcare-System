@@ -5,22 +5,33 @@ import {
   Clock,
   AlertCircle,
   ExternalLink,
+  X,
 } from "lucide-react";
-import { getPatientPayments } from "../../services/paymentService";
+import {
+  getPatientPayments,
+  getPaymentDetails,
+} from "../../services/paymentService";
 import type { PaymentRecord } from "../../services/paymentService";
-
-const DEFAULT_PATIENT_ID = "pat-001";
+import { useAuth } from "../../store/hooks";
 
 export function PatientPayments() {
+  const { user } = useAuth();
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentRecord | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadPayments() {
       try {
         setLoading(true);
-        const data = await getPatientPayments(DEFAULT_PATIENT_ID);
+        if (!user?.id) {
+          setPayments([]);
+          return;
+        }
+        const data = await getPatientPayments(user.id);
         setPayments(Array.isArray(data) ? data : []);
       } catch {
         setError("Failed to load payment history.");
@@ -29,10 +40,11 @@ export function PatientPayments() {
       }
     }
     loadPayments();
-  }, []);
+  }, [user?.id]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
+      case "SUCCESS":
       case "COMPLETED":
         return <CheckCircle2 className="h-4 w-4 text-accent-mint" />;
       case "PENDING":
@@ -44,6 +56,7 @@ export function PatientPayments() {
 
   const getStatusClass = (status: string) => {
     switch (status) {
+      case "SUCCESS":
       case "COMPLETED":
         return "bg-accent-mint/10 text-accent-mint border-accent-mint/20";
       case "PENDING":
@@ -53,6 +66,27 @@ export function PatientPayments() {
       default:
         return "bg-text-secondary/10 text-text-secondary border-text-secondary/20";
     }
+  };
+
+  const openPaymentDetails = async (payment: PaymentRecord) => {
+    setSelectedPayment(payment);
+    setDetailsLoading(true);
+    setDetailsError(null);
+
+    try {
+      const latest = await getPaymentDetails(payment.id);
+      setSelectedPayment(latest);
+    } catch {
+      setDetailsError("Could not load latest payment details.");
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const closePaymentDetails = () => {
+    setSelectedPayment(null);
+    setDetailsError(null);
+    setDetailsLoading(false);
   };
 
   return (
@@ -131,7 +165,11 @@ export function PatientPayments() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <button className="text-primary hover:text-primary-light flex items-center gap-1 text-xs font-medium transition">
+                      <button
+                        type="button"
+                        onClick={() => openPaymentDetails(payment)}
+                        className="text-primary hover:text-primary-light flex items-center gap-1 text-xs font-medium transition"
+                      >
                         View Details <ExternalLink size={12} />
                       </button>
                     </td>
@@ -139,6 +177,101 @@ export function PatientPayments() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {selectedPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
+          <div
+            className="w-full max-w-lg rounded-2xl bg-surface p-5"
+            style={{ boxShadow: "var(--shadow-card)" }}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-primary">Payment Details</h2>
+                <p className="text-sm text-text-secondary">Reference: {selectedPayment.id}</p>
+              </div>
+              <button
+                type="button"
+                onClick={closePaymentDetails}
+                className="rounded-lg border border-text-secondary/20 p-2 text-text-secondary transition hover:text-primary"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3 text-sm">
+              {detailsLoading ? (
+                <div className="flex items-center gap-2 text-text-secondary">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                  Loading latest details...
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-text-secondary">Appointment ID</span>
+                    <span className="font-medium text-primary">{selectedPayment.appointmentId}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-text-secondary">Patient ID</span>
+                    <span className="font-medium text-primary">{selectedPayment.patientId}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-text-secondary">Amount</span>
+                    <span className="font-medium text-primary">
+                      {new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: selectedPayment.currency || "USD",
+                      }).format(selectedPayment.amount)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-text-secondary">Status</span>
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${getStatusClass(selectedPayment.status)}`}
+                    >
+                      {getStatusIcon(selectedPayment.status)}
+                      {selectedPayment.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-text-secondary">Method</span>
+                    <span className="font-medium text-primary">{selectedPayment.paymentMethod || "-"}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-text-secondary">Created</span>
+                    <span className="font-medium text-primary">
+                      {new Date(selectedPayment.createdAt).toLocaleString("en-GB")}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-text-secondary">Updated</span>
+                    <span className="font-medium text-primary">
+                      {new Date(selectedPayment.updatedAt).toLocaleString("en-GB")}
+                    </span>
+                  </div>
+                  {selectedPayment.stripeSessionId && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-text-secondary">Stripe Session</span>
+                      <span className="font-mono text-xs text-primary">{selectedPayment.stripeSessionId}</span>
+                    </div>
+                  )}
+                  {selectedPayment.stripePaymentIntentId && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-text-secondary">Payment Intent</span>
+                      <span className="font-mono text-xs text-primary">{selectedPayment.stripePaymentIntentId}</span>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {detailsError && (
+                <p className="rounded-lg border border-error/20 bg-error/5 px-3 py-2 text-xs text-error">
+                  {detailsError}
+                </p>
+              )}
+            </div>
           </div>
         </div>
       )}

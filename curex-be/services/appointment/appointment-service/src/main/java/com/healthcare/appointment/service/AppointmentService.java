@@ -28,6 +28,7 @@ import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -169,6 +170,43 @@ public class AppointmentService {
 
         return mergeAndSortAppointments(directMatches, looseMatches)
             .stream().map(this::toResponse).collect(Collectors.toList());
+    }
+
+    /**
+     * Doctor-facing retrieval that tolerates mixed storage of doctor user-id and profile-id.
+     */
+    public List<AppointmentResponse> getByDoctorForUser(String jwtUserId, String pathDoctorId) {
+        String normalizedUserId = jwtUserId == null ? "" : jwtUserId.trim();
+        String normalizedPathId = pathDoctorId == null ? "" : pathDoctorId.trim();
+
+        String resolvedProfileId = resolveDoctorProfileIdForDoctorUser(normalizedUserId);
+
+        List<String> idsToQuery = new ArrayList<>();
+        if (!normalizedPathId.isBlank()) {
+            idsToQuery.add(normalizedPathId);
+        }
+        if (!resolvedProfileId.isBlank() && idsToQuery.stream().noneMatch(resolvedProfileId::equals)) {
+            idsToQuery.add(resolvedProfileId);
+        }
+        if (!normalizedUserId.isBlank() && idsToQuery.stream().noneMatch(normalizedUserId::equals)) {
+            idsToQuery.add(normalizedUserId);
+        }
+
+        List<AppointmentResponse> collected = idsToQuery.stream()
+                .flatMap(id -> getByDoctor(id).stream())
+                .collect(Collectors.toList());
+
+        return collected.stream()
+                .collect(Collectors.toMap(
+                AppointmentResponse::getId,
+                a -> a,
+                        (existing, replacement) -> existing,
+                        LinkedHashMap::new
+                ))
+                .values()
+                .stream()
+            .sorted(Comparator.comparing(AppointmentResponse::getAppointmentTime).reversed())
+                .collect(Collectors.toList());
     }
 
     //  Get All 

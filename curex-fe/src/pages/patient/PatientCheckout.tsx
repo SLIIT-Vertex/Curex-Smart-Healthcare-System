@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, CreditCard, ShieldCheck } from "lucide-react";
+import { isAxiosError } from "axios";
 import { getAppointmentsByPatient } from "../../services/appointmentService";
 import { createCheckoutSession } from "../../services/paymentService";
 import type { AppointmentRecord } from "../../types/appointment.ts";
@@ -26,6 +27,22 @@ const extractServerMessage = (err: unknown): string | undefined => {
 
 const PENDING_PAYMENT_STORAGE_KEY = 'curex.pendingPayment'
 
+function isRetryableCheckoutError(err: unknown): boolean {
+  if (isAxiosError(err)) {
+    const status = err.response?.status;
+    const serverMessage = String(err.response?.data?.message ?? "").toLowerCase();
+    if (status === 405 || status === 502 || status === 503 || status === 504) {
+      return true;
+    }
+    if (serverMessage.includes("request method") && serverMessage.includes("post")) {
+      return true;
+    }
+  }
+
+  const message = extractServerMessage(err)?.toLowerCase() ?? "";
+  return message.includes("request method") && message.includes("post");
+}
+
 export function PatientCheckout() {
   const { user } = useAuth();
   const { appointmentId } = useParams<{ appointmentId: string }>();
@@ -35,6 +52,7 @@ export function PatientCheckout() {
   );
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState("Processing...");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -62,18 +80,37 @@ export function PatientCheckout() {
     if (!appointment || !appointmentId || !user?.id) return;
     try {
       setProcessing(true);
+      setProcessingMessage("Preparing secure checkout...");
       setError(null);
 
       const successUrl = `${window.location.origin}/patient/appointments?payment=success&id=${appointmentId}`;
       const cancelUrl = `${window.location.origin}/patient/checkout/${appointmentId}?payment=cancelled`;
 
-      const session = await createCheckoutSession(appointmentId, {
-        patientId: user.id,
-        amount: 50.0, // Fixed demo amount
-        currency: "usd",
-        successUrl,
-        cancelUrl,
-      });
+      let session: Awaited<ReturnType<typeof createCheckoutSession>> | null = null;
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          session = await createCheckoutSession(appointmentId, {
+            patientId: user.id,
+            amount: 50.0, // Fixed demo amount
+            currency: "usd",
+            successUrl,
+            cancelUrl,
+          });
+          break;
+        } catch (err) {
+          if (attempt < 3 && isRetryableCheckoutError(err)) {
+            setProcessingMessage("Refreshing payment session...");
+            await new Promise((resolve) => window.setTimeout(resolve, 900));
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      if (!session) {
+        throw new Error("Failed to create checkout session.");
+      }
 
       if (session.paymentId) {
         sessionStorage.setItem(
@@ -240,6 +277,7 @@ export function PatientCheckout() {
               </div>
 
               <button
+                type="button"
                 onClick={handlePayment}
                 disabled={processing}
                 className="btn-primary w-full mt-2 flex items-center justify-center gap-2"
@@ -247,7 +285,7 @@ export function PatientCheckout() {
                 {processing ? (
                   <>
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-surface border-t-transparent"></div>
-                    Processing...
+                    {processingMessage}
                   </>
                 ) : (
                   "Confirm & Pay"

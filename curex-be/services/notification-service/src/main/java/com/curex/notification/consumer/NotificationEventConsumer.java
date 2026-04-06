@@ -259,6 +259,24 @@ public class NotificationEventConsumer {
             String amount        = (String) event.get("amount");
             String appointmentId = (String) event.get("appointmentId");
 
+            if (patientId != null && !patientId.isBlank()
+                && (patientEmail == null || patientEmail.isBlank())) {
+            String resolved = userPreferenceClient.resolveUserEmail(patientId);
+            if (resolved != null) {
+                patientEmail = resolved;
+            }
+            }
+
+            String safePatientName = (patientName == null || patientName.isBlank())
+                ? "Patient"
+                : patientName;
+            String safeAmount = (amount == null || amount.isBlank())
+                ? "N/A"
+                : amount;
+            String safeAppointmentId = (appointmentId == null || appointmentId.isBlank())
+                ? "N/A"
+                : appointmentId;
+
             UserPreferenceClient.NotificationPreferences preferences =
                     userPreferenceClient.getNotificationPreferences(patientId);
             if (!preferences.isPaymentAlertsEnabled()) {
@@ -273,8 +291,10 @@ public class NotificationEventConsumer {
                         .type(Notification.NotificationType.PAYMENT_CONFIRMATION)
                         .channel(Notification.NotificationChannel.EMAIL)
                         .subject("Payment Confirmation - Curex Healthcare")
-                        .content(buildPaymentConfirmationContent(patientName, amount, appointmentId))
+                        .content(buildPaymentConfirmationContent(safePatientName, safeAmount, safeAppointmentId))
                         .build());
+            } else {
+                log.warn("Skipping payment confirmation email because patient email is unavailable for userId={}", patientId);
             }
 
             notificationService.sendNotificationAsync(NotificationRequest.builder()
@@ -283,8 +303,8 @@ public class NotificationEventConsumer {
                     .channel(Notification.NotificationChannel.IN_APP)
                     .subject("Payment Confirmed")
                     .content(String.format("Payment of %s confirmed for appointment %s.",
-                            HtmlUtils.htmlEscape(amount),
-                            HtmlUtils.htmlEscape(appointmentId)))
+                            HtmlUtils.htmlEscape(safeAmount),
+                            HtmlUtils.htmlEscape(safeAppointmentId)))
                     .build());
         } catch (Exception e) {
             log.error("Failed to process payment.confirmation event: {}", e.getMessage(), e);
