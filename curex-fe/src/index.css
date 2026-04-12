@@ -47,6 +47,18 @@
     scroll-behavior: smooth;
   }
 
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --color-primary: #E2E8F0;
+    --color-primary-light: #93C5FD;
+    --color-background: #0B1220;
+    --color-surface: #111A2E;
+    --color-text-primary: #E2E8F0;
+    --color-text-secondary: #9CA3AF;
+    --shadow-header: 0 1px 0 rgb(15 23 42 / 0.6), 0 10px 30px rgb(2 6 23 / 0.35);
+    --shadow-card: 0 8px 28px rgb(2 6 23 / 0.45);
+  }
+
   body {
     @apply m-0 bg-background text-text-primary font-sans min-h-dvh;
   }

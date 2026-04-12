@@ -25,6 +25,7 @@ import feign.FeignException;
 import java.time.LocalDateTime;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.ArrayList;
@@ -62,6 +63,9 @@ public class AppointmentService {
     /** When true – skip Feign calls to doctor-service (isolated testing). */
     @Value("${appointment.stub-mode:true}")
     private boolean stubMode;
+
+    @Value("${appointment.status-transition.zone:Asia/Colombo}")
+    private String statusTransitionZone;
     @Transactional
     public AppointmentResponse bookAppointment(BookAppointmentRequest req) {
 
@@ -136,12 +140,14 @@ public class AppointmentService {
     //  Get By ID 
 
     public AppointmentResponse getById(String id) {
+        transitionStartedAppointmentsToInSession();
         return toResponse(findOrThrow(id));
     }
 
     //  Get By Patient 
 
     public List<AppointmentResponse> getByPatient(String patientId) {
+        transitionStartedAppointmentsToInSession();
         String normalizedPatientId = patientId == null ? "" : patientId.trim();
         List<Appointment> directMatches = appointmentRepository
                 .findByPatientIdOrderByAppointmentTimeDesc(normalizedPatientId);
@@ -158,6 +164,7 @@ public class AppointmentService {
     //  Get By Doctor 
 
     public List<AppointmentResponse> getByDoctor(String doctorId) {
+        transitionStartedAppointmentsToInSession();
         String normalizedDoctorId = doctorId == null ? "" : doctorId.trim();
         List<Appointment> directMatches = appointmentRepository
                 .findByDoctorIdOrderByAppointmentTimeDesc(normalizedDoctorId);
@@ -175,6 +182,7 @@ public class AppointmentService {
      * Doctor-facing retrieval that tolerates mixed storage of doctor user-id and profile-id.
      */
     public List<AppointmentResponse> getByDoctorForUser(String jwtUserId, String pathDoctorId) {
+        transitionStartedAppointmentsToInSession();
         String normalizedUserId = jwtUserId == null ? "" : jwtUserId.trim();
         String normalizedPathId = pathDoctorId == null ? "" : pathDoctorId.trim();
 
@@ -211,6 +219,7 @@ public class AppointmentService {
     //  Get All 
 
     public List<AppointmentResponse> getAll() {
+        transitionStartedAppointmentsToInSession();
         return appointmentRepository.findAll()
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
@@ -274,6 +283,34 @@ public class AppointmentService {
         }
         appt.setStatus(AppointmentStatus.CONFIRMED);
         return toResponse(appointmentRepository.save(appt));
+    }
+
+    @Transactional
+    public int transitionStartedAppointmentsToInSession() {
+        ZoneId zoneId = ZoneId.of(statusTransitionZone);
+        LocalDateTime now = LocalDateTime.now(zoneId);
+        List<Appointment> dueByPrimaryTime =
+                appointmentRepository.findByStatusAndAppointmentTimeLessThanEqual(
+                        AppointmentStatus.CONFIRMED,
+                        now);
+        List<Appointment> dueByLegacyTime =
+            appointmentRepository.findByStatusAndLegacyAppointmentDateTimeLessThanEqual(
+                AppointmentStatus.CONFIRMED,
+                now);
+
+        Map<String, Appointment> uniqueDueAppointments = new LinkedHashMap<>();
+        dueByPrimaryTime.forEach(appt -> uniqueDueAppointments.put(appt.getId(), appt));
+        dueByLegacyTime.forEach(appt -> uniqueDueAppointments.put(appt.getId(), appt));
+
+        List<Appointment> dueAppointments = new ArrayList<>(uniqueDueAppointments.values());
+
+        if (dueAppointments.isEmpty()) {
+            return 0;
+        }
+
+        dueAppointments.forEach(appt -> appt.setStatus(AppointmentStatus.IN_SESSION));
+        appointmentRepository.saveAll(dueAppointments);
+        return dueAppointments.size();
     }
 
     //  Search by Specialty 
