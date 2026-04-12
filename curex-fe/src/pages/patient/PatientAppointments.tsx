@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ListFilter,
+  Search,
+  X,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   bookAppointment,
@@ -269,10 +277,12 @@ export function PatientAppointments() {
   const [bookingStatusFilter, setBookingStatusFilter] = useState<
     "ALL" | "PENDING" | "CONFIRMED" | "IN_SESSION" | "COMPLETED" | "CANCELLED"
   >("ALL");
+  const [bookingDateFilter, setBookingDateFilter] = useState("");
   const [bookingTablePage, setBookingTablePage] = useState(1);
   const [telemedicineSessions, setTelemedicineSessions] = useState<
     Record<string, TelemedicineSessionRecord | null>
   >({});
+  const handledPaymentReturnRef = useRef<string | null>(null);
 
   const patientId = user?.id ?? "";
   const patientName = user ? `${user.firstName} ${user.lastName}`.trim() : "";
@@ -280,7 +290,10 @@ export function PatientAppointments() {
 
   const loadPatientAppointments = useCallback(async () => {
     if (!patientId) {
-      return;
+      return {
+        appointments: [] as AppointmentRecord[],
+        paymentsByAppointmentId: {} as Record<string, PaymentRecord>,
+      };
     }
 
     try {
@@ -294,8 +307,8 @@ export function PatientAppointments() {
         appointmentsResult.status === "fulfilled" ? appointmentsResult.value : [];
       setMyAppointments(patientData);
 
+      const map: Record<string, PaymentRecord> = {};
       if (paymentsResult.status === "fulfilled") {
-        const map: Record<string, PaymentRecord> = {};
         for (const payment of paymentsResult.value) {
           if (!payment.appointmentId) {
             continue;
@@ -313,18 +326,27 @@ export function PatientAppointments() {
             map[payment.appointmentId] = payment;
           }
         }
-        setPaymentsByAppointmentId(map);
       }
+      setPaymentsByAppointmentId(map);
 
       if (patientData.length > 0) {
         const firstDate = toDateKey(new Date(patientData[0].appointmentTime));
         setSelectedBookingDate(firstDate);
       }
+
+      return {
+        appointments: patientData,
+        paymentsByAppointmentId: map,
+      };
     } catch {
       toast(
         "Could not fetch appointment data. Please ensure backend is running.",
         "error",
       );
+      return {
+        appointments: [] as AppointmentRecord[],
+        paymentsByAppointmentId: {} as Record<string, PaymentRecord>,
+      };
     } finally {
       setLoading(false);
     }
@@ -627,6 +649,13 @@ export function PatientAppointments() {
         return false;
       }
 
+      if (
+        bookingDateFilter &&
+        toDateKey(new Date(appt.appointmentTime)) !== bookingDateFilter
+      ) {
+        return false;
+      }
+
       if (!term) {
         return true;
       }
@@ -646,6 +675,7 @@ export function PatientAppointments() {
     });
   }, [
     bookingStatusFilter,
+    bookingDateFilter,
     bookingTableSearch,
     bookingTypeFilter,
     sortedMyAppointments,
@@ -664,7 +694,7 @@ export function PatientAppointments() {
 
   useEffect(() => {
     setBookingTablePage(1);
-  }, [bookingTableSearch, bookingTypeFilter, bookingStatusFilter]);
+  }, [bookingDateFilter, bookingTableSearch, bookingTypeFilter, bookingStatusFilter]);
 
   useEffect(() => {
     if (bookingTablePage > bookingTableTotalPages) {
@@ -734,6 +764,19 @@ export function PatientAppointments() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const paymentStatus = params.get("payment");
+    const appointmentId = params.get("id") ?? "";
+    const handlingKey = paymentStatus ? `${paymentStatus}:${appointmentId}` : null;
+
+    if (!paymentStatus) {
+      handledPaymentReturnRef.current = null;
+      return;
+    }
+
+    if (handledPaymentReturnRef.current === handlingKey) {
+      return;
+    }
+
+    handledPaymentReturnRef.current = handlingKey;
 
     if (paymentStatus === "success") {
       setActiveTab("bookings");
@@ -741,13 +784,31 @@ export function PatientAppointments() {
       const handleSuccessReturn = async () => {
         toast("Payment successful. Updating booking status...", "success");
 
-        const appointmentId = params.get("id");
         let polls = 0;
         while (polls < 8) {
-          await loadPatientAppointments();
-          if (!appointmentId || isPaymentCompleted(appointmentId)) {
+          const latest = await loadPatientAppointments();
+          if (!appointmentId) {
             break;
           }
+
+          const payment = latest.paymentsByAppointmentId[appointmentId];
+          const paymentStatus = String(payment?.status ?? "").toUpperCase();
+          const paymentCompleted =
+            paymentStatus === "SUCCESS" || paymentStatus === "COMPLETED";
+
+          const appointment = latest.appointments.find(
+            (appt) => appt.id === appointmentId,
+          );
+          const appointmentStatus = String(appointment?.status ?? "").toUpperCase();
+          const appointmentUpdated =
+            appointmentStatus === "CONFIRMED" ||
+            appointmentStatus === "IN_SESSION" ||
+            appointmentStatus === "COMPLETED";
+
+          if (paymentCompleted || appointmentUpdated) {
+            break;
+          }
+
           polls += 1;
           await new Promise((resolve) => window.setTimeout(resolve, 1500));
         }
@@ -766,7 +827,7 @@ export function PatientAppointments() {
       toast("Payment was cancelled.", "warning");
       navigate("/patient/appointments", { replace: true });
     }
-  }, [location.search, loadPatientAppointments, navigate, toast, isPaymentCompleted]);
+  }, [location.search, loadPatientAppointments, navigate, toast]);
 
   useEffect(() => {
     let active = true;
@@ -1689,51 +1750,69 @@ export function PatientAppointments() {
               <h3 className="mb-3 text-base font-semibold text-primary">
                 All Bookings
               </h3>
-              <div className="mb-3 grid gap-3 md:grid-cols-[1fr_170px_180px]">
-                <label className="flex-1">
+              <div className="mb-3 grid gap-3 md:grid-cols-[1fr_150px_170px_180px]">
+                <label className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
                   <input
                     value={bookingTableSearch}
                     onChange={(e) => setBookingTableSearch(e.target.value)}
                     placeholder="Search by doctor, specialty, status"
-                    className="patient-page-input w-full"
+                    className="patient-page-input w-full border-text-secondary/20 bg-surface pl-10 shadow-sm"
+                  />
+                </label>
+                <label className="relative w-full md:w-auto">
+                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                  <input
+                    type="date"
+                    value={bookingDateFilter}
+                    onChange={(e) => setBookingDateFilter(e.target.value)}
+                    className="patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
                   />
                 </label>
                 <div className="flex gap-2">
-                  <select
-                    value={bookingTypeFilter}
-                    onChange={(e) =>
-                      setBookingTypeFilter(
-                        e.target.value as "ALL" | "TELEMEDICINE" | "IN_PERSON",
-                      )
-                    }
-                    className="patient-page-input border-primary-light/30 bg-primary-light/5 font-medium text-primary outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
-                  >
-                    <option value="ALL">All Types</option>
-                    <option value="TELEMEDICINE">Telemedicine</option>
-                    <option value="IN_PERSON">In-person</option>
-                  </select>
-                  <select
-                    value={bookingStatusFilter}
-                    onChange={(e) =>
-                      setBookingStatusFilter(
-                        e.target.value as
-                          | "ALL"
-                          | "PENDING"
-                          | "CONFIRMED"
-                          | "IN_SESSION"
-                          | "COMPLETED"
-                          | "CANCELLED",
-                      )
-                    }
-                    className="patient-page-input border-primary-light/30 bg-primary-light/5 font-medium text-primary outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
-                  >
-                    <option value="ALL">All Status</option>
-                    <option value="PENDING">PENDING</option>
-                    <option value="CONFIRMED">CONFIRMED</option>
-                    <option value="IN_SESSION">IN_SESSION</option>
-                    <option value="COMPLETED">COMPLETED</option>
-                    <option value="CANCELLED">CANCELLED</option>
-                  </select>
+                  <label className="relative w-full min-w-40 md:w-auto">
+                    <ListFilter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                    <select
+                      value={bookingTypeFilter}
+                      onChange={(e) =>
+                        setBookingTypeFilter(
+                          e.target.value as "ALL" | "TELEMEDICINE" | "IN_PERSON",
+                        )
+                      }
+                      className="patient-page-input w-full appearance-none border-primary-light/30 bg-primary-light/5 pl-10 pr-10 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                    >
+                      <option value="ALL">All Types</option>
+                      <option value="TELEMEDICINE">Telemedicine</option>
+                      <option value="IN_PERSON">In-person</option>
+                    </select>
+                  </label>
+                  <label className="relative w-full min-w-44 md:w-auto">
+                    <ListFilter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                    <select
+                      value={bookingStatusFilter}
+                      onChange={(e) =>
+                        setBookingStatusFilter(
+                          e.target.value as
+                            | "ALL"
+                            | "PENDING"
+                            | "CONFIRMED"
+                            | "IN_SESSION"
+                            | "COMPLETED"
+                            | "CANCELLED",
+                        )
+                      }
+                      className="patient-page-input w-full appearance-none border-primary-light/30 bg-primary-light/5 pl-10 pr-10 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                    >
+                      <option value="ALL">All Status</option>
+                      <option value="PENDING">Pending</option>
+                      <option value="CONFIRMED">Confirmed</option>
+                      <option value="IN_SESSION">In Session</option>
+                      <option value="COMPLETED">Completed</option>
+                      <option value="CANCELLED">Cancelled</option>
+                    </select>
+                  </label>
                 </div>
               </div>
 

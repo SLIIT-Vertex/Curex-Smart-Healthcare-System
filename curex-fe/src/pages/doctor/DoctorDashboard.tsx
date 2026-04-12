@@ -13,67 +13,28 @@ import {
 } from 'recharts'
 import { StatCard } from '../../components/doctor/StatCard'
 import type {
-  Appointment,
   Prescription,
   PrescriptionStatus,
-  DashboardStats,
 } from '../../types/doctor'
 import '../../styles/pages/DoctorDashboard.css'
 import { useAuth } from '../../store/hooks'
 import { getDoctorByUserId } from '../../services/doctorService'
-import { getAppointmentsByDoctor } from '../../services/appointmentService'
+import {
+  getAppointmentsByDoctor,
+  getDoctorSlots,
+  type AvailabilitySlotResponse,
+} from '../../services/appointmentService'
 import { getPrescriptionsByDoctor } from '../../services/prescriptionService'
 import type { AppointmentRecord } from '../../types/appointment'
 
-const MOCK_STATS: DashboardStats = {
-  todayAppointments: 5,
-  pendingPrescriptions: 0,
-  totalPatients: 48,
-  availableSlots: 12,
-  weeklyAppointments: [
-    { day: 'Mon', confirmed: 4, pending: 1, completed: 3 },
-    { day: 'Tue', confirmed: 6, pending: 2, completed: 5 },
-    { day: 'Wed', confirmed: 3, pending: 0, completed: 4 },
-    { day: 'Thu', confirmed: 5, pending: 1, completed: 6 },
-    { day: 'Fri', confirmed: 7, pending: 2, completed: 4 },
-    { day: 'Sat', confirmed: 2, pending: 1, completed: 1 },
-    { day: 'Sun', confirmed: 0, pending: 0, completed: 0 },
-  ],
-}
-
-const MOCK_APPOINTMENTS: Appointment[] = [
-  {
-    id: '1',
-    patientId: 'p1',
-    doctorId: 'd1',
-    appointmentTime: '2025-03-23T09:00:00',
-    status: 'CONFIRMED',
-    type: 'TELEMEDICINE',
-    patientName: 'John D.',
-    sessionUrl: 'https://meet.example.com/room1',
-  },
-  {
-    id: '2',
-    patientId: 'p2',
-    doctorId: 'd1',
-    appointmentTime: '2025-03-23T10:30:00',
-    status: 'CONFIRMED',
-    type: 'IN_PERSON',
-    patientName: 'Jane S.',
-  },
-  {
-    id: '3',
-    patientId: 'p3',
-    doctorId: 'd1',
-    appointmentTime: '2025-03-23T14:00:00',
-    status: 'CONFIRMED',
-    type: 'TELEMEDICINE',
-    patientName: 'Mary K.',
-    sessionUrl: 'https://meet.example.com/room2',
-  },
-]
-
 const RECENT_RX_LIMIT = 2
+
+type WeeklyPoint = {
+  day: string
+  confirmed: number
+  pending: number
+  completed: number
+}
 
 function formatTime(iso: string): string {
   const d = new Date(iso)
@@ -140,6 +101,26 @@ function getGreeting(): string {
   return 'Good evening'
 }
 
+function toDateKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function startOfWeekMonday(base: Date): Date {
+  const d = new Date(base)
+  d.setHours(0, 0, 0, 0)
+  const day = d.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + diff)
+  return d
+}
+
+function isCanceledStatus(status: string | null | undefined): boolean {
+  return status === 'CANCELED' || status === 'CANCELLED'
+}
+
 const CHART_COLORS = {
   confirmed: 'var(--color-accent-sky)',
   pending: 'var(--color-accent-peach)',
@@ -163,6 +144,7 @@ export function DoctorDashboard() {
   const [rxLoading, setRxLoading] = useState(true)
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
+  const [slots, setSlots] = useState<AvailabilitySlotResponse[]>([])
 
   const loadPrescriptionInsights = useCallback(async () => {
     if (!user?.id || user.role !== 'DOCTOR') {
@@ -174,15 +156,18 @@ export function DoctorDashboard() {
     setRxLoading(true)
     try {
       const doctor = await getDoctorByUserId(user.id, user)
-      const [apptList, rxList] = await Promise.all([
-        getAppointmentsByDoctor(doctor.id),
+      const [apptList, rxList, slotList] = await Promise.all([
+        getAppointmentsByDoctor(user.id),
         getPrescriptionsByDoctor(doctor.id),
+        getDoctorSlots(user.id),
       ])
       setAppointments(Array.isArray(apptList) ? apptList : [])
       setPrescriptions((Array.isArray(rxList) ? rxList : []) as Prescription[])
+      setSlots(Array.isArray(slotList) ? slotList : [])
     } catch {
       setAppointments([])
       setPrescriptions([])
+      setSlots([])
     } finally {
       setRxLoading(false)
     }
@@ -221,6 +206,82 @@ export function DoctorDashboard() {
   const pendingValue: number | string =
     rxLoading && user?.role === 'DOCTOR' ? '—' : pendingPrescriptionsCount
 
+  const todayDateKey = toDateKey(new Date())
+
+  const todaysAppointments = useMemo(() => {
+    return appointments
+      .filter((appt) => !isCanceledStatus(appt.status))
+      .filter((appt) => toDateKey(new Date(appt.appointmentTime)) === todayDateKey)
+      .sort(
+        (a, b) =>
+          new Date(a.appointmentTime).getTime() -
+          new Date(b.appointmentTime).getTime()
+      )
+  }, [appointments, todayDateKey])
+
+  const totalPatientsCount = useMemo(() => {
+    const ids = new Set(
+      appointments
+        .filter((appt) => !isCanceledStatus(appt.status))
+        .map((appt) => appt.patientId)
+        .filter(Boolean)
+    )
+    return ids.size
+  }, [appointments])
+
+  const availableSlotsCount = useMemo(
+    () => slots.filter((slot) => !slot.booked).length,
+    [slots]
+  )
+
+  const weeklyAppointments = useMemo<WeeklyPoint[]>(() => {
+    const weekStart = startOfWeekMonday(new Date())
+    const points: WeeklyPoint[] = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(weekStart)
+      d.setDate(weekStart.getDate() + i)
+      return {
+        day: d.toLocaleDateString('en-GB', { weekday: 'short' }),
+        confirmed: 0,
+        pending: 0,
+        completed: 0,
+      }
+    })
+
+    const pointByDate = new Map<string, WeeklyPoint>()
+    points.forEach((point, idx) => {
+      const d = new Date(weekStart)
+      d.setDate(weekStart.getDate() + idx)
+      pointByDate.set(toDateKey(d), point)
+    })
+
+    appointments.forEach((appt) => {
+      if (isCanceledStatus(appt.status)) {
+        return
+      }
+      const key = toDateKey(new Date(appt.appointmentTime))
+      const bucket = pointByDate.get(key)
+      if (!bucket) {
+        return
+      }
+
+      if (appt.status === 'PENDING') {
+        bucket.pending += 1
+        return
+      }
+
+      if (appt.status === 'COMPLETED') {
+        bucket.completed += 1
+        return
+      }
+
+      if (appt.status === 'CONFIRMED' || appt.status === 'IN_SESSION') {
+        bucket.confirmed += 1
+      }
+    })
+
+    return points
+  }, [appointments])
+
   return (
     <div className="space-y-6 lg:space-y-8">
       {/* Greeting banner */}
@@ -235,8 +296,8 @@ export function DoctorDashboard() {
       <div className="dashboard-grid">
         <StatCard
           label="Today's Appointments"
-          value={MOCK_STATS.todayAppointments}
-          trend="▲ 2 more than yesterday"
+          value={rxLoading && user?.role === 'DOCTOR' ? '—' : todaysAppointments.length}
+          trend={todaysAppointments.length > 0 ? 'Scheduled for today' : 'No appointments today'}
           accent="sky"
           icon={Calendar}
         />
@@ -249,15 +310,19 @@ export function DoctorDashboard() {
         />
         <StatCard
           label="Total Patients"
-          value={MOCK_STATS.totalPatients}
-          trend="This month"
+          value={rxLoading && user?.role === 'DOCTOR' ? '—' : totalPatientsCount}
+          trend="From appointment records"
           accent="mint"
           icon={Users}
         />
         <StatCard
           label="Available Slots"
-          value={`${MOCK_STATS.availableSlots}/20`}
-          trend="This week"
+          value={
+            rxLoading && user?.role === 'DOCTOR'
+              ? '—'
+              : `${availableSlotsCount}/${slots.length}`
+          }
+          trend="From saved availability"
           accent="primary-light"
           icon={Clock}
         />
@@ -273,9 +338,9 @@ export function DoctorDashboard() {
           <h2 className="text-lg font-semibold text-primary">
             Appointments Today
           </h2>
-          {MOCK_APPOINTMENTS.length > 0 ? (
+          {todaysAppointments.length > 0 ? (
             <ul className="mt-4 space-y-3" role="list">
-              {MOCK_APPOINTMENTS.map((apt) => (
+              {todaysAppointments.map((apt) => (
                 <li
                   key={apt.id}
                   className="schedule-row flex flex-wrap items-center justify-between gap-2 rounded-xl border border-text-secondary/10 bg-background/50 px-4 py-3"
@@ -298,19 +363,17 @@ export function DoctorDashboard() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {apt.type === 'TELEMEDICINE' && apt.sessionUrl && (
-                      <a
-                        href={apt.sessionUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                    {apt.type === 'TELEMEDICINE' && (
+                      <Link
+                        to={`/doctor/telemedicine/${apt.id}`}
                         className="btn-primary text-xs"
                       >
-                        Join
-                      </a>
+                        Open Room
+                      </Link>
                     )}
-                    <button type="button" className="btn-secondary text-xs">
+                    <Link to="/doctor/prescriptions" className="btn-secondary text-xs">
                       Prescribe
-                    </button>
+                    </Link>
                   </div>
                 </li>
               ))}
@@ -444,7 +507,7 @@ export function DoctorDashboard() {
         <div className="mt-4 h-64 min-h-[200px] w-full lg:h-72">
           <ResponsiveContainer width="100%" height="100%" minHeight={200}>
             <BarChart
-              data={MOCK_STATS.weeklyAppointments}
+              data={weeklyAppointments}
               margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
             >
               <CartesianGrid

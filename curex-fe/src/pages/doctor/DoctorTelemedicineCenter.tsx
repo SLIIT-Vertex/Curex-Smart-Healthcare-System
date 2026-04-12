@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Eye, Maximize2, Minimize2, RefreshCcw, Search, Video, X } from 'lucide-react'
+import {
+  CalendarDays,
+  ChevronDown,
+  Eye,
+  ListFilter,
+  Maximize2,
+  Minimize2,
+  RefreshCcw,
+  Search,
+  Video,
+  X,
+} from 'lucide-react'
 import { getAppointmentsByDoctor } from '../../services/appointmentService'
 import {
   createTelemedicineSession,
@@ -81,6 +92,34 @@ function queueStatus(
   return String(appointment.status)
 }
 
+function toDateInputValue(value: string): string {
+  const date = new Date(value)
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function queueStatusBadgeClass(status: string): string {
+  const normalized = status.toUpperCase()
+  if (normalized === 'CONFIRMED') {
+    return 'bg-accent-mint/25 text-primary'
+  }
+  if (normalized === 'PENDING') {
+    return 'bg-accent-peach/30 text-primary'
+  }
+  if (normalized === 'IN_SESSION') {
+    return 'bg-accent-sky/25 text-primary'
+  }
+  if (normalized === 'COMPLETED' || normalized === 'ENDED') {
+    return 'bg-primary-light/15 text-primary'
+  }
+  if (normalized === 'CANCELED' || normalized === 'CANCELLED') {
+    return 'bg-error/20 text-primary'
+  }
+  return 'bg-primary-light/10 text-primary'
+}
+
 function isCanceled(status: string | null | undefined): boolean {
   return status === 'CANCELED' || status === 'CANCELLED'
 }
@@ -101,6 +140,7 @@ export function DoctorTelemedicineCenter() {
   const [queueStatusFilter, setQueueStatusFilter] = useState<
     'ALL' | 'PENDING' | 'CONFIRMED' | 'IN_SESSION' | 'COMPLETED' | 'CANCELED'
   >('ALL')
+  const [queueDateFilter, setQueueDateFilter] = useState('')
   const [fullScreen, setFullScreen] = useState(false)
   const [loading, setLoading] = useState(true)
   const meetingPanelRef = useRef<HTMLDivElement | null>(null)
@@ -142,6 +182,10 @@ export function DoctorTelemedicineCenter() {
         return false
       }
 
+      if (queueDateFilter && toDateInputValue(appt.appointmentTime) !== queueDateFilter) {
+        return false
+      }
+
       if (!term) {
         return true
       }
@@ -158,7 +202,7 @@ export function DoctorTelemedicineCenter() {
         .toLowerCase()
         .includes(term)
     })
-  }, [activeTeleAppointments, queueSearch, queueStatusFilter, sessions])
+  }, [activeTeleAppointments, queueDateFilter, queueSearch, queueStatusFilter, sessions])
 
   const queueTotalPages = useMemo(
     () => Math.max(1, Math.ceil(filteredActiveTeleAppointments.length / perPage)),
@@ -172,7 +216,7 @@ export function DoctorTelemedicineCenter() {
 
   useEffect(() => {
     setPage(1)
-  }, [queueSearch, queueStatusFilter])
+  }, [queueDateFilter, queueSearch, queueStatusFilter])
 
   useEffect(() => {
     if (page > queueTotalPages) {
@@ -354,36 +398,49 @@ export function DoctorTelemedicineCenter() {
               <h2 className="text-base font-semibold text-primary">Video Queue</h2>
               <div className="mt-3 grid gap-3 md:flex md:items-center">
                 <label className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
                   <input
                     value={queueSearch}
                     onChange={(e) => setQueueSearch(e.target.value)}
                     placeholder="Search by patient, title, status"
-                    className="patient-page-input w-full pl-10"
+                    className="patient-page-input w-full border-text-secondary/20 bg-surface pl-10 shadow-sm"
                   />
                 </label>
-                <select
-                  value={queueStatusFilter}
-                  onChange={(e) =>
-                    setQueueStatusFilter(
-                      e.target.value as
-                        | 'ALL'
-                        | 'PENDING'
-                        | 'CONFIRMED'
-                        | 'IN_SESSION'
-                        | 'COMPLETED'
-                        | 'CANCELED'
-                    )
-                  }
-                  className="patient-page-input border-primary-light/30 bg-primary-light/5 font-medium text-primary outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
-                >
-                  <option value="ALL">📌 All Status</option>
-                  <option value="PENDING">⏳ PENDING</option>
-                  <option value="CONFIRMED">✅ CONFIRMED</option>
-                  <option value="IN_SESSION">🔵 IN_SESSION</option>
-                  <option value="COMPLETED">🏁 COMPLETED</option>
-                  <option value="CANCELED">❌ CANCELED</option>
-                </select>
+                <label className="relative md:w-64">
+                  <ListFilter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                  <select
+                    value={queueStatusFilter}
+                    onChange={(e) =>
+                      setQueueStatusFilter(
+                        e.target.value as
+                          | 'ALL'
+                          | 'PENDING'
+                          | 'CONFIRMED'
+                          | 'IN_SESSION'
+                          | 'COMPLETED'
+                          | 'CANCELED'
+                      )
+                    }
+                    className="patient-page-input w-full appearance-none border-primary-light/30 bg-primary-light/5 pl-10 pr-10 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                  >
+                    <option value="ALL">All Status</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="CONFIRMED">Confirmed</option>
+                    <option value="IN_SESSION">In Session</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="CANCELED">Canceled</option>
+                  </select>
+                </label>
+                <label className="relative md:w-52">
+                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                  <input
+                    type="date"
+                    value={queueDateFilter}
+                    onChange={(e) => setQueueDateFilter(e.target.value)}
+                    className="patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                  />
+                </label>
               </div>
               <div className="mt-3 rounded-2xl border border-text-secondary/15 bg-background/40 p-3">
                 <table className="w-full text-left text-sm">
@@ -419,7 +476,7 @@ export function DoctorTelemedicineCenter() {
                           <td className="px-3 py-2">{appointmentDateTime(appt)}</td>
                           <td className="px-3 py-2">{appt.patientName ?? appt.patientId}</td>
                           <td className="px-3 py-2">
-                            <span className="rounded-full bg-primary-light/10 px-2.5 py-1 text-xs font-medium text-primary">
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${queueStatusBadgeClass(queueStatus(appt, session))}`}>
                               {queueStatus(appt, session)}
                             </span>
                           </td>
