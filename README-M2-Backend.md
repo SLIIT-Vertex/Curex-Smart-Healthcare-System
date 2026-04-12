@@ -4,9 +4,9 @@
 
 This document covers the backend services developed for **Member 2 (M2)** in the Curex Healthcare Platform project:
 
-- **Patient Service** (port 8083) — Patient profiles, medical history, prescriptions
-- **Doctor Service** (port 8084) — Doctor profiles, availability, prescriptions
-- **AI Symptom Service** (port 8085) — Symptom analysis via Groq Cloud (llama-3.1-8b-instant)
+- **Patient Service** (port 8083) — Patient profiles, medical history, and **read-only prescription lists** (aggregated from doctor-service via Feign using the patient’s **user id**).
+- **Doctor Service** (port 8084) — Doctor profiles, availability, and **prescription issuance and lifecycle** (source of truth for prescription data in `curex_doctors`).
+- **AI Symptom Service** (port 8085) — Symptom triage via **Groq Cloud** (`llama-3.1-8b-instant` by default), with a **rule-based fallback** when no API key is set or Groq fails.
 
 ## Architecture
 
@@ -29,7 +29,8 @@ This document covers the backend services developed for **Member 2 (M2)** in the
 │ • Profile     │  │ • Profile       │  │ • Stateless       │
 │ • Medical     │  │ • Availability  │  │ • Groq Cloud API  │
 │   history     │  │ • Prescriptions │  │   (or fallback)   │
-│ • Prescriptions│ │ • Issue Rx     │  │                   │
+│ • Rx list     │  │ • Issue/cancel  │  │                   │
+│   (Feign)     │  │   Rx            │  │                   │
 └──────┬────────┘  └───────┬─────────┘  └──────────────────┘
        │                   │
   ┌────▼────┐         ┌────▼─────┐
@@ -45,7 +46,8 @@ This document covers the backend services developed for **Member 2 (M2)** in the
 - **Database**: PostgreSQL (curex_patients, curex_doctors)
 - **Message Broker**: RabbitMQ (doctor-service for prescription events)
 - **AI**: Groq Cloud API (llama-3.1-8b-instant), OpenAI-compatible
-- **Feign**: Patient → Doctor (prescriptions); Doctor → Appointment (validation); Doctor → User (approved doctors for booking)
+- **Feign**: Patient → Doctor (`GET /prescriptions/patient/{id}`); Doctor → Appointment (eligibility + **visit phase at issue**); Doctor → User (approved doctors for booking)
+- **Events**: Doctor-service publishes prescription events on RabbitMQ (e.g. `PrescriptionIssuedEvent` includes `appointmentId` and `visitStatusAtIssue` for downstream notifications/analytics)
 
 ## Quick Start
 
@@ -112,11 +114,14 @@ All endpoints are reached via the API Gateway at `http://localhost:8080`. Auth: 
 |--------|----------|-------------|------|
 | GET | `/api/patients/health` | Health check | No |
 | POST | `/api/patients` | Create patient profile | Yes |
-| GET | `/api/patients/{id}` | Get patient by ID | Yes |
+| GET | `/api/patients/by-user/{userId}` | Get patient profile by user-service user id | Yes |
+| GET | `/api/patients/{id}` | Get patient by profile id | Yes |
 | PUT | `/api/patients/{id}` | Update patient profile | Yes |
 | GET | `/api/patients/{id}/history` | Get medical history | Yes |
 | PUT | `/api/patients/{id}/history` | Update medical history | Yes |
-| GET | `/api/patients/{id}/prescriptions` | Get patient prescriptions | Yes |
+| GET | `/api/patients/{id}/prescriptions` | List prescriptions for this patient | Yes |
+
+**Prescriptions via patient-service:** The handler resolves the patient profile to the **user id** (`Patient.userId`) and calls doctor-service `GET /prescriptions/patient/{userId}`. Doctor-service stores `patientId` as that same user id (aligned with appointments). If doctor-service is unreachable, the API returns an **empty list** and logs a warning. Response DTOs mirror doctor-service and include **`visitStatusAtIssue`** (`IN_SESSION` \| `COMPLETED` \| null for legacy rows).
 
 ### Doctor Service (`/api/doctors/**`)
 
@@ -124,10 +129,13 @@ All endpoints are reached via the API Gateway at `http://localhost:8080`. Auth: 
 |--------|----------|-------------|------|
 | GET | `/api/doctors/health` | Health check | No |
 | POST | `/api/doctors` | Create doctor profile | Yes |
-| GET | `/api/doctors/{id}` | Get doctor by ID | Yes |
+| GET | `/api/doctors/by-user/{userId}` | Get doctor profile by user id | Yes |
+| GET | `/api/doctors/{id}` | Get doctor by profile id | Yes |
 | PUT | `/api/doctors/{id}` | Update doctor profile | Yes |
 | GET | `/api/doctors/search` | Search by specialty | Yes |
+| GET | `/api/doctors/bookable` | Bookable doctors (approved accounts, etc.) | Yes |
 | POST | `/api/doctors/{id}/availability` | Add availability slots | Yes |
+| PUT | `/api/doctors/{id}/availability` | Replace all availability slots (bulk body) | Yes |
 | GET | `/api/doctors/{id}/availability` | Get availability slots | Yes |
 | PATCH | `/api/doctors/{id}/availability/{slotId}/book` | Mark slot as booked | Yes (M4 Feign) |
 
@@ -141,23 +149,50 @@ All endpoints are reached via the API Gateway at `http://localhost:8080`. Auth: 
 
 The Feign client in appointment-service should call this path (see `DoctorClient#getApprovedDoctorsForBooking()`). This route is `permitAll` on doctor-service and is intended for **internal network** calls only.
 
-### Prescription Service (`/api/prescriptions/**`)
+### Prescriptions (`/api/prescriptions/**` → **doctor-service**)
+
+Prescriptions are **owned by doctor-service** (PostgreSQL `curex_doctors`, `prescriptions` table). The gateway routes `/api/prescriptions/**` to doctor-service (path rewritten to `/prescriptions/**`).
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| POST | `/api/prescriptions` | Issue prescription | Yes |
-| GET | `/api/prescriptions/patient/{patientId}` | Get prescriptions by patient | Yes |
-| GET | `/api/prescriptions/doctor/{doctorId}` | Get prescriptions by doctor | Yes |
+| POST | `/api/prescriptions` | Issue prescription | Yes — **requires `X-User-Id`** matching the prescribing doctor’s user id |
+| PATCH | `/api/prescriptions/{id}/status` | Cancel prescription (`body: { "status": "CANCELLED" }`) | Yes — **requires `X-User-Id`** |
+| GET | `/api/prescriptions/patient/{patientId}` | List by patient (user id) | Yes |
+| GET | `/api/prescriptions/doctor/{doctorId}` | List by doctor profile id | Yes |
+
+**Issue rules (server-side):**
+
+- Appointment must exist and be **`IN_SESSION` or `COMPLETED`** (validated via Feign to appointment-service).
+- **`doctorId`** and **`patientId`** in the body must match the appointment’s doctor and patient.
+- **At most one prescription per appointment** (`existsByAppointmentId`).
+- **`visitStatusAtIssue`** is **not** sent by the client; it is copied from the appointment status at issue time (`IN_SESSION` or `COMPLETED`) and returned on `PrescriptionResponse` for historical UI (“during visit” vs “after visit”). Legacy rows may have `null`.
+- API **`status`** on a prescription is **derived** from dates and cancellation (medication lifecycle: e.g. pending / issued / active / completed), distinct from appointment visit status.
+
+**Cancel rules:** Only transition to **`CANCELLED`** is supported via PATCH; other lifecycle states follow validity dates. The service verifies the caller is the issuing doctor (`X-User-Id`).
 
 ### AI Symptom Service (`/api/ai/**`)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | GET | `/api/ai/health` | Health check | No |
-| POST | `/api/ai/symptoms/check` | Analyze symptoms, return conditions/specialty/urgency | Yes |
+| POST | `/api/ai/symptoms/check` | Analyze symptoms (Groq or fallback) | Yes |
 
-**Request:** `{ "symptoms": "string" }`  
-**Response:** `{ "conditions": ["..."], "specialty": "Neurologist", "urgency": "low|medium|high" }`
+**Request:** `{ "symptoms": "string" }`
+
+**Response** (`SymptomCheckResponse`):  
+
+| Field | Description |
+|-------|-------------|
+| `conditions` | Up to three likely conditions (ordered) |
+| `specialty` | Suggested specialty to consult |
+| `urgency` | `"low"` \| `"medium"` \| `"high"` |
+| `summary` | Short lay summary |
+| `possibleCauses` | Optional list |
+| `selfCareTips` | Optional list |
+| `whenToSeekCare` | When to see a doctor |
+| `emergencyWarning` | Emergency guidance, or null |
+
+If **`GROQ_API_KEY`** is missing/blank or the Groq call throws, the service uses **`FallbackService`** (rule-based) and still returns the same shape where applicable.
 
 ## Configuration
 
@@ -217,6 +252,7 @@ curex-be/services/
 │   │   ├── repository/
 │   │   ├── entity/
 │   │   ├── dto/
+│   │   ├── event/
 │   │   └── feign/
 │   ├── pom.xml
 │   └── Dockerfile
@@ -232,9 +268,6 @@ curex-be/services/
 ```
 
 ## Related Documentation
-
-- **M2 Backend Plan**: `docs/M2_BACKEND_PLAN.md`
-- **AI Groq Integration**: `docs/AI_GROQ_INTEGRATION_PLAN.md`
 - **Developer Guide**: `docs/DEVERLOPER_GUIDE.md`
 
 ---

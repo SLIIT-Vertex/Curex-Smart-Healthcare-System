@@ -11,6 +11,7 @@ import type { MedicineLine } from '../../types/doctor'
 import type { AppointmentStatus } from '../../types/appointment'
 import type { PatientProfile } from '../../types/patient'
 import { getPatientClinicalProfileForAppointment } from '../../services/patientService'
+import { visitPhaseWhenIssuedDescription } from '../../lib/visitPhaseWhenIssued'
 
 const INPUT_CLASS =
   'w-full rounded-xl border border-text-secondary/20 bg-surface px-4 py-2.5 text-sm text-primary placeholder:text-text-secondary focus:border-primary-light focus:outline-none focus:ring-2 focus:ring-primary-light/20'
@@ -210,6 +211,13 @@ export function PrescriptionForm({
     () => appointments.find((a) => a.id === appointmentId),
     [appointments, appointmentId]
   )
+
+  const issueVisitSnapshot =
+    selectedAppointment &&
+    (selectedAppointment.status === 'IN_SESSION' ||
+      selectedAppointment.status === 'COMPLETED')
+      ? visitPhaseWhenIssuedDescription(selectedAppointment.status)
+      : null
 
   useEffect(() => {
     if (!patientId) return
@@ -521,6 +529,36 @@ export function PrescriptionForm({
                 ))}
               </select>
             </div>
+
+            {issueVisitSnapshot ? (
+              <div
+                className="rounded-2xl border border-primary-light/35 bg-gradient-to-br from-primary-light/[0.14] via-surface to-primary-light/[0.06] px-4 py-4 shadow-sm ring-1 ring-primary-light/12"
+                role="status"
+                aria-live="polite"
+              >
+                <div className="flex gap-3 sm:gap-4">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary-light/18 text-primary-light shadow-inner">
+                    <CalendarClock className="h-5 w-5" strokeWidth={1.75} />
+                  </div>
+                  <div className="min-w-0 space-y-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-primary/90">
+                      What we save on this prescription
+                    </p>
+                    <p className="text-base font-semibold leading-snug text-primary">
+                      {issueVisitSnapshot.headline}
+                    </p>
+                    <p className="text-sm leading-relaxed text-text-secondary">
+                      {issueVisitSnapshot.detail}
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-text-secondary/90">
+                      This matches the visit you selected — you do not need to enter it
+                      manually. If the visit status changes later, this label stays as a
+                      historical snapshot for you and your patient.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div>

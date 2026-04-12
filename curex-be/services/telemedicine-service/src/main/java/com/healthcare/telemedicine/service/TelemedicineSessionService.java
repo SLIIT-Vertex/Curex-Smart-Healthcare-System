@@ -35,7 +35,7 @@ public class TelemedicineSessionService {
     private final RabbitTemplate rabbitTemplate;
     private final AppointmentClient appointmentClient;
 
-    @Value("${telemedicine.stub-mode:true}")
+    @Value("${telemedicine.stub-mode:false}")
     private boolean stubMode;
 
     @Value("${telemedicine.jitsi-base-url:https://meet.jit.si}")

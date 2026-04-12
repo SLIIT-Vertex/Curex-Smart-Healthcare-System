@@ -20,9 +20,14 @@ public class PrescriptionController {
 
     private final PrescriptionService prescriptionService;
 
+    /**
+     * The gateway forwards {@code X-User-Id} (JWT subject) so the caller must match the prescribing doctor.
+     */
     @PostMapping
-    public ResponseEntity<PrescriptionResponse> issue(@Valid @RequestBody IssuePrescriptionRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(prescriptionService.issue(request));
+    public ResponseEntity<PrescriptionResponse> issue(
+            @Valid @RequestBody IssuePrescriptionRequest request,
+            @RequestHeader(value = "X-User-Id", required = false) String requestingUserId) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(prescriptionService.issue(request, requestingUserId));
     }
 
     /**

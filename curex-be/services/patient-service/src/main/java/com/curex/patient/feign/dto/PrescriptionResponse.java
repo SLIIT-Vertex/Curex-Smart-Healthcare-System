@@ -21,6 +21,8 @@ public class PrescriptionResponse {
     private String patientId;
     private String patientName;
     private String appointmentId;
+    /** {@code IN_SESSION} or {@code COMPLETED} when issued; null for legacy rows. */
+    private String visitStatusAtIssue;
     private String diagnosis;
     private String medicines;
     private String instructions;

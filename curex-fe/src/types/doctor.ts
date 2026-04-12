@@ -51,6 +51,8 @@ export interface Prescription {
   validTo?: string
   issuedAt: string
   status?: PrescriptionStatus
+  /** Snapshot when issued: during live visit vs after visit ended; absent on older records. */
+  visitStatusAtIssue?: 'IN_SESSION' | 'COMPLETED' | null
 }
 
 export interface MedicineLine {

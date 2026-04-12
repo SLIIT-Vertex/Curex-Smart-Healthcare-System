@@ -1,6 +1,5 @@
 package com.curex.ai.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -13,16 +12,18 @@ import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+/**
+ * MockMvc + Hamcrest APIs are not annotated consistently with {@code @NonNull}; Eclipse null analysis
+ * otherwise reports spurious “unchecked conversion” on {@link MediaType} and matchers.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")  // Uses FallbackService (no GROQ_API_KEY required)
+@SuppressWarnings("null")
 class SymptomControllerIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     @Test
     void checkSymptoms_withValidInput_returnsResponse() throws Exception {

@@ -17,6 +17,7 @@ import {
   openPrescriptionPrint,
   type PrescriptionPrintModel,
 } from '../../lib/printPrescriptionDocument'
+import { VisitPhaseAtIssueBadge } from '../../components/prescription/VisitPhaseAtIssueBadge'
 import '../../styles/pages/DoctorPrescriptions.css'
 
 /** Use mock data when backend is unavailable (e.g. during development). */
@@ -322,7 +323,7 @@ function LinkedVisitSection({ appointment }: { appointment: AppointmentRecord })
   ]
   const rightRows: [string, string][] = [
     ['Visit type', appointmentTypeLabel(appointment.type)],
-    ['Visit status', appointmentStatusLabel(appointment.status)],
+    ['Visit status (live)', appointmentStatusLabel(appointment.status)],
   ]
 
   return (
@@ -1046,6 +1047,13 @@ export function PatientPrescriptions() {
                                   {truncate(rx.diagnosis, 90)}
                                 </p>
                               )}
+                              <div className="mt-1.5">
+                                <VisitPhaseAtIssueBadge
+                                  visitStatusAtIssue={rx.visitStatusAtIssue}
+                                  compact
+                                  legacyMode="hide"
+                                />
+                              </div>
                             </>
                           )}
                         </td>
@@ -1182,6 +1190,27 @@ export function PatientPrescriptions() {
                                                   <StatusBadge
                                                     status={rx.status}
                                                   />
+                                                </td>
+                                              </tr>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Visit timing
+                                                </th>
+                                                <td className="py-0.5">
+                                                  <VisitPhaseAtIssueBadge
+                                                    visitStatusAtIssue={
+                                                      rx.visitStatusAtIssue
+                                                    }
+                                                    legacyMode="hint"
+                                                  />
+                                                  <p className="mt-1 max-w-[18rem] text-[10px] leading-snug text-text-secondary/95">
+                                                    Shows whether your doctor wrote this
+                                                    prescription during your visit or after it
+                                                    ended. Older records may not include this.
+                                                  </p>
                                                 </td>
                                               </tr>
                                               {rx.diagnosis ? (

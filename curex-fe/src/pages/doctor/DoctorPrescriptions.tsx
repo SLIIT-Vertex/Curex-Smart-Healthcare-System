@@ -26,6 +26,7 @@ import {
   Ban,
 } from 'lucide-react'
 import { PrescriptionForm } from '../../components/doctor/PrescriptionForm'
+import { VisitPhaseAtIssueBadge } from '../../components/prescription/VisitPhaseAtIssueBadge'
 import type { Prescription, PrescriptionStatus } from '../../types/doctor'
 import type { PrescriptionFormData } from '../../components/doctor/PrescriptionForm'
 import { getDoctorByUserId } from '../../services/doctorService'
@@ -346,7 +347,7 @@ function DoctorLinkedVisitSection({
   ]
   const rightRows: [string, string][] = [
     ['Visit type', appointmentTypeLabel(appointment.type)],
-    ['Visit status', appointmentStatusLabel(appointment.status)],
+    ['Visit status (live)', appointmentStatusLabel(appointment.status)],
   ]
 
   return (
@@ -1138,6 +1139,13 @@ export function DoctorPrescriptions() {
                                   {truncateStr(rx.diagnosis, 90)}
                                 </p>
                               )}
+                              <div className="mt-1.5">
+                                <VisitPhaseAtIssueBadge
+                                  visitStatusAtIssue={rx.visitStatusAtIssue}
+                                  compact
+                                  legacyMode="hide"
+                                />
+                              </div>
                             </>
                           )}
                         </td>
@@ -1251,6 +1259,25 @@ export function DoctorPrescriptions() {
                                                 </th>
                                                 <td className="py-0.5">
                                                   <StatusBadge status={rx.status} />
+                                                </td>
+                                              </tr>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Visit timing
+                                                </th>
+                                                <td className="py-0.5">
+                                                  <VisitPhaseAtIssueBadge
+                                                    visitStatusAtIssue={rx.visitStatusAtIssue}
+                                                    legacyMode="hint"
+                                                  />
+                                                  <p className="mt-1 max-w-[18rem] text-[10px] leading-snug text-text-secondary/95">
+                                                    Whether this was saved during the live visit
+                                                    or after it finished. Older prescriptions may
+                                                    not show this.
+                                                  </p>
                                                 </td>
                                               </tr>
                                               {rx.diagnosis ? (
@@ -1546,20 +1573,42 @@ export function DoctorPrescriptions() {
                       )
                     }
                     return (
-                      <dl className="space-y-3">
-                        <RxDetailDetailBlock
-                          label="Date & time"
-                          value={formatVisitDateTime(appt.appointmentTime)}
-                        />
-                        <RxDetailDetailBlock
-                          label="Visit type"
-                          value={appointmentTypeLabel(appt.type)}
-                        />
-                        <RxDetailDetailBlock
-                          label="Visit status"
-                          value={appointmentStatusLabel(appt.status)}
-                        />
-                      </dl>
+                      <div className="space-y-3">
+                        <dl className="space-y-3">
+                          <RxDetailDetailBlock
+                            label="Date & time"
+                            value={formatVisitDateTime(appt.appointmentTime)}
+                          />
+                          <RxDetailDetailBlock
+                            label="Visit type"
+                            value={appointmentTypeLabel(appt.type)}
+                          />
+                          <RxDetailDetailBlock
+                            label="Visit status (live)"
+                            value={appointmentStatusLabel(appt.status)}
+                          />
+                        </dl>
+                        {!isPendingPlaceholder(selectedPrescription) ? (
+                          <div className="rounded-xl border border-primary-light/20 bg-primary-light/[0.07] px-3 py-2.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                              Prescription snapshot
+                            </p>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                              <VisitPhaseAtIssueBadge
+                                visitStatusAtIssue={
+                                  selectedPrescription.visitStatusAtIssue
+                                }
+                                legacyMode="hint"
+                              />
+                            </div>
+                            <p className="mt-2 text-[11px] leading-relaxed text-text-secondary/95">
+                              “Visit status (live)” is the appointment today. The badge
+                              shows when this prescription was saved — useful if the visit
+                              continued after you issued the script.
+                            </p>
+                          </div>
+                        ) : null}
+                      </div>
                     )
                   })()}
                 </RxDetailPanelCard>
@@ -1568,11 +1617,29 @@ export function DoctorPrescriptions() {
               <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4 sm:p-6 lg:p-7">
                 <div className="flex flex-col gap-4 rounded-2xl border border-text-secondary/12 bg-surface p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-5">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
-                      Status
-                    </span>
-                    <StatusBadge status={selectedPrescription.status} />
+                  <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+                        Status
+                      </span>
+                      <StatusBadge status={selectedPrescription.status} />
+                    </div>
+                    {!isPendingPlaceholder(selectedPrescription) ? (
+                      <div className="flex min-w-0 flex-col gap-1.5 sm:border-l sm:border-text-secondary/15 sm:pl-5">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+                          Visit phase when prescribed
+                        </span>
+                        <VisitPhaseAtIssueBadge
+                          visitStatusAtIssue={selectedPrescription.visitStatusAtIssue}
+                          legacyMode="hint"
+                        />
+                        <p className="max-w-xl text-[11px] leading-relaxed text-text-secondary/95">
+                          This is the visit moment we store with the script. The linked
+                          appointment may show a newer status if the visit moved on after
+                          you issued medicines.
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="grid flex-1 gap-4 sm:min-w-[12rem] sm:grid-cols-2 lg:grid-cols-3">
                     <div>

@@ -18,6 +18,8 @@ public class PrescriptionResponse {
     private String patientId;
     private String patientName;
     private String appointmentId;
+    /** {@code IN_SESSION} or {@code COMPLETED}; null for prescriptions issued before this feature. */
+    private String visitStatusAtIssue;
     private String diagnosis;
     private String medicines;
     private String instructions;

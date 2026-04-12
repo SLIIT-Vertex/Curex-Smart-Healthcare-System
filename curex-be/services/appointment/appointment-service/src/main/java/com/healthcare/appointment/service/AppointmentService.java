@@ -244,10 +244,28 @@ public class AppointmentService {
         }
 
         if (req.getStatus() != null) {
+            assertAllowedStatusTransition(appt.getStatus(), req.getStatus());
             appt.setStatus(req.getStatus());
         }
 
         return toResponse(appointmentRepository.save(appt));
+    }
+
+    /**
+     * Guards direct PATCH status changes so visits follow a realistic lifecycle
+     * (see testing plan: CONFIRMED cannot skip to COMPLETED; CANCELLED is terminal for PATCH).
+     */
+    private void assertAllowedStatusTransition(AppointmentStatus current, AppointmentStatus next) {
+        if (next == null) {
+            return;
+        }
+        if (current == AppointmentStatus.CANCELLED && next != AppointmentStatus.CANCELLED) {
+            throw new IllegalStateException("Cannot change status of a cancelled appointment.");
+        }
+        if (current == AppointmentStatus.CONFIRMED && next == AppointmentStatus.COMPLETED) {
+            throw new IllegalStateException(
+                    "Cannot mark an appointment completed before it has been in session; transition to IN_SESSION first.");
+        }
     }
 
     //  Cancel 

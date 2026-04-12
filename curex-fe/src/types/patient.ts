@@ -43,6 +43,8 @@ export interface PatientPrescription {
   validTo?: string
   issuedAt: string
   status?: 'PENDING' | 'ACTIVE' | 'ISSUED' | 'COMPLETED' | 'CANCELLED'
+  /** Snapshot when issued: during live visit vs after visit ended; absent on older records. */
+  visitStatusAtIssue?: 'IN_SESSION' | 'COMPLETED' | null
 }
 
 export interface ConsultationRecord {
