@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import {
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ListFilter,
+  Search,
+  X,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   getAppointmentsByDoctor,
@@ -217,6 +225,14 @@ export function DoctorAvailability() {
   const [showBookedCalendar, setShowBookedCalendar] = useState(true)
   const [selectedBookedDate, setSelectedBookedDate] = useState(toDateKey(new Date()))
   const [popupBooked, setPopupBooked] = useState<AppointmentRecord | null>(null)
+  const [bookingsSearch, setBookingsSearch] = useState('')
+  const [bookingsTypeFilter, setBookingsTypeFilter] = useState<
+    'ALL' | 'TELEMEDICINE' | 'IN_PERSON'
+  >('ALL')
+  const [bookingsStatusFilter, setBookingsStatusFilter] = useState<
+    'ALL' | 'PENDING' | 'CONFIRMED' | 'IN_SESSION' | 'COMPLETED' | 'CANCELLED' | 'ENDED'
+  >('ALL')
+  const [bookingsDateFilter, setBookingsDateFilter] = useState('')
   const dragRef = useRef<{
     paintState: SlotState
     touched: Set<string>
@@ -245,6 +261,48 @@ export function DoctorAvailability() {
         new Date(b.appointmentTime).getTime()
       )
   }, [bookedAppointments])
+
+  const filteredBookedAppointments = useMemo(() => {
+    const term = bookingsSearch.trim().toLowerCase()
+    return upcomingBookedAppointments.filter((appt) => {
+      if (bookingsTypeFilter !== 'ALL' && appt.type !== bookingsTypeFilter) {
+        return false
+      }
+
+      const teleSession = telemedicineSessions[appt.id]
+      const normalizedStatus = doctorBookingStatusLabel(appt, teleSession).toUpperCase()
+      if (bookingsStatusFilter !== 'ALL' && normalizedStatus !== bookingsStatusFilter) {
+        return false
+      }
+
+      if (bookingsDateFilter && toDateKey(new Date(appt.appointmentTime)) !== bookingsDateFilter) {
+        return false
+      }
+
+      if (!term) {
+        return true
+      }
+
+      const values = [
+        appt.patientName,
+        appt.patientId,
+        appt.type === 'TELEMEDICINE' ? 'video' : 'in-person',
+        normalizedStatus,
+        new Date(appt.appointmentTime).toLocaleDateString('en-GB'),
+      ]
+        .filter(Boolean)
+        .map((value) => String(value).toLowerCase())
+
+      return values.some((value) => value.includes(term))
+    })
+  }, [
+    bookingsSearch,
+    bookingsDateFilter,
+    bookingsStatusFilter,
+    bookingsTypeFilter,
+    upcomingBookedAppointments,
+    telemedicineSessions,
+  ])
 
   const bookedByDate = useMemo(() => {
     const grouped: Record<string, AppointmentRecord[]> = {}
@@ -925,9 +983,82 @@ export function DoctorAvailability() {
 
               <div className="overflow-x-auto rounded-2xl border border-text-secondary/15 bg-background/40 p-4">
                 <h3 className="mb-3 text-base font-semibold text-primary">All Booked Appointments</h3>
+                <div className="mb-3 grid gap-3 md:grid-cols-[1fr_150px_170px_190px]">
+                  <label className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                    <input
+                      value={bookingsSearch}
+                      onChange={(e) => setBookingsSearch(e.target.value)}
+                      placeholder="Search by patient, date, status"
+                      className="patient-page-input w-full border-text-secondary/20 bg-surface pl-10 shadow-sm"
+                    />
+                  </label>
+
+                  <label className="relative">
+                    <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                    <input
+                      type="date"
+                      value={bookingsDateFilter}
+                      onChange={(e) => setBookingsDateFilter(e.target.value)}
+                      className="patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                    />
+                  </label>
+
+                  <label className="relative">
+                    <ListFilter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                    <select
+                      value={bookingsTypeFilter}
+                      onChange={(e) =>
+                        setBookingsTypeFilter(
+                          e.target.value as 'ALL' | 'TELEMEDICINE' | 'IN_PERSON'
+                        )
+                      }
+                      className="patient-page-input w-full appearance-none border-primary-light/30 bg-primary-light/5 pl-10 pr-10 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                    >
+                      <option value="ALL">All Types</option>
+                      <option value="TELEMEDICINE">Telemedicine</option>
+                      <option value="IN_PERSON">In-person</option>
+                    </select>
+                  </label>
+
+                  <label className="relative">
+                    <ListFilter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                    <select
+                      value={bookingsStatusFilter}
+                      onChange={(e) =>
+                        setBookingsStatusFilter(
+                          e.target.value as
+                            | 'ALL'
+                            | 'PENDING'
+                            | 'CONFIRMED'
+                            | 'IN_SESSION'
+                            | 'COMPLETED'
+                            | 'CANCELLED'
+                            | 'ENDED'
+                        )
+                      }
+                      className="patient-page-input w-full appearance-none border-primary-light/30 bg-primary-light/5 pl-10 pr-10 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                    >
+                      <option value="ALL">All Status</option>
+                      <option value="PENDING">Pending</option>
+                      <option value="CONFIRMED">Confirmed</option>
+                      <option value="IN_SESSION">In Session</option>
+                      <option value="COMPLETED">Completed</option>
+                      <option value="CANCELLED">Cancelled</option>
+                      <option value="ENDED">Ended</option>
+                    </select>
+                  </label>
+                </div>
+
                 {upcomingBookedAppointments.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-6 py-8 text-center text-text-secondary">
                     No bookings yet.
+                  </div>
+                ) : filteredBookedAppointments.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-text-secondary/20 bg-background/50 px-6 py-8 text-center text-text-secondary">
+                    No bookings match your filters.
                   </div>
                 ) : (
                 <table className="w-full min-w-[42rem] text-left text-sm">
@@ -942,7 +1073,7 @@ export function DoctorAvailability() {
                     </tr>
                   </thead>
                   <tbody>
-                    {upcomingBookedAppointments.map((appt) => {
+                    {filteredBookedAppointments.map((appt) => {
                       const date = new Date(appt.appointmentTime)
                       const teleSession = telemedicineSessions[appt.id]
                       return (

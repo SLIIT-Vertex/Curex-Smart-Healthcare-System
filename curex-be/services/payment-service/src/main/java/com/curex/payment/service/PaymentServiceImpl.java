@@ -80,12 +80,14 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<PaymentResponse> getPaymentsForPatient(String patientId) {
         if (!StringUtils.hasText(patientId)) {
             throw new PaymentException("patientId is required");
         }
-        return paymentRepository.findByPatientIdOrderByCreatedAtDesc(patientId).stream()
+        List<Payment> payments = paymentRepository.findByPatientIdOrderByCreatedAtDesc(patientId);
+        reconcilePendingStripePayments(payments);
+        return payments.stream()
                 .map(this::toResponse)
                 .toList();
     }
@@ -154,33 +156,7 @@ public class PaymentServiceImpl implements PaymentService {
         log.info("Processing checkout.session.completed for stripeSessionId={}", session.getId());
 
         paymentRepository.findByStripeSessionId(session.getId()).ifPresent(payment -> {
-            // Idempotency: Stripe may retry webhooks; only publish once when transitioning.
-            if (payment.getStatus() == PaymentStatus.SUCCESS) {
-                log.info("Payment already SUCCESS for stripeSessionId={} paymentId={} (idempotent skip)",
-                        session.getId(), payment.getId());
-                return;
-            }
-
-            payment.setStatus(PaymentStatus.SUCCESS);
-            payment.setStripePaymentIntentId(session.getPaymentIntent());
-            // Real card brand can be fetched via PaymentIntent/Charge, but keep demo
-            // simple.
-            payment.setPaymentMethod("CARD");
-            Payment saved = paymentRepository.save(payment);
-
-            PaymentConfirmedEvent confirmedEvent = PaymentConfirmedEvent.builder()
-                    .paymentId(saved.getId())
-                    .appointmentId(saved.getAppointmentId())
-                    .patientId(saved.getPatientId())
-                    .amount(saved.getAmount())
-                    .currency(saved.getCurrency())
-                    .status(saved.getStatus())
-                    .timestamp(saved.getUpdatedAt())
-                    .build();
-
-            log.info("Publishing payment.confirmed for appointmentId={} paymentId={}",
-                    saved.getAppointmentId(), saved.getId());
-            paymentEventPublisher.publishPaymentConfirmed(confirmedEvent);
+            markPaymentSuccessfulAndPublish(payment, session.getPaymentIntent(), "webhook");
         });
 
         if (paymentRepository.findByStripeSessionId(session.getId()).isEmpty()) {
@@ -221,6 +197,64 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         return Optional.empty();
+    }
+
+    private void reconcilePendingStripePayments(List<Payment> payments) {
+        for (Payment payment : payments) {
+            if (payment.getStatus() != PaymentStatus.PENDING) {
+                continue;
+            }
+
+            if (!StringUtils.hasText(payment.getStripeSessionId())) {
+                continue;
+            }
+
+            try {
+                Session session = stripeService.retrieveCheckoutSession(payment.getStripeSessionId());
+                String paymentStatus = String.valueOf(session.getPaymentStatus()).toLowerCase(Locale.ROOT);
+                String checkoutStatus = String.valueOf(session.getStatus()).toLowerCase(Locale.ROOT);
+
+                boolean paid = "paid".equals(paymentStatus);
+                boolean completed = "complete".equals(checkoutStatus);
+
+                if (paid || completed) {
+                    log.info("Reconciled pending payment as SUCCESS via Stripe session lookup. paymentId={} stripeSessionId={}",
+                            payment.getId(), payment.getStripeSessionId());
+                    markPaymentSuccessfulAndPublish(payment, session.getPaymentIntent(), "reconcile");
+                }
+            } catch (Exception ex) {
+                log.debug("Stripe reconcile skipped for paymentId={} stripeSessionId={}: {}",
+                        payment.getId(), payment.getStripeSessionId(), ex.getMessage());
+            }
+        }
+    }
+
+    private void markPaymentSuccessfulAndPublish(Payment payment, String stripePaymentIntentId, String source) {
+        // Idempotency: Stripe webhooks and fallback reconciliation can both hit this path.
+        if (payment.getStatus() == PaymentStatus.SUCCESS) {
+            log.info("Payment already SUCCESS for paymentId={} (source={}, idempotent skip)",
+                    payment.getId(), source);
+            return;
+        }
+
+        payment.setStatus(PaymentStatus.SUCCESS);
+        payment.setStripePaymentIntentId(stripePaymentIntentId);
+        payment.setPaymentMethod("CARD");
+        Payment saved = paymentRepository.save(payment);
+
+        PaymentConfirmedEvent confirmedEvent = PaymentConfirmedEvent.builder()
+                .paymentId(saved.getId())
+                .appointmentId(saved.getAppointmentId())
+                .patientId(saved.getPatientId())
+                .amount(saved.getAmount())
+                .currency(saved.getCurrency())
+                .status(saved.getStatus())
+                .timestamp(saved.getUpdatedAt())
+                .build();
+
+        log.info("Publishing payment.confirmed from {} for appointmentId={} paymentId={}",
+                source, saved.getAppointmentId(), saved.getId());
+        paymentEventPublisher.publishPaymentConfirmed(confirmedEvent);
     }
 
     private PaymentResponse toResponse(Payment payment) {

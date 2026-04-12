@@ -24,4 +24,9 @@ public interface StripeService {
      * @param signatureHeader value of 'Stripe-Signature' header
      */
     Event verifyAndConstructEvent(String payload, String signatureHeader);
+
+    /**
+     * Retrieve an existing Stripe Checkout Session by id.
+     */
+    Session retrieveCheckoutSession(String sessionId);
 }

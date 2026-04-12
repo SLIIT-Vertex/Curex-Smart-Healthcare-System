@@ -8,7 +8,6 @@ import com.healthcare.appointment.entity.AppointmentStatus;
 import com.healthcare.appointment.events.AppointmentBookedEvent;
 import com.healthcare.appointment.events.AppointmentBookingNotificationEvent;
 import com.healthcare.appointment.events.AppointmentCancelledEvent;
-import com.healthcare.appointment.events.PaymentConfirmedEvent;
 import com.healthcare.appointment.feign.DoctorClient;
 import com.healthcare.appointment.feign.dto.AvailabilitySlotDto;
 import com.healthcare.appointment.feign.dto.BookableDoctorDto;
@@ -290,15 +289,32 @@ public class AppointmentService {
 
     @RabbitListener(queues = RabbitMQConfig.PAYMENT_CONFIRMED_QUEUE)
     @Transactional
-    public void onPaymentConfirmed(PaymentConfirmedEvent event) {
-        log.info("Payment confirmed event received: appointmentId={}",
-                event.getAppointmentId());
-        appointmentRepository.findById(event.getAppointmentId()).ifPresent(appt -> {
+    public void onPaymentConfirmed(Map<String, Object> event) {
+        String appointmentId = asString(event.get("appointmentId"));
+        String paymentId = asString(event.get("paymentId"));
+
+        if (appointmentId == null || appointmentId.isBlank()) {
+            log.warn("Received payment.confirmed without appointmentId. payload={}", event);
+            return;
+        }
+
+        log.info("Payment confirmed event received: appointmentId={} paymentId={}",
+                appointmentId, paymentId);
+
+        appointmentRepository.findById(appointmentId).ifPresent(appt -> {
             appt.setStatus(AppointmentStatus.CONFIRMED);
-            appt.setPaymentId(event.getPaymentId());
+            appt.setPaymentId(paymentId);
             appointmentRepository.save(appt);
             log.info("Appointment {} moved to CONFIRMED after payment.", appt.getId());
         });
+    }
+
+    private String asString(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? null : text;
     }
 
     //  Helpers 

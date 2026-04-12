@@ -116,6 +116,25 @@ public class StripeServiceImpl implements StripeService {
         }
     }
 
+    @Override
+    public Session retrieveCheckoutSession(String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            throw new IllegalArgumentException("sessionId is required");
+        }
+        if (!StringUtils.hasText(stripeProperties.getSecretKey())) {
+            throw new IllegalStateException(
+                    "Stripe secret key is not configured (stripe.secret-key / STRIPE_SECRET_KEY)");
+        }
+
+        Stripe.apiKey = stripeProperties.getSecretKey();
+
+        try {
+            return Session.retrieve(sessionId.trim());
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to retrieve Stripe Checkout Session", e);
+        }
+    }
+
     private String normalizeCurrency(String currency) {
         if (!StringUtils.hasText(currency)) {
             return "usd";
