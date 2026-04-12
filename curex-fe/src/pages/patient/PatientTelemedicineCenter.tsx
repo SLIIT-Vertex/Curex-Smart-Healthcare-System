@@ -240,6 +240,11 @@ export function PatientTelemedicineCenter() {
     "ALL" | "PENDING" | "CONFIRMED" | "IN_SESSION" | "COMPLETED" | "CANCELED"
   >("ALL");
   const [queueDateFilter, setQueueDateFilter] = useState("");
+  const [endedExpanded, setEndedExpanded] = useState(false);
+  const [endedPage, setEndedPage] = useState(1);
+  const [endedSearch, setEndedSearch] = useState("");
+  const [endedDateFilter, setEndedDateFilter] = useState("");
+  const endedPerPage = 6;
   const [fullScreen, setFullScreen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [transcriptText, setTranscriptText] = useState("");
@@ -326,15 +331,63 @@ export function PatientTelemedicineCenter() {
     return filteredActiveTeleAppointments.slice(start, start + perPage);
   }, [filteredActiveTeleAppointments, page, perPage]);
 
+  const filteredEndedTeleAppointments = useMemo(() => {
+    const term = endedSearch.trim().toLowerCase();
+    return endedTeleAppointments.filter((appt) => {
+      const session = sessions[appt.id] ?? null;
+
+      if (endedDateFilter && toDateInputValue(appt.appointmentTime) !== endedDateFilter) {
+        return false;
+      }
+
+      if (!term) {
+        return true;
+      }
+
+      return [
+        appt.id,
+        appt.doctorName,
+        appt.doctorId,
+        meetingTitle(appt),
+        formatDateTime(session?.startedAt),
+        formatDateTime(session?.endedAt),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(term);
+    });
+  }, [endedDateFilter, endedSearch, endedTeleAppointments, sessions]);
+
+  const endedTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredEndedTeleAppointments.length / endedPerPage)),
+    [endedPerPage, filteredEndedTeleAppointments.length],
+  );
+
+  const paginatedEndedTeleAppointments = useMemo(() => {
+    const start = (endedPage - 1) * endedPerPage;
+    return filteredEndedTeleAppointments.slice(start, start + endedPerPage);
+  }, [endedPage, endedPerPage, filteredEndedTeleAppointments]);
+
   useEffect(() => {
     setPage(1);
   }, [queueDateFilter, queueSearch, queueStatusFilter]);
+
+  useEffect(() => {
+    setEndedPage(1);
+  }, [endedDateFilter, endedSearch]);
 
   useEffect(() => {
     if (page > queueTotalPages) {
       setPage(queueTotalPages);
     }
   }, [page, queueTotalPages]);
+
+  useEffect(() => {
+    if (endedPage > endedTotalPages) {
+      setEndedPage(endedTotalPages);
+    }
+  }, [endedPage, endedTotalPages]);
 
   useEffect(() => {
     if (!meetingAppointment) {
@@ -910,50 +963,120 @@ export function PatientTelemedicineCenter() {
               </div>
 
             {endedTeleAppointments.length > 0 && (
-              <div className="mt-5 overflow-x-auto rounded-2xl border border-text-secondary/15 bg-background/40 p-3">
-                <h3 className="mb-3 text-sm font-semibold text-primary">
-                  Ended Video Sessions
-                </h3>
-                <table className="w-full min-w-[52rem] text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-text-secondary/20 text-text-secondary">
-                      <th className="px-3 py-2 font-medium">Title</th>
-                      <th className="px-3 py-2 font-medium">Date</th>
-                      <th className="px-3 py-2 font-medium">Start Time</th>
-                      <th className="px-3 py-2 font-medium">End Time</th>
-                      <th className="px-3 py-2 font-medium">End Date Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {endedTeleAppointments.map((appt) => {
-                      const session = sessions[appt.id] ?? null;
-                      return (
-                        <tr
-                          key={`ended-${appt.id}`}
-                          className="border-b border-text-secondary/10"
+              <div className="mt-5 rounded-2xl border border-text-secondary/15 bg-background/40 p-3">
+                <button
+                  type="button"
+                  onClick={() => setEndedExpanded((prev) => !prev)}
+                  className="flex w-full items-center justify-between rounded-xl border border-text-secondary/15 bg-surface px-3 py-2 text-left"
+                >
+                  <h3 className="text-sm font-semibold text-primary">
+                    Ended Video Sessions ({endedTeleAppointments.length})
+                  </h3>
+                  <ChevronDown
+                    className={`h-4 w-4 text-text-secondary transition-transform ${endedExpanded ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {endedExpanded && (
+                  <>
+                    <div className="mt-3 grid gap-3 md:grid-cols-[1fr_220px]">
+                      <label className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                        <input
+                          value={endedSearch}
+                          onChange={(e) => setEndedSearch(e.target.value)}
+                          placeholder="Search ended sessions"
+                          className="patient-page-input w-full border-text-secondary/20 bg-surface pl-10 shadow-sm"
+                        />
+                      </label>
+                      <label className="relative">
+                        <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                        <input
+                          type="date"
+                          value={endedDateFilter}
+                          onChange={(e) => setEndedDateFilter(e.target.value)}
+                          className="patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full min-w-[52rem] text-left text-sm">
+                        <thead>
+                          <tr className="border-b border-text-secondary/20 text-text-secondary">
+                            <th className="px-3 py-2 font-medium">Title</th>
+                            <th className="px-3 py-2 font-medium">Date</th>
+                            <th className="px-3 py-2 font-medium">Start Time</th>
+                            <th className="px-3 py-2 font-medium">End Time</th>
+                            <th className="px-3 py-2 font-medium">End Date Time</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paginatedEndedTeleAppointments.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="px-3 py-5 text-center text-text-secondary">
+                                No ended sessions match your filters.
+                              </td>
+                            </tr>
+                          ) : (
+                            paginatedEndedTeleAppointments.map((appt) => {
+                              const session = sessions[appt.id] ?? null;
+                              return (
+                                <tr
+                                  key={`ended-${appt.id}`}
+                                  className="border-b border-text-secondary/10"
+                                >
+                                  <td className="px-3 py-2 font-medium text-primary">
+                                    {meetingTitle(appt)}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    {new Date(appt.appointmentTime).toLocaleDateString(
+                                      "en-GB",
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    {formatDateTime(session?.startedAt)}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    {formatDateTime(session?.endedAt)}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    {formatDateTime(session?.endedAt)}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between text-sm text-text-secondary">
+                      <div>
+                        Showing {filteredEndedTeleAppointments.length === 0 ? 0 : (endedPage - 1) * endedPerPage + 1} - {Math.min(endedPage * endedPerPage, filteredEndedTeleAppointments.length)} of {filteredEndedTeleAppointments.length}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setEndedPage((p) => Math.max(1, p - 1))}
+                          disabled={endedPage === 1}
+                          className="rounded-lg border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          <td className="px-3 py-2 font-medium text-primary">
-                            {meetingTitle(appt)}
-                          </td>
-                          <td className="px-3 py-2">
-                            {new Date(appt.appointmentTime).toLocaleDateString(
-                              "en-GB",
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            {formatDateTime(session?.startedAt)}
-                          </td>
-                          <td className="px-3 py-2">
-                            {formatDateTime(session?.endedAt)}
-                          </td>
-                          <td className="px-3 py-2">
-                            {formatDateTime(session?.endedAt)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          Prev
+                        </button>
+                        <span className="px-2">Page {endedPage} / {endedTotalPages}</span>
+                        <button
+                          type="button"
+                          onClick={() => setEndedPage((p) => Math.min(endedTotalPages, p + 1))}
+                          disabled={endedPage >= endedTotalPages}
+                          className="rounded-lg border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>

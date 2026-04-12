@@ -32,6 +32,14 @@ public interface AppointmentRepository extends JpaRepository<Appointment, String
 
     List<Appointment> findByStatus(AppointmentStatus status);
 
+    List<Appointment> findByStatusAndAppointmentTimeLessThanEqual(
+            AppointmentStatus status,
+            LocalDateTime appointmentTime);
+
+    List<Appointment> findByStatusAndLegacyAppointmentDateTimeLessThanEqual(
+            AppointmentStatus status,
+            LocalDateTime legacyAppointmentDateTime);
+
     // Exact slot conflict check (same doctor, same appointment time, active statuses)
     @Query("SELECT COUNT(a) > 0 FROM Appointment a " +
             "WHERE LOWER(TRIM(a.doctorId)) = LOWER(TRIM(:doctorId)) " +

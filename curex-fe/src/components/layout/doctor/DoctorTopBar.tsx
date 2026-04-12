@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import { Menu, Search } from "lucide-react";
 import { useAuth } from "../../../store/hooks";
 import { NotificationBell } from "../../ui/NotificationBell";
+import { ThemeToggle } from "../common/ThemeToggle";
+import { SystemClock } from "../common/SystemClock";
 
 interface DoctorTopBarProps {
   onMenuClick?: () => void;
@@ -47,6 +49,8 @@ export function DoctorTopBar({ onMenuClick }: DoctorTopBarProps) {
 
       {/* Right side: notifications + avatar */}
       <div className="flex flex-1 items-center justify-end gap-2 lg:flex-initial">
+        <SystemClock />
+        <ThemeToggle />
         <NotificationBell buttonClassName="relative flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-primary-light/10 hover:text-primary" />
 
         <Link
