@@ -10,27 +10,6 @@
 CREATE INDEX IF NOT EXISTS idx_patients_user_id ON patients (user_id);
 CREATE INDEX IF NOT EXISTS idx_patients_email ON patients (email);
 
--- Keep uniqueness constraints idempotent across environments.
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conname = 'uq_patients_user_id'
-    ) THEN
-        ALTER TABLE patients
-            ADD CONSTRAINT uq_patients_user_id UNIQUE (user_id);
-    END IF;
-END $$;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conname = 'uq_patients_email'
-    ) THEN
-        ALTER TABLE patients
-            ADD CONSTRAINT uq_patients_email UNIQUE (email);
-    END IF;
-END $$;
+-- Enforce uniqueness constraints.
+ALTER TABLE patients ADD CONSTRAINT uq_patients_user_id UNIQUE (user_id);
+ALTER TABLE patients ADD CONSTRAINT uq_patients_email UNIQUE (email);
