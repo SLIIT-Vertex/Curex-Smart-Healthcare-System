@@ -13,6 +13,7 @@ import org.springframework.web.client.RestTemplate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -44,7 +45,7 @@ public class GroqAiService {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(aiConfig.getApiKey());
+        headers.setBearerAuth(Objects.requireNonNull(aiConfig.getApiKey(), "ai.apiKey"));
 
         String userMessage = "Patient symptoms: " + symptoms;
 

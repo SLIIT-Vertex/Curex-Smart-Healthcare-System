@@ -8,7 +8,6 @@ import com.healthcare.appointment.entity.AppointmentStatus;
 import com.healthcare.appointment.events.AppointmentBookedEvent;
 import com.healthcare.appointment.events.AppointmentBookingNotificationEvent;
 import com.healthcare.appointment.events.AppointmentCancelledEvent;
-import com.healthcare.appointment.events.PaymentConfirmedEvent;
 import com.healthcare.appointment.feign.DoctorClient;
 import com.healthcare.appointment.feign.dto.AvailabilitySlotDto;
 import com.healthcare.appointment.feign.dto.BookableDoctorDto;
@@ -26,6 +25,7 @@ import feign.FeignException;
 import java.time.LocalDateTime;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.ArrayList;
@@ -63,6 +63,9 @@ public class AppointmentService {
     /** When true – skip Feign calls to doctor-service (isolated testing). */
     @Value("${appointment.stub-mode:true}")
     private boolean stubMode;
+
+    @Value("${appointment.status-transition.zone:Asia/Colombo}")
+    private String statusTransitionZone;
     @Transactional
     public AppointmentResponse bookAppointment(BookAppointmentRequest req) {
 
@@ -137,12 +140,14 @@ public class AppointmentService {
     //  Get By ID 
 
     public AppointmentResponse getById(String id) {
+        transitionStartedAppointmentsToInSession();
         return toResponse(findOrThrow(id));
     }
 
     //  Get By Patient 
 
     public List<AppointmentResponse> getByPatient(String patientId) {
+        transitionStartedAppointmentsToInSession();
         String normalizedPatientId = patientId == null ? "" : patientId.trim();
         List<Appointment> directMatches = appointmentRepository
                 .findByPatientIdOrderByAppointmentTimeDesc(normalizedPatientId);
@@ -159,6 +164,7 @@ public class AppointmentService {
     //  Get By Doctor 
 
     public List<AppointmentResponse> getByDoctor(String doctorId) {
+        transitionStartedAppointmentsToInSession();
         String normalizedDoctorId = doctorId == null ? "" : doctorId.trim();
         List<Appointment> directMatches = appointmentRepository
                 .findByDoctorIdOrderByAppointmentTimeDesc(normalizedDoctorId);
@@ -176,6 +182,7 @@ public class AppointmentService {
      * Doctor-facing retrieval that tolerates mixed storage of doctor user-id and profile-id.
      */
     public List<AppointmentResponse> getByDoctorForUser(String jwtUserId, String pathDoctorId) {
+        transitionStartedAppointmentsToInSession();
         String normalizedUserId = jwtUserId == null ? "" : jwtUserId.trim();
         String normalizedPathId = pathDoctorId == null ? "" : pathDoctorId.trim();
 
@@ -212,6 +219,7 @@ public class AppointmentService {
     //  Get All 
 
     public List<AppointmentResponse> getAll() {
+        transitionStartedAppointmentsToInSession();
         return appointmentRepository.findAll()
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
@@ -236,10 +244,28 @@ public class AppointmentService {
         }
 
         if (req.getStatus() != null) {
+            assertAllowedStatusTransition(appt.getStatus(), req.getStatus());
             appt.setStatus(req.getStatus());
         }
 
         return toResponse(appointmentRepository.save(appt));
+    }
+
+    /**
+     * Guards direct PATCH status changes so visits follow a realistic lifecycle
+     * (see testing plan: CONFIRMED cannot skip to COMPLETED; CANCELLED is terminal for PATCH).
+     */
+    private void assertAllowedStatusTransition(AppointmentStatus current, AppointmentStatus next) {
+        if (next == null) {
+            return;
+        }
+        if (current == AppointmentStatus.CANCELLED && next != AppointmentStatus.CANCELLED) {
+            throw new IllegalStateException("Cannot change status of a cancelled appointment.");
+        }
+        if (current == AppointmentStatus.CONFIRMED && next == AppointmentStatus.COMPLETED) {
+            throw new IllegalStateException(
+                    "Cannot mark an appointment completed before it has been in session; transition to IN_SESSION first.");
+        }
     }
 
     //  Cancel 
@@ -277,6 +303,34 @@ public class AppointmentService {
         return toResponse(appointmentRepository.save(appt));
     }
 
+    @Transactional
+    public int transitionStartedAppointmentsToInSession() {
+        ZoneId zoneId = ZoneId.of(statusTransitionZone);
+        LocalDateTime now = LocalDateTime.now(zoneId);
+        List<Appointment> dueByPrimaryTime =
+                appointmentRepository.findByStatusAndAppointmentTimeLessThanEqual(
+                        AppointmentStatus.CONFIRMED,
+                        now);
+        List<Appointment> dueByLegacyTime =
+            appointmentRepository.findByStatusAndLegacyAppointmentDateTimeLessThanEqual(
+                AppointmentStatus.CONFIRMED,
+                now);
+
+        Map<String, Appointment> uniqueDueAppointments = new LinkedHashMap<>();
+        dueByPrimaryTime.forEach(appt -> uniqueDueAppointments.put(appt.getId(), appt));
+        dueByLegacyTime.forEach(appt -> uniqueDueAppointments.put(appt.getId(), appt));
+
+        List<Appointment> dueAppointments = new ArrayList<>(uniqueDueAppointments.values());
+
+        if (dueAppointments.isEmpty()) {
+            return 0;
+        }
+
+        dueAppointments.forEach(appt -> appt.setStatus(AppointmentStatus.IN_SESSION));
+        appointmentRepository.saveAll(dueAppointments);
+        return dueAppointments.size();
+    }
+
     //  Search by Specialty 
 
     public List<AppointmentResponse> searchBySpecialty(String specialty) {
@@ -290,15 +344,32 @@ public class AppointmentService {
 
     @RabbitListener(queues = RabbitMQConfig.PAYMENT_CONFIRMED_QUEUE)
     @Transactional
-    public void onPaymentConfirmed(PaymentConfirmedEvent event) {
-        log.info("Payment confirmed event received: appointmentId={}",
-                event.getAppointmentId());
-        appointmentRepository.findById(event.getAppointmentId()).ifPresent(appt -> {
+    public void onPaymentConfirmed(Map<String, Object> event) {
+        String appointmentId = asString(event.get("appointmentId"));
+        String paymentId = asString(event.get("paymentId"));
+
+        if (appointmentId == null || appointmentId.isBlank()) {
+            log.warn("Received payment.confirmed without appointmentId. payload={}", event);
+            return;
+        }
+
+        log.info("Payment confirmed event received: appointmentId={} paymentId={}",
+                appointmentId, paymentId);
+
+        appointmentRepository.findById(appointmentId).ifPresent(appt -> {
             appt.setStatus(AppointmentStatus.CONFIRMED);
-            appt.setPaymentId(event.getPaymentId());
+            appt.setPaymentId(paymentId);
             appointmentRepository.save(appt);
             log.info("Appointment {} moved to CONFIRMED after payment.", appt.getId());
         });
+    }
+
+    private String asString(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? null : text;
     }
 
     //  Helpers 

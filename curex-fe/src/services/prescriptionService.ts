@@ -28,6 +28,7 @@ export interface PrescriptionResponse {
   validTo: string
   status: string
   issuedAt: string
+  visitStatusAtIssue?: 'IN_SESSION' | 'COMPLETED' | null
 }
 
 export async function issuePrescription(

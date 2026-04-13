@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import { Menu } from "lucide-react";
 import { useAuth } from "../../../store/hooks";
 import { NotificationBell } from "../../ui/NotificationBell";
+import { ThemeToggle } from "../common/ThemeToggle";
+import { SystemClock } from "../common/SystemClock";
 
 interface AdminTopBarProps {
   onMenuClick: () => void;
@@ -26,6 +28,8 @@ export function AdminTopBar({ onMenuClick }: AdminTopBarProps) {
       </p>
 
       <div className="flex items-center gap-3">
+        <SystemClock />
+        <ThemeToggle />
         <NotificationBell buttonClassName="relative rounded-lg p-2 text-text-secondary transition-colors hover:bg-primary-light/5 hover:text-primary" />
 
         <Link

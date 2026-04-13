@@ -28,6 +28,9 @@ public class Prescription {
     @Column(name = "appointment_id")
     private String appointmentId;
 
+    @Column(name = "visit_status_at_issue", length = 20)
+    private String visitStatusAtIssue;
+
     @Column(name = "patient_name")
     private String patientName;
 

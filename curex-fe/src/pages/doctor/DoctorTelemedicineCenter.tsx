@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Eye, Maximize2, Minimize2, RefreshCcw, Search, Video, X } from 'lucide-react'
+import {
+  CalendarDays,
+  ChevronDown,
+  Eye,
+  ListFilter,
+  Maximize2,
+  Minimize2,
+  RefreshCcw,
+  Search,
+  Video,
+  X,
+} from 'lucide-react'
 import { getAppointmentsByDoctor } from '../../services/appointmentService'
 import {
   createTelemedicineSession,
@@ -81,6 +92,34 @@ function queueStatus(
   return String(appointment.status)
 }
 
+function toDateInputValue(value: string): string {
+  const date = new Date(value)
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function queueStatusBadgeClass(status: string): string {
+  const normalized = status.toUpperCase()
+  if (normalized === 'CONFIRMED') {
+    return 'bg-accent-mint/25 text-primary'
+  }
+  if (normalized === 'PENDING') {
+    return 'bg-accent-peach/30 text-primary'
+  }
+  if (normalized === 'IN_SESSION') {
+    return 'bg-accent-sky/25 text-primary'
+  }
+  if (normalized === 'COMPLETED' || normalized === 'ENDED') {
+    return 'bg-primary-light/15 text-primary'
+  }
+  if (normalized === 'CANCELED' || normalized === 'CANCELLED') {
+    return 'bg-error/20 text-primary'
+  }
+  return 'bg-primary-light/10 text-primary'
+}
+
 function isCanceled(status: string | null | undefined): boolean {
   return status === 'CANCELED' || status === 'CANCELLED'
 }
@@ -101,6 +140,12 @@ export function DoctorTelemedicineCenter() {
   const [queueStatusFilter, setQueueStatusFilter] = useState<
     'ALL' | 'PENDING' | 'CONFIRMED' | 'IN_SESSION' | 'COMPLETED' | 'CANCELED'
   >('ALL')
+  const [queueDateFilter, setQueueDateFilter] = useState('')
+  const [endedExpanded, setEndedExpanded] = useState(false)
+  const [endedPage, setEndedPage] = useState(1)
+  const [endedSearch, setEndedSearch] = useState('')
+  const [endedDateFilter, setEndedDateFilter] = useState('')
+  const endedPerPage = 6
   const [fullScreen, setFullScreen] = useState(false)
   const [loading, setLoading] = useState(true)
   const meetingPanelRef = useRef<HTMLDivElement | null>(null)
@@ -142,6 +187,10 @@ export function DoctorTelemedicineCenter() {
         return false
       }
 
+      if (queueDateFilter && toDateInputValue(appt.appointmentTime) !== queueDateFilter) {
+        return false
+      }
+
       if (!term) {
         return true
       }
@@ -158,7 +207,7 @@ export function DoctorTelemedicineCenter() {
         .toLowerCase()
         .includes(term)
     })
-  }, [activeTeleAppointments, queueSearch, queueStatusFilter, sessions])
+  }, [activeTeleAppointments, queueDateFilter, queueSearch, queueStatusFilter, sessions])
 
   const queueTotalPages = useMemo(
     () => Math.max(1, Math.ceil(filteredActiveTeleAppointments.length / perPage)),
@@ -170,15 +219,63 @@ export function DoctorTelemedicineCenter() {
     return filteredActiveTeleAppointments.slice(start, start + perPage)
   }, [filteredActiveTeleAppointments, page, perPage])
 
+  const filteredEndedTeleAppointments = useMemo(() => {
+    const term = endedSearch.trim().toLowerCase()
+    return endedTeleAppointments.filter((appt) => {
+      const session = sessions[appt.id] ?? null
+
+      if (endedDateFilter && toDateInputValue(appt.appointmentTime) !== endedDateFilter) {
+        return false
+      }
+
+      if (!term) {
+        return true
+      }
+
+      return [
+        appt.id,
+        appt.patientName,
+        appt.patientId,
+        meetingTitle(appt),
+        formatDateTime(session?.startedAt),
+        formatDateTime(session?.endedAt),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(term)
+    })
+  }, [endedDateFilter, endedSearch, endedTeleAppointments, sessions])
+
+  const endedTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredEndedTeleAppointments.length / endedPerPage)),
+    [endedPerPage, filteredEndedTeleAppointments.length]
+  )
+
+  const paginatedEndedTeleAppointments = useMemo(() => {
+    const start = (endedPage - 1) * endedPerPage
+    return filteredEndedTeleAppointments.slice(start, start + endedPerPage)
+  }, [endedPage, endedPerPage, filteredEndedTeleAppointments])
+
   useEffect(() => {
     setPage(1)
-  }, [queueSearch, queueStatusFilter])
+  }, [queueDateFilter, queueSearch, queueStatusFilter])
+
+  useEffect(() => {
+    setEndedPage(1)
+  }, [endedDateFilter, endedSearch])
 
   useEffect(() => {
     if (page > queueTotalPages) {
       setPage(queueTotalPages)
     }
   }, [page, queueTotalPages])
+
+  useEffect(() => {
+    if (endedPage > endedTotalPages) {
+      setEndedPage(endedTotalPages)
+    }
+  }, [endedPage, endedTotalPages])
 
   useEffect(() => {
     if (!meetingAppointment) {
@@ -354,36 +451,49 @@ export function DoctorTelemedicineCenter() {
               <h2 className="text-base font-semibold text-primary">Video Queue</h2>
               <div className="mt-3 grid gap-3 md:flex md:items-center">
                 <label className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
                   <input
                     value={queueSearch}
                     onChange={(e) => setQueueSearch(e.target.value)}
                     placeholder="Search by patient, title, status"
-                    className="patient-page-input w-full pl-10"
+                    className="patient-page-input w-full border-text-secondary/20 bg-surface pl-10 shadow-sm"
                   />
                 </label>
-                <select
-                  value={queueStatusFilter}
-                  onChange={(e) =>
-                    setQueueStatusFilter(
-                      e.target.value as
-                        | 'ALL'
-                        | 'PENDING'
-                        | 'CONFIRMED'
-                        | 'IN_SESSION'
-                        | 'COMPLETED'
-                        | 'CANCELED'
-                    )
-                  }
-                  className="patient-page-input border-primary-light/30 bg-primary-light/5 font-medium text-primary outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
-                >
-                  <option value="ALL">📌 All Status</option>
-                  <option value="PENDING">⏳ PENDING</option>
-                  <option value="CONFIRMED">✅ CONFIRMED</option>
-                  <option value="IN_SESSION">🔵 IN_SESSION</option>
-                  <option value="COMPLETED">🏁 COMPLETED</option>
-                  <option value="CANCELED">❌ CANCELED</option>
-                </select>
+                <label className="relative md:w-64">
+                  <ListFilter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                  <select
+                    value={queueStatusFilter}
+                    onChange={(e) =>
+                      setQueueStatusFilter(
+                        e.target.value as
+                          | 'ALL'
+                          | 'PENDING'
+                          | 'CONFIRMED'
+                          | 'IN_SESSION'
+                          | 'COMPLETED'
+                          | 'CANCELED'
+                      )
+                    }
+                    className="patient-page-input w-full appearance-none border-primary-light/30 bg-primary-light/5 pl-10 pr-10 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                  >
+                    <option value="ALL">All Status</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="CONFIRMED">Confirmed</option>
+                    <option value="IN_SESSION">In Session</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="CANCELED">Canceled</option>
+                  </select>
+                </label>
+                <label className="relative md:w-52">
+                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                  <input
+                    type="date"
+                    value={queueDateFilter}
+                    onChange={(e) => setQueueDateFilter(e.target.value)}
+                    className="patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                  />
+                </label>
               </div>
               <div className="mt-3 rounded-2xl border border-text-secondary/15 bg-background/40 p-3">
                 <table className="w-full text-left text-sm">
@@ -419,7 +529,7 @@ export function DoctorTelemedicineCenter() {
                           <td className="px-3 py-2">{appointmentDateTime(appt)}</td>
                           <td className="px-3 py-2">{appt.patientName ?? appt.patientId}</td>
                           <td className="px-3 py-2">
-                            <span className="rounded-full bg-primary-light/10 px-2.5 py-1 text-xs font-medium text-primary">
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${queueStatusBadgeClass(queueStatus(appt, session))}`}>
                               {queueStatus(appt, session)}
                             </span>
                           </td>
@@ -476,33 +586,105 @@ export function DoctorTelemedicineCenter() {
                 </div>
 
               {endedTeleAppointments.length > 0 && (
-                <div className="mt-5 overflow-x-auto rounded-2xl border border-text-secondary/15 bg-background/40 p-3">
-                  <h3 className="mb-3 text-sm font-semibold text-primary">Ended Video Sessions</h3>
-                  <table className="w-full min-w-[52rem] text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-text-secondary/20 text-text-secondary">
-                        <th className="px-3 py-2 font-medium">Title</th>
-                        <th className="px-3 py-2 font-medium">Date</th>
-                        <th className="px-3 py-2 font-medium">Start Time</th>
-                        <th className="px-3 py-2 font-medium">End Time</th>
-                        <th className="px-3 py-2 font-medium">End Date Time</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {endedTeleAppointments.map((appt) => {
-                        const session = sessions[appt.id] ?? null
-                        return (
-                          <tr key={`ended-${appt.id}`} className="border-b border-text-secondary/10">
-                            <td className="px-3 py-2 font-medium text-primary">{meetingTitle(appt)}</td>
-                            <td className="px-3 py-2">{new Date(appt.appointmentTime).toLocaleDateString('en-GB')}</td>
-                            <td className="px-3 py-2">{formatDateTime(session?.startedAt)}</td>
-                            <td className="px-3 py-2">{formatDateTime(session?.endedAt)}</td>
-                            <td className="px-3 py-2">{formatDateTime(session?.endedAt)}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                <div className="mt-5 rounded-2xl border border-text-secondary/15 bg-background/40 p-3">
+                  <button
+                    type="button"
+                    onClick={() => setEndedExpanded((prev) => !prev)}
+                    className="flex w-full items-center justify-between rounded-xl border border-text-secondary/15 bg-surface px-3 py-2 text-left"
+                  >
+                    <h3 className="text-sm font-semibold text-primary">
+                      Ended Video Sessions ({endedTeleAppointments.length})
+                    </h3>
+                    <ChevronDown
+                      className={`h-4 w-4 text-text-secondary transition-transform ${endedExpanded ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+
+                  {endedExpanded && (
+                    <>
+                      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_220px]">
+                        <label className="relative">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                          <input
+                            value={endedSearch}
+                            onChange={(e) => setEndedSearch(e.target.value)}
+                            placeholder="Search ended sessions"
+                            className="patient-page-input w-full border-text-secondary/20 bg-surface pl-10 shadow-sm"
+                          />
+                        </label>
+                        <label className="relative">
+                          <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                          <input
+                            type="date"
+                            value={endedDateFilter}
+                            onChange={(e) => setEndedDateFilter(e.target.value)}
+                            className="patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="mt-3 overflow-x-auto">
+                        <table className="w-full min-w-[52rem] text-left text-sm">
+                          <thead>
+                            <tr className="border-b border-text-secondary/20 text-text-secondary">
+                              <th className="px-3 py-2 font-medium">Title</th>
+                              <th className="px-3 py-2 font-medium">Date</th>
+                              <th className="px-3 py-2 font-medium">Start Time</th>
+                              <th className="px-3 py-2 font-medium">End Time</th>
+                              <th className="px-3 py-2 font-medium">End Date Time</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {paginatedEndedTeleAppointments.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} className="px-3 py-5 text-center text-text-secondary">
+                                  No ended sessions match your filters.
+                                </td>
+                              </tr>
+                            ) : (
+                              paginatedEndedTeleAppointments.map((appt) => {
+                                const session = sessions[appt.id] ?? null
+                                return (
+                                  <tr key={`ended-${appt.id}`} className="border-b border-text-secondary/10">
+                                    <td className="px-3 py-2 font-medium text-primary">{meetingTitle(appt)}</td>
+                                    <td className="px-3 py-2">{new Date(appt.appointmentTime).toLocaleDateString('en-GB')}</td>
+                                    <td className="px-3 py-2">{formatDateTime(session?.startedAt)}</td>
+                                    <td className="px-3 py-2">{formatDateTime(session?.endedAt)}</td>
+                                    <td className="px-3 py-2">{formatDateTime(session?.endedAt)}</td>
+                                  </tr>
+                                )
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-between text-sm text-text-secondary">
+                        <div>
+                          Showing {filteredEndedTeleAppointments.length === 0 ? 0 : (endedPage - 1) * endedPerPage + 1} - {Math.min(endedPage * endedPerPage, filteredEndedTeleAppointments.length)} of {filteredEndedTeleAppointments.length}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEndedPage((p) => Math.max(1, p - 1))}
+                            disabled={endedPage === 1}
+                            className="rounded-lg border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Prev
+                          </button>
+                          <span className="px-2">Page {endedPage} / {endedTotalPages}</span>
+                          <button
+                            type="button"
+                            onClick={() => setEndedPage((p) => Math.min(endedTotalPages, p + 1))}
+                            disabled={endedPage >= endedTotalPages}
+                            className="rounded-lg border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>

@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import { useIsAuthenticated, useRole, useAuthActions } from "../../store/hooks";
 import { ROLE_HOME } from "../auth/roleHome";
+import { SystemClock } from "./common/SystemClock";
+import { ThemeToggle } from "./common/ThemeToggle";
 
 const LOGO_SRC = "/logo.svg";
 
@@ -52,6 +54,8 @@ export function Header() {
         </nav>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <SystemClock />
+          <ThemeToggle />
           {isAuthenticated ? (
             <>
               <Link
