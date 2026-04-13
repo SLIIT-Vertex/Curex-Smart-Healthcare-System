@@ -58,9 +58,8 @@ public class NotificationEventConsumer {
                         .recipientPhone(phoneNumber)
                         .type(Notification.NotificationType.WELCOME)
                         .channel(Notification.NotificationChannel.SMS)
-                        .subject("Welcome to Curex!")
-                        .content(String.format("Hi %s! Welcome to Curex Healthcare. Your account is ready.",
-                                HtmlUtils.htmlEscape(firstName)))
+                    .subject("Curex signup update")
+                    .content(buildWelcomeSmsContent(firstName, userRole))
                         .build());
             }
         } catch (Exception e) {
@@ -496,6 +495,17 @@ public class NotificationEventConsumer {
     // ── Email / SMS content builders ──────────────────────────────────────────
 
     private String buildWelcomeEmailContent(String firstName, String userRole) {
+        if ("DOCTOR".equalsIgnoreCase(userRole)) {
+            return String.format("""
+                    <p>Dear Dr. %s,</p>
+                    <p>Your Curex account has been created successfully.</p>
+                    <p>Your doctor profile is currently pending admin approval.</p>
+                    <p>We will notify you by email once your account is approved.</p>
+                    <p>Best regards,<br>The Curex Healthcare Team</p>
+                    """,
+                    HtmlUtils.htmlEscape(firstName));
+        }
+
         return String.format("""
                 <p>Dear %s,</p>
                 <p>Welcome to <strong>Curex Healthcare Platform</strong>!</p>
@@ -505,6 +515,18 @@ public class NotificationEventConsumer {
                 """,
                 HtmlUtils.htmlEscape(firstName),
                 HtmlUtils.htmlEscape(userRole.toLowerCase()));
+    }
+
+    private String buildWelcomeSmsContent(String firstName, String userRole) {
+        String safeName = HtmlUtils.htmlEscape(firstName == null ? "" : firstName);
+
+        if ("DOCTOR".equalsIgnoreCase(userRole)) {
+            return String.format(
+                    "Hi %s, your Curex account was created successfully. Please wait for approval. We will update you by email once approved.",
+                    safeName);
+        }
+
+        return String.format("Hi %s! Welcome to Curex Healthcare. Your account is ready.", safeName);
     }
 
     private String buildAppointmentConfirmationContent(String patientName, String doctorName,
