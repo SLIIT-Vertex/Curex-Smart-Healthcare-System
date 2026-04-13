@@ -45,6 +45,12 @@ public class Doctor {
     @Column(name = "qualifications", columnDefinition = "TEXT")
     private String qualifications;
 
+    @Column(name = "medical_license_number", length = 100)
+    private String medicalLicenseNumber;
+
+    @Column(name = "proof_document_urls", columnDefinition = "TEXT")
+    private String proofDocumentUrls;
+
     @Column(name = "experience")
     private Integer experience;
 

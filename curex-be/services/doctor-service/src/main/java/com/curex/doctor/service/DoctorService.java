@@ -57,6 +57,8 @@ public class DoctorService {
                 .phone(request.getPhone())
                 .specialization(request.getSpecialization())
                 .qualifications(request.getQualifications())
+                .medicalLicenseNumber(request.getMedicalLicenseNumber())
+                .proofDocumentUrls(request.getProofDocumentUrls())
                 .experience(request.getExperience() != null ? request.getExperience() : 0)
                 .consultationFee(request.getConsultationFee())
                 .bio(request.getBio())
@@ -87,9 +89,14 @@ public class DoctorService {
         Doctor doctor = doctorRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Doctor not found with id: " + id));
 
+        if (request.getFirstName() != null) doctor.setFirstName(request.getFirstName());
+        if (request.getLastName() != null) doctor.setLastName(request.getLastName());
+        if (request.getEmail() != null) doctor.setEmail(request.getEmail());
         if (request.getPhone() != null) doctor.setPhone(request.getPhone());
         if (request.getSpecialization() != null) doctor.setSpecialization(request.getSpecialization());
         if (request.getQualifications() != null) doctor.setQualifications(request.getQualifications());
+        if (request.getMedicalLicenseNumber() != null) doctor.setMedicalLicenseNumber(request.getMedicalLicenseNumber());
+        if (request.getProofDocumentUrls() != null) doctor.setProofDocumentUrls(request.getProofDocumentUrls());
         if (request.getExperience() != null) doctor.setExperience(request.getExperience());
         if (request.getConsultationFee() != null) doctor.setConsultationFee(request.getConsultationFee());
         if (request.getBio() != null) doctor.setBio(request.getBio());
@@ -270,6 +277,8 @@ public class DoctorService {
                 .phone(doctor.getPhone())
                 .specialization(doctor.getSpecialization())
                 .qualifications(doctor.getQualifications())
+                .medicalLicenseNumber(doctor.getMedicalLicenseNumber())
+                .proofDocumentUrls(doctor.getProofDocumentUrls())
                 .experience(doctor.getExperience())
                 .consultationFee(doctor.getConsultationFee())
                 .bio(doctor.getBio())
@@ -287,6 +296,8 @@ public class DoctorService {
                 .phone(doctor.getPhone())
                 .specialization(doctor.getSpecialization())
                 .qualifications(doctor.getQualifications())
+                .medicalLicenseNumber(doctor.getMedicalLicenseNumber())
+                .proofDocumentUrls(doctor.getProofDocumentUrls())
                 .experience(doctor.getExperience())
                 .consultationFee(doctor.getConsultationFee())
                 .bio(doctor.getBio())

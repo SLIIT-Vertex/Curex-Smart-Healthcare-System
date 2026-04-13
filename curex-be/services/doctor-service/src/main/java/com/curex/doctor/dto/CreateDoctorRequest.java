@@ -34,6 +34,10 @@ public class CreateDoctorRequest {
 
     private String qualifications;
 
+    private String medicalLicenseNumber;
+
+    private String proofDocumentUrls;
+
     @Min(value = 0, message = "Experience must be non-negative")
     private Integer experience;
 

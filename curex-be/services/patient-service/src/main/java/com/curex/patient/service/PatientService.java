@@ -8,6 +8,7 @@ import com.curex.patient.entity.MedicalHistory;
 import com.curex.patient.entity.Patient;
 import com.curex.patient.exception.PatientAlreadyExistsException;
 import com.curex.patient.exception.ResourceNotFoundException;
+import com.curex.patient.repository.EmergencyContactRepository;
 import com.curex.patient.repository.MedicalHistoryRepository;
 import com.curex.patient.repository.PatientRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -29,6 +30,7 @@ public class PatientService {
 
     private final PatientRepository patientRepository;
     private final MedicalHistoryRepository medicalHistoryRepository;
+    private final EmergencyContactRepository emergencyContactRepository;
     private final DoctorServiceClient doctorServiceClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -77,13 +79,13 @@ public class PatientService {
         Patient patient = patientRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Patient not found with id: " + id));
 
-        patient.setFirstName(request.getFirstName());
-        patient.setLastName(request.getLastName());
-        patient.setPhone(request.getPhone());
-        patient.setDateOfBirth(request.getDateOfBirth());
-        patient.setGender(request.getGender());
-        patient.setBloodType(request.getBloodType());
-        patient.setAddress(request.getAddress());
+        if (request.getFirstName() != null) patient.setFirstName(request.getFirstName());
+        if (request.getLastName() != null) patient.setLastName(request.getLastName());
+        if (request.getPhone() != null) patient.setPhone(request.getPhone());
+        if (request.getDateOfBirth() != null) patient.setDateOfBirth(request.getDateOfBirth());
+        if (request.getGender() != null) patient.setGender(request.getGender());
+        if (request.getBloodType() != null) patient.setBloodType(request.getBloodType());
+        if (request.getAddress() != null) patient.setAddress(request.getAddress());
 
         patient = patientRepository.save(patient);
         log.info("Updated patient profile {}", id);
@@ -131,6 +133,38 @@ public class PatientService {
         }
         log.info("Updated medical history for patient {}", patientId);
         return toMedicalHistoryResponse(history);
+    }
+
+    @Transactional
+    public EmergencyContactResponse updateEmergencyContact(String patientId, UpdateEmergencyContactRequest request) {
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found with id: " + patientId));
+
+        EmergencyContact contact = emergencyContactRepository.findByPatient_Id(patientId)
+                .orElseGet(() -> EmergencyContact.builder().patient(patient).build());
+
+        if (request.getName() != null) {
+            contact.setName(request.getName());
+        }
+        if (request.getPhone() != null) {
+            contact.setPhone(request.getPhone());
+        }
+        if (request.getRelationship() != null) {
+            contact.setRelationship(request.getRelationship());
+        }
+
+        // Keep DB constraint happy when caller sends only phone update.
+        if (contact.getName() == null || contact.getName().isBlank()) {
+            contact.setName("Emergency Contact");
+        }
+
+        contact = emergencyContactRepository.save(contact);
+        if (patient.getEmergencyContact() == null) {
+            patient.setEmergencyContact(contact);
+            patientRepository.save(patient);
+        }
+
+        return toEmergencyContactResponse(contact);
     }
 
     /**

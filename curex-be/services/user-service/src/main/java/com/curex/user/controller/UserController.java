@@ -70,9 +70,8 @@ public class UserController {
     /**
      * Update the authenticated user's profile.
      *
-     * All fields are optional — only non-null values in the request body are applied.
-     * Typically called immediately after registration to persist dob, gender, address,
-     * and role-specific details (doctor credentials / patient health info).
+        * All fields are optional — only non-null values in the request body are applied.
+        * Typically called immediately after registration to persist common profile details.
      *
      * PUT /api/users/me/profile
      */
