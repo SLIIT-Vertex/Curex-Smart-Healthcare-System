@@ -15,8 +15,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +30,10 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ProfileBridgeService {
 
+    private static final Duration DOCTOR_ENRICHMENT_RETRY_COOLDOWN = Duration.ofSeconds(20);
+
     private final RestTemplate restTemplate;
+    private final Map<String, Instant> doctorEnrichmentCooldownUntil = new ConcurrentHashMap<>();
 
     @Value("${services.doctor.url}")
     private String doctorServiceUrl;
@@ -93,16 +100,41 @@ public class ProfileBridgeService {
     }
 
     private void enrichDoctorFields(UserResponse response) {
-        String url = doctorServiceUrl + "/doctors/by-user/" + response.getId();
-        Map<String, Object> doctor = restTemplate.getForObject(url, Map.class);
-        if (doctor == null) {
+        String userId = response.getId();
+        Instant now = Instant.now();
+        Instant cooldownUntil = doctorEnrichmentCooldownUntil.get(userId);
+        if (cooldownUntil != null && now.isBefore(cooldownUntil)) {
             return;
         }
-        response.setSpecialty(str(doctor.get("specialization")));
-        response.setMedicalLicenseNumber(str(doctor.get("medicalLicenseNumber")));
-        response.setProofDocumentUrls(str(doctor.get("proofDocumentUrls")));
-        response.setCertifications(str(doctor.get("qualifications")));
-        response.setYearsOfExperience(intVal(doctor.get("experience")));
+
+        String url = doctorServiceUrl + "/doctors/by-user/" + userId;
+        try {
+            Map<String, Object> doctor = restTemplate.getForObject(url, Map.class);
+            if (doctor == null) {
+                return;
+            }
+
+            doctorEnrichmentCooldownUntil.remove(userId);
+            response.setSpecialty(str(doctor.get("specialization")));
+            response.setMedicalLicenseNumber(str(doctor.get("medicalLicenseNumber")));
+            response.setProofDocumentUrls(str(doctor.get("proofDocumentUrls")));
+            response.setCertifications(str(doctor.get("qualifications")));
+            response.setYearsOfExperience(intVal(doctor.get("experience")));
+        } catch (Exception ex) {
+            AtomicBoolean shouldLog = new AtomicBoolean(false);
+            doctorEnrichmentCooldownUntil.compute(userId, (key, currentUntil) -> {
+                Instant checkNow = Instant.now();
+                if (currentUntil == null || !checkNow.isBefore(currentUntil)) {
+                    shouldLog.set(true);
+                    return checkNow.plus(DOCTOR_ENRICHMENT_RETRY_COOLDOWN);
+                }
+                return currentUntil;
+            });
+
+            if (shouldLog.get()) {
+                log.warn("Failed to enrich user {} role DOCTOR: {}", userId, ex.getMessage());
+            }
+        }
     }
 
     private void enrichPatientFields(UserResponse response) {

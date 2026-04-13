@@ -74,7 +74,8 @@ public class DoctorService {
     public DoctorResponse getByUserId(String userId) {
         Doctor doctor = doctorRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Doctor not found for user id: " + userId));
-        return toDoctorResponse(doctor);
+        // Avoid user-service -> doctor-service -> user-service call loops on profile enrichment path.
+        return toDoctorResponseWithoutIdentity(doctor);
     }
 
     @Transactional
@@ -294,6 +295,25 @@ public class DoctorService {
                 .consultationFee(doctor.getConsultationFee())
                 .bio(doctor.getBio())
                 .avatarUrl(user == null ? doctor.getAvatarUrl() : user.getProfileImageUrl())
+                .verified(doctor.isVerified())
+                .build();
+    }
+
+    private DoctorResponse toDoctorResponseWithoutIdentity(Doctor doctor) {
+        return DoctorResponse.builder()
+                .id(doctor.getId())
+                .firstName(null)
+                .lastName(null)
+                .email(null)
+                .phone(null)
+                .specialization(doctor.getSpecialization())
+                .qualifications(doctor.getQualifications())
+                .medicalLicenseNumber(doctor.getMedicalLicenseNumber())
+                .proofDocumentUrls(doctor.getProofDocumentUrls())
+                .experience(doctor.getExperience())
+                .consultationFee(doctor.getConsultationFee())
+                .bio(doctor.getBio())
+                .avatarUrl(doctor.getAvatarUrl())
                 .verified(doctor.isVerified())
                 .build();
     }
