@@ -3,8 +3,8 @@
 -- 1) Keep doctor-service as role-domain owner while treating user-service as canonical identity source.
 -- 2) Enforce stable linkage and query performance for user_id-based synchronization.
 
--- Ensure user_id is mandatory for cross-service identity sync.
-ALTER TABLE doctors ALTER COLUMN user_id SET NOT NULL;
+-- If your runtime DB migration tool supports it, enforce NOT NULL as a manual step:
+-- ALTER TABLE doctors ALTER COLUMN user_id SET NOT NULL;
 
 -- Ensure deterministic lookups for sync and read paths.
 CREATE INDEX IF NOT EXISTS idx_doctors_user_id ON doctors (user_id);
