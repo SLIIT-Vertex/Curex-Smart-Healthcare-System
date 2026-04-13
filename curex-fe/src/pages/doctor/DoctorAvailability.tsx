@@ -233,6 +233,7 @@ export function DoctorAvailability() {
     'ALL' | 'PENDING' | 'CONFIRMED' | 'IN_SESSION' | 'COMPLETED' | 'CANCELLED' | 'ENDED'
   >('ALL')
   const [bookingsDateFilter, setBookingsDateFilter] = useState('')
+  const [bookingsTablePage, setBookingsTablePage] = useState(1)
   const dragRef = useRef<{
     paintState: SlotState
     touched: Set<string>
@@ -303,6 +304,28 @@ export function DoctorAvailability() {
     upcomingBookedAppointments,
     telemedicineSessions,
   ])
+
+  const BOOKED_TABLE_PAGE_SIZE = 8
+
+  const bookedTableTotalPages = Math.max(
+    1,
+    Math.ceil(filteredBookedAppointments.length / BOOKED_TABLE_PAGE_SIZE)
+  )
+
+  const paginatedBookedAppointments = useMemo(() => {
+    const start = (bookingsTablePage - 1) * BOOKED_TABLE_PAGE_SIZE
+    return filteredBookedAppointments.slice(start, start + BOOKED_TABLE_PAGE_SIZE)
+  }, [filteredBookedAppointments, bookingsTablePage])
+
+  useEffect(() => {
+    setBookingsTablePage(1)
+  }, [bookingsSearch, bookingsDateFilter, bookingsTypeFilter, bookingsStatusFilter])
+
+  useEffect(() => {
+    if (bookingsTablePage > bookedTableTotalPages) {
+      setBookingsTablePage(bookedTableTotalPages)
+    }
+  }, [bookingsTablePage, bookedTableTotalPages])
 
   const bookedByDate = useMemo(() => {
     const grouped: Record<string, AppointmentRecord[]> = {}
@@ -743,7 +766,7 @@ export function DoctorAvailability() {
                                   ? 'cursor-not-allowed border-accent-sky/40 bg-accent-sky/20'
                                   : isAvailable
                                     ? 'border-accent-mint/40 bg-accent-mint/20'
-                                    : 'border-text-secondary/10 bg-background hover:border-text-secondary/30'
+                                    : 'border-text-secondary/25 bg-surface/80 hover:border-text-secondary/45'
                               }`}
                             >
                               {isBooked ? '●' : isAvailable ? '✓' : ''}
@@ -772,7 +795,7 @@ export function DoctorAvailability() {
                   Booked
                 </span>
                 <span className="flex items-center gap-2">
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-text-secondary/10 bg-background text-xs">
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-text-secondary/25 bg-surface/80 text-xs">
                     {' '}
                   </span>
                   Unavailable
@@ -983,8 +1006,8 @@ export function DoctorAvailability() {
 
               <div className="overflow-x-auto rounded-2xl border border-text-secondary/15 bg-background/40 p-4">
                 <h3 className="mb-3 text-base font-semibold text-primary">All Booked Appointments</h3>
-                <div className="mb-3 grid gap-3 md:grid-cols-[1fr_150px_170px_190px]">
-                  <label className="relative">
+                <div className="mb-3 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(9.5rem,12rem)_minmax(10.5rem,12rem)_minmax(11rem,13rem)]">
+                  <label className="relative min-w-0">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
                     <input
                       value={bookingsSearch}
@@ -1000,7 +1023,7 @@ export function DoctorAvailability() {
                       type="date"
                       value={bookingsDateFilter}
                       onChange={(e) => setBookingsDateFilter(e.target.value)}
-                      className="patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                      className="calendar-filter-input patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
                     />
                   </label>
 
@@ -1073,7 +1096,7 @@ export function DoctorAvailability() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredBookedAppointments.map((appt) => {
+                    {paginatedBookedAppointments.map((appt) => {
                       const date = new Date(appt.appointmentTime)
                       const teleSession = telemedicineSessions[appt.id]
                       return (
@@ -1119,6 +1142,34 @@ export function DoctorAvailability() {
                   </tbody>
                 </table>
                 )}
+
+                <div className="mt-3 flex items-center justify-between text-xs text-text-secondary">
+                  <span>
+                    Showing {filteredBookedAppointments.length === 0 ? 0 : (bookingsTablePage - 1) * BOOKED_TABLE_PAGE_SIZE + 1}-
+                    {Math.min(bookingsTablePage * BOOKED_TABLE_PAGE_SIZE, filteredBookedAppointments.length)} of {filteredBookedAppointments.length}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBookingsTablePage((p) => Math.max(1, p - 1))}
+                      disabled={bookingsTablePage === 1}
+                      className="rounded-lg border border-text-secondary/20 px-2 py-1 disabled:opacity-40"
+                    >
+                      Prev
+                    </button>
+                    <span>Page {bookingsTablePage} / {bookedTableTotalPages}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setBookingsTablePage((p) => Math.min(bookedTableTotalPages, p + 1))
+                      }
+                      disabled={bookingsTablePage === bookedTableTotalPages}
+                      className="rounded-lg border border-text-secondary/20 px-2 py-1 disabled:opacity-40"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
         </div>

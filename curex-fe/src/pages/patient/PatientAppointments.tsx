@@ -1750,8 +1750,8 @@ export function PatientAppointments() {
               <h3 className="mb-3 text-base font-semibold text-primary">
                 All Bookings
               </h3>
-              <div className="mb-3 grid gap-3 md:grid-cols-[1fr_150px_170px_180px]">
-                <label className="relative flex-1">
+              <div className="mb-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(9.5rem,12rem)_minmax(10.5rem,12rem)_minmax(11rem,13rem)]">
+                <label className="relative min-w-0">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
                   <input
                     value={bookingTableSearch}
@@ -1766,54 +1766,52 @@ export function PatientAppointments() {
                     type="date"
                     value={bookingDateFilter}
                     onChange={(e) => setBookingDateFilter(e.target.value)}
-                    className="patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                    className="calendar-filter-input patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
                   />
                 </label>
-                <div className="flex gap-2">
-                  <label className="relative w-full min-w-40 md:w-auto">
-                    <ListFilter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-                    <select
-                      value={bookingTypeFilter}
-                      onChange={(e) =>
-                        setBookingTypeFilter(
-                          e.target.value as "ALL" | "TELEMEDICINE" | "IN_PERSON",
-                        )
-                      }
-                      className="patient-page-input w-full appearance-none border-primary-light/30 bg-primary-light/5 pl-10 pr-10 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
-                    >
-                      <option value="ALL">All Types</option>
-                      <option value="TELEMEDICINE">Telemedicine</option>
-                      <option value="IN_PERSON">In-person</option>
-                    </select>
-                  </label>
-                  <label className="relative w-full min-w-44 md:w-auto">
-                    <ListFilter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-                    <select
-                      value={bookingStatusFilter}
-                      onChange={(e) =>
-                        setBookingStatusFilter(
-                          e.target.value as
-                            | "ALL"
-                            | "PENDING"
-                            | "CONFIRMED"
-                            | "IN_SESSION"
-                            | "COMPLETED"
-                            | "CANCELLED",
-                        )
-                      }
-                      className="patient-page-input w-full appearance-none border-primary-light/30 bg-primary-light/5 pl-10 pr-10 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
-                    >
-                      <option value="ALL">All Status</option>
-                      <option value="PENDING">Pending</option>
-                      <option value="CONFIRMED">Confirmed</option>
-                      <option value="IN_SESSION">In Session</option>
-                      <option value="COMPLETED">Completed</option>
-                      <option value="CANCELLED">Cancelled</option>
-                    </select>
-                  </label>
-                </div>
+                <label className="relative w-full">
+                  <ListFilter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                  <select
+                    value={bookingTypeFilter}
+                    onChange={(e) =>
+                      setBookingTypeFilter(
+                        e.target.value as "ALL" | "TELEMEDICINE" | "IN_PERSON",
+                      )
+                    }
+                    className="patient-page-input w-full appearance-none border-primary-light/30 bg-primary-light/5 pl-10 pr-10 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                  >
+                    <option value="ALL">All Types</option>
+                    <option value="TELEMEDICINE">Telemedicine</option>
+                    <option value="IN_PERSON">In-person</option>
+                  </select>
+                </label>
+                <label className="relative w-full">
+                  <ListFilter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                  <select
+                    value={bookingStatusFilter}
+                    onChange={(e) =>
+                      setBookingStatusFilter(
+                        e.target.value as
+                          | "ALL"
+                          | "PENDING"
+                          | "CONFIRMED"
+                          | "IN_SESSION"
+                          | "COMPLETED"
+                          | "CANCELLED",
+                      )
+                    }
+                    className="patient-page-input w-full appearance-none border-primary-light/30 bg-primary-light/5 pl-10 pr-10 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                  >
+                    <option value="ALL">All Status</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="CONFIRMED">Confirmed</option>
+                    <option value="IN_SESSION">In Session</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="CANCELLED">Cancelled</option>
+                  </select>
+                </label>
               </div>
 
               {paginatedBookingRows.length === 0 ? (
