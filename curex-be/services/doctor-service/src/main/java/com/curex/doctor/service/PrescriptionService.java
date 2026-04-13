@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -51,9 +52,14 @@ public class PrescriptionService {
     private static final int CANCEL_GRACE_HOURS = 1;
 
     @Transactional
-    public PrescriptionResponse issue(IssuePrescriptionRequest request) {
-        Doctor doctor = doctorRepository.findById(request.getDoctorId())
-                .orElseThrow(() -> new ResourceNotFoundException("Doctor not found with id: " + request.getDoctorId()));
+    public PrescriptionResponse issue(IssuePrescriptionRequest request, String requestingUserId) {
+        String doctorId = Objects.requireNonNull(request.getDoctorId(), "doctorId");
+        Doctor doctor = doctorRepository.findById(doctorId)
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor not found with id: " + doctorId));
+
+        if (requestingUserId == null || !requestingUserId.equals(doctor.getUserId())) {
+            throw new ForbiddenException("Authenticated user does not match prescribing doctor");
+        }
 
         // Validate validity period (matches UI: validFrom not in the past; validTo strictly after validFrom)
         LocalDate validFrom = request.getValidFrom();
@@ -79,11 +85,24 @@ public class PrescriptionService {
             throw new InvalidPrescriptionException("Appointment not found");
         }
 
+        if (!request.getDoctorId().equals(appointment.getDoctorId())) {
+            throw new ForbiddenException("Cannot issue prescription for another doctor's appointment");
+        }
+        if (!request.getPatientId().equals(appointment.getPatientId())) {
+            throw new InvalidPrescriptionException("Patient ID does not match the appointment's patient");
+        }
+
+        if (prescriptionRepository.existsByAppointmentId(request.getAppointmentId())) {
+            throw new InvalidPrescriptionException("A prescription already exists for this appointment");
+        }
+
         String status = appointment.getStatus();
         if (status == null || (!IN_SESSION.equals(status) && !COMPLETED.equals(status))) {
             throw new InvalidPrescriptionException(
                     "Prescriptions can only be issued for ongoing (IN_SESSION) or completed (COMPLETED) appointments. Current status: " + status);
         }
+
+        String visitStatusAtIssue = appointment.getStatus();
 
         // patientName: from request if provided, else from appointment
         String patientName = request.getPatientName();
@@ -95,6 +114,7 @@ public class PrescriptionService {
                 .doctor(doctor)
                 .patientId(request.getPatientId())
                 .appointmentId(request.getAppointmentId())
+                .visitStatusAtIssue(visitStatusAtIssue)
                 .patientName(patientName)
                 .diagnosis(request.getDiagnosis())
                 .medicines(request.getMedicines())
@@ -106,7 +126,7 @@ public class PrescriptionService {
                 .issuedAt(LocalDateTime.now())
                 .build();
 
-        prescription = prescriptionRepository.save(prescription);
+        prescription = Objects.requireNonNull(prescriptionRepository.save(Objects.requireNonNull(prescription)));
 
         // Publish prescription.issued event only after the DB transaction commits
         PrescriptionIssuedEvent event = PrescriptionIssuedEvent.builder()
@@ -118,6 +138,8 @@ public class PrescriptionService {
                 .patientId(request.getPatientId())
                 .patientName(prescription.getPatientName())
                 .patientEmail(request.getPatientEmail())
+                .appointmentId(request.getAppointmentId())
+                .visitStatusAtIssue(visitStatusAtIssue)
                 .diagnosis(request.getDiagnosis())
                 .medicines(request.getMedicines())
                 .instructions(request.getInstructions())
@@ -149,8 +171,9 @@ public class PrescriptionService {
                     "Only cancellation is supported; active and completed states follow valid from / valid to dates.");
         }
 
-        Prescription prescription = prescriptionRepository.findById(prescriptionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Prescription not found with id: " + prescriptionId));
+        String id = Objects.requireNonNull(prescriptionId, "prescriptionId");
+        Prescription prescription = prescriptionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Prescription not found with id: " + id));
 
         if (prescription.getStatus() == PrescriptionStatus.CANCELLED) {
             throw new InvalidPrescriptionException("This prescription is already cancelled.");
@@ -230,10 +253,11 @@ public class PrescriptionService {
 
     @Transactional(readOnly = true)
     public List<PrescriptionResponse> getByDoctorId(String doctorId) {
-        if (!doctorRepository.existsById(doctorId)) {
-            throw new ResourceNotFoundException("Doctor not found with id: " + doctorId);
+        String resolvedDoctorId = Objects.requireNonNull(doctorId, "doctorId");
+        if (!doctorRepository.existsById(resolvedDoctorId)) {
+            throw new ResourceNotFoundException("Doctor not found with id: " + resolvedDoctorId);
         }
-        return prescriptionRepository.findByDoctor_IdOrderByIssuedAtDesc(doctorId).stream()
+        return prescriptionRepository.findByDoctor_IdOrderByIssuedAtDesc(resolvedDoctorId).stream()
                 .map(this::toPrescriptionResponse)
                 .collect(Collectors.toList());
     }
@@ -297,6 +321,7 @@ public class PrescriptionService {
                 .patientId(prescription.getPatientId())
                 .patientName(prescription.getPatientName())
                 .appointmentId(prescription.getAppointmentId())
+                .visitStatusAtIssue(prescription.getVisitStatusAtIssue())
                 .diagnosis(prescription.getDiagnosis())
                 .medicines(prescription.getMedicines())
                 .instructions(prescription.getInstructions())

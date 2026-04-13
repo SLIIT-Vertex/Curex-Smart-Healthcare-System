@@ -1,8 +1,9 @@
 package com.healthcare.appointment;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.boot.test.context.SpringBootTest;
-
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.TestPropertySource;
 
 @SpringBootTest
@@ -13,11 +14,14 @@ import org.springframework.test.context.TestPropertySource;
         "spring.datasource.password=",
         "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
         "spring.jpa.hibernate.ddl-auto=create-drop",
-        "spring.rabbitmq.host=localhost",
         "appointment.stub-mode=true",
-        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration"
+        "spring.rabbitmq.listener.simple.auto-startup=false",
 })
 class AppointmentServiceApplicationTests {
+
+    /** Satisfies {@code RabbitMQConfig#rabbitTemplate(ConnectionFactory)} without a real broker. */
+    @MockBean
+    private ConnectionFactory connectionFactory;
 
     @Test
     void contextLoads() {

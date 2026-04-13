@@ -22,6 +22,9 @@ public class PrescriptionIssuedEvent {
     private String patientId;
     private String patientName;
     private String patientEmail;
+    private String appointmentId;
+    /** {@code IN_SESSION} or {@code COMPLETED} from the appointment at issue time. */
+    private String visitStatusAtIssue;
     private String diagnosis;
     private String medicines;
     private String instructions;
