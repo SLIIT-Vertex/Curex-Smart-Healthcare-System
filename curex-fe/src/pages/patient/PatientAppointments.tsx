@@ -177,11 +177,29 @@ function telemedicineStateLabel(
 function bookingStatusLabel(
   appt: AppointmentRecord,
   session: TelemedicineSessionRecord | null | undefined,
+  paymentCompleted = false,
 ): string {
   if (appt.type === "TELEMEDICINE" && session?.status === "ENDED") {
     return "ENDED";
   }
+  if (paymentCompleted && String(appt.status).toUpperCase() === "PENDING") {
+    return "CONFIRMED";
+  }
   return String(appt.status).toUpperCase();
+}
+
+function paymentStatusRank(status: string | undefined): number {
+  const normalized = String(status ?? "").toUpperCase();
+  if (normalized === "SUCCESS" || normalized === "COMPLETED") {
+    return 3;
+  }
+  if (normalized === "PENDING") {
+    return 2;
+  }
+  if (normalized === "FAILED" || normalized === "CANCELLED") {
+    return 1;
+  }
+  return 0;
 }
 
 function doctorInitials(doctor: DoctorDirectoryItem | null): string {
@@ -282,18 +300,15 @@ export function PatientAppointments() {
   const [telemedicineSessions, setTelemedicineSessions] = useState<
     Record<string, TelemedicineSessionRecord | null>
   >({});
-  const handledPaymentReturnRef = useRef<string | null>(null);
+  const handledPaymentReturnQueryRef = useRef<string | null>(null);
 
   const patientId = user?.id ?? "";
   const patientName = user ? `${user.firstName} ${user.lastName}`.trim() : "";
   const patientEmail = user?.email ?? "";
 
-  const loadPatientAppointments = useCallback(async () => {
+  const loadPatientAppointments = useCallback(async (): Promise<Record<string, PaymentRecord>> => {
     if (!patientId) {
-      return {
-        appointments: [] as AppointmentRecord[],
-        paymentsByAppointmentId: {} as Record<string, PaymentRecord>,
-      };
+      return {};
     }
 
     try {
@@ -318,6 +333,17 @@ export function PatientAppointments() {
             map[payment.appointmentId] = payment;
             continue;
           }
+
+          const existingRank = paymentStatusRank(existing.status);
+          const currentRank = paymentStatusRank(payment.status);
+          if (currentRank > existingRank) {
+            map[payment.appointmentId] = payment;
+            continue;
+          }
+          if (currentRank < existingRank) {
+            continue;
+          }
+
           const currentTs = new Date(payment.updatedAt ?? payment.createdAt).getTime();
           const existingTs = new Date(
             existing.updatedAt ?? existing.createdAt,
@@ -334,19 +360,13 @@ export function PatientAppointments() {
         setSelectedBookingDate(firstDate);
       }
 
-      return {
-        appointments: patientData,
-        paymentsByAppointmentId: map,
-      };
+      return map;
     } catch {
       toast(
         "Could not fetch appointment data. Please ensure backend is running.",
         "error",
       );
-      return {
-        appointments: [] as AppointmentRecord[],
-        paymentsByAppointmentId: {} as Record<string, PaymentRecord>,
-      };
+      return {};
     } finally {
       setLoading(false);
     }
@@ -644,6 +664,7 @@ export function PatientAppointments() {
       const normalizedStatus = bookingStatusLabel(
         appt,
         telemedicineSessions[appt.id],
+        isPaymentCompleted(appt.id),
       ).toUpperCase();
       if (bookingStatusFilter !== "ALL" && normalizedStatus !== bookingStatusFilter) {
         return false;
@@ -678,6 +699,7 @@ export function PatientAppointments() {
     bookingDateFilter,
     bookingTableSearch,
     bookingTypeFilter,
+    isPaymentCompleted,
     sortedMyAppointments,
     telemedicineSessions,
   ]);
@@ -778,39 +800,50 @@ export function PatientAppointments() {
 
     handledPaymentReturnRef.current = handlingKey;
 
+    if (!paymentStatus) {
+      handledPaymentReturnQueryRef.current = null;
+      return;
+    }
+
+    if (handledPaymentReturnQueryRef.current === location.search) {
+      return;
+    }
+    handledPaymentReturnQueryRef.current = location.search;
+
     if (paymentStatus === "success") {
       setActiveTab("bookings");
 
       const handleSuccessReturn = async () => {
-        toast("Payment successful. Updating booking status...", "success");
+        toast("Payment received. Verifying booking status...", "info");
 
+        const appointmentId = params.get("id");
+        let confirmed = false;
         let polls = 0;
         while (polls < 8) {
-          const latest = await loadPatientAppointments();
+          const latestPayments = await loadPatientAppointments();
           if (!appointmentId) {
             break;
           }
 
-          const payment = latest.paymentsByAppointmentId[appointmentId];
-          const paymentStatus = String(payment?.status ?? "").toUpperCase();
-          const paymentCompleted =
-            paymentStatus === "SUCCESS" || paymentStatus === "COMPLETED";
-
-          const appointment = latest.appointments.find(
-            (appt) => appt.id === appointmentId,
-          );
-          const appointmentStatus = String(appointment?.status ?? "").toUpperCase();
-          const appointmentUpdated =
-            appointmentStatus === "CONFIRMED" ||
-            appointmentStatus === "IN_SESSION" ||
-            appointmentStatus === "COMPLETED";
-
-          if (paymentCompleted || appointmentUpdated) {
+          const status = String(
+            latestPayments[appointmentId]?.status ?? "",
+          ).toUpperCase();
+          if (status === "SUCCESS" || status === "COMPLETED") {
+            confirmed = true;
             break;
           }
 
           polls += 1;
           await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        }
+
+        if (confirmed) {
+          toast("Payment confirmed and booking updated.", "success");
+        } else {
+          toast(
+            "Payment was completed, but confirmation is still syncing. It will update shortly.",
+            "warning",
+          );
         }
 
         sessionStorage.removeItem("curex.pendingPayment");
@@ -1683,25 +1716,27 @@ export function PatientAppointments() {
                     ) : (
                       bookingsForSelectedDate.map((appt) => {
                         const date = new Date(appt.appointmentTime);
+                        const effectiveStatus = bookingStatusLabel(
+                          appt,
+                          telemedicineSessions[appt.id],
+                          isPaymentCompleted(appt.id),
+                        );
                         return (
                           <button
                             key={appt.id}
                             type="button"
                             onClick={() => setPopupBooking(appt)}
                             className={`rounded-xl px-3 py-2 text-left text-xs font-medium ${statusPastelClass(
-                              String(appt.status),
+                              effectiveStatus,
                             )}`}
                           >
                             <div className="flex flex-wrap items-center gap-2">
                               <span
                                 className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${statusPastelClass(
-                                  appt.status,
+                                  effectiveStatus,
                                 )}`}
                               >
-                                {bookingStatusLabel(
-                                  appt,
-                                  telemedicineSessions[appt.id],
-                                )}
+                                {effectiveStatus}
                               </span>
                               {shouldShowPayNow(appt) && (
                                 <button
@@ -1836,6 +1871,12 @@ export function PatientAppointments() {
                     {paginatedBookingRows.map((appt) => {
                       const date = new Date(appt.appointmentTime);
                       const telemedSession = telemedicineSessions[appt.id];
+                      const paymentCompleted = isPaymentCompleted(appt.id);
+                      const effectiveStatus = bookingStatusLabel(
+                        appt,
+                        telemedSession,
+                        paymentCompleted,
+                      );
                       const canJoin = canJoinTelemedicine(appt, telemedSession);
                       return (
                         <tr
@@ -1864,9 +1905,9 @@ export function PatientAppointments() {
                           </td>
                           <td className="px-3 py-2">
                             <span
-                              className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusPastelClass(String(appt.status))}`}
+                              className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusPastelClass(effectiveStatus)}`}
                             >
-                              {bookingStatusLabel(appt, telemedSession)}
+                              {effectiveStatus}
                             </span>
                           </td>
                           <td className="px-3 py-2">
@@ -1878,14 +1919,10 @@ export function PatientAppointments() {
                               >
                                 Pay Now
                               </button>
-                            ) : isPaymentCompleted(appt.id) &&
-                              String(appt.status).toUpperCase() === "PENDING" ? (
-                              <span className="rounded-full bg-accent-mint/20 px-2.5 py-1 text-xs font-semibold text-primary">
-                                Paid - Confirming
-                              </span>
-                            ) : String(appt.status).toUpperCase() === "CONFIRMED" ||
-                              String(appt.status).toUpperCase() === "IN_SESSION" ||
-                              String(appt.status).toUpperCase() === "COMPLETED" ? (
+                            ) : paymentCompleted ||
+                              effectiveStatus === "CONFIRMED" ||
+                              effectiveStatus === "IN_SESSION" ||
+                              effectiveStatus === "COMPLETED" ? (
                               <span className="rounded-full bg-accent-mint/20 px-2.5 py-1 text-xs font-semibold text-primary">
                                 Paid
                               </span>
@@ -2005,6 +2042,7 @@ export function PatientAppointments() {
                 {bookingStatusLabel(
                   popupBooking,
                   telemedicineSessions[popupBooking.id],
+                  isPaymentCompleted(popupBooking.id),
                 )}
               </p>
               {popupBooking.type === "TELEMEDICINE" && (

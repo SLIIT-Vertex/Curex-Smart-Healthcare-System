@@ -40,17 +40,34 @@ public class PaymentServiceImpl implements PaymentService {
         if (!StringUtils.hasText(appointmentId)) {
             throw new PaymentException("appointmentId is required");
         }
+        if (!StringUtils.hasText(request.getPatientId())) {
+            throw new PaymentException("patientId is required");
+        }
 
-        Payment payment = Payment.builder()
-                .appointmentId(appointmentId)
-                .patientId(request.getPatientId())
-                .amount(request.getAmount())
-                .currency(request.getCurrency())
-                .status(PaymentStatus.PENDING)
-                .paymentMethod("STRIPE_CHECKOUT")
-                .build();
+        Payment payment = paymentRepository
+                .findFirstByAppointmentIdAndPatientIdAndStatusInOrderByCreatedAtDesc(
+                        appointmentId,
+                        request.getPatientId(),
+                        List.of(PaymentStatus.PENDING, PaymentStatus.SUCCESS)
+                )
+                .orElseGet(() -> paymentRepository.save(Payment.builder()
+                        .appointmentId(appointmentId)
+                        .patientId(request.getPatientId())
+                        .amount(request.getAmount())
+                        .currency(request.getCurrency())
+                        .status(PaymentStatus.PENDING)
+                        .paymentMethod("STRIPE_CHECKOUT")
+                        .build()));
 
-        // Save first so we have a DB id to put into Stripe metadata.
+        if (payment.getStatus() == PaymentStatus.SUCCESS) {
+            throw new PaymentException("Payment already completed for this appointment.");
+        }
+
+        // Keep one record per appointment payment journey; retries refresh Stripe session on the same row.
+        payment.setAmount(request.getAmount());
+        payment.setCurrency(request.getCurrency());
+        payment.setStatus(PaymentStatus.PENDING);
+        payment.setPaymentMethod("STRIPE_CHECKOUT");
         payment = paymentRepository.save(payment);
 
         Session session = stripeService.createCheckoutSession(payment, request.getSuccessUrl(), request.getCancelUrl());
@@ -85,9 +102,8 @@ public class PaymentServiceImpl implements PaymentService {
         if (!StringUtils.hasText(patientId)) {
             throw new PaymentException("patientId is required");
         }
-        List<Payment> payments = paymentRepository.findByPatientIdOrderByCreatedAtDesc(patientId);
-        reconcilePendingStripePayments(payments);
-        return payments.stream()
+        return paymentRepository.findByPatientIdOrderByCreatedAtDesc(patientId).stream()
+                .map(this::reconcilePendingPaymentFromStripe)
                 .map(this::toResponse)
                 .toList();
     }
@@ -155,13 +171,11 @@ public class PaymentServiceImpl implements PaymentService {
 
         log.info("Processing checkout.session.completed for stripeSessionId={}", session.getId());
 
-        paymentRepository.findByStripeSessionId(session.getId()).ifPresent(payment -> {
-            markPaymentSuccessfulAndPublish(payment, session.getPaymentIntent(), "webhook");
-        });
-
-        if (paymentRepository.findByStripeSessionId(session.getId()).isEmpty()) {
-            log.warn("No payment row found for stripeSessionId={}. Webhook cannot mark payment SUCCESS.", session.getId());
-        }
+        paymentRepository.findByStripeSessionId(session.getId())
+                .ifPresentOrElse(
+                        payment -> markSuccessAndPublishIfNeeded(payment, session.getPaymentIntent()),
+                        () -> log.warn("No payment row found for stripeSessionId={}. Webhook cannot mark payment SUCCESS.", session.getId())
+                );
     }
 
     private void handleCheckoutSessionExpired(Event event) {
@@ -199,48 +213,45 @@ public class PaymentServiceImpl implements PaymentService {
         return Optional.empty();
     }
 
-    private void reconcilePendingStripePayments(List<Payment> payments) {
-        for (Payment payment : payments) {
-            if (payment.getStatus() != PaymentStatus.PENDING) {
-                continue;
-            }
-
-            if (!StringUtils.hasText(payment.getStripeSessionId())) {
-                continue;
-            }
-
-            try {
-                Session session = stripeService.retrieveCheckoutSession(payment.getStripeSessionId());
-                String paymentStatus = String.valueOf(session.getPaymentStatus()).toLowerCase(Locale.ROOT);
-                String checkoutStatus = String.valueOf(session.getStatus()).toLowerCase(Locale.ROOT);
-
-                boolean paid = "paid".equals(paymentStatus);
-                boolean completed = "complete".equals(checkoutStatus);
-
-                if (paid || completed) {
-                    log.info("Reconciled pending payment as SUCCESS via Stripe session lookup. paymentId={} stripeSessionId={}",
-                            payment.getId(), payment.getStripeSessionId());
-                    markPaymentSuccessfulAndPublish(payment, session.getPaymentIntent(), "reconcile");
-                }
-            } catch (Exception ex) {
-                log.debug("Stripe reconcile skipped for paymentId={} stripeSessionId={}: {}",
-                        payment.getId(), payment.getStripeSessionId(), ex.getMessage());
-            }
+    private Payment reconcilePendingPaymentFromStripe(Payment payment) {
+        if (payment == null || payment.getStatus() != PaymentStatus.PENDING) {
+            return payment;
         }
+        if (!StringUtils.hasText(payment.getStripeSessionId())) {
+            return payment;
+        }
+
+        Optional<Session> sessionOpt = stripeService.retrieveCheckoutSession(payment.getStripeSessionId());
+        if (sessionOpt.isEmpty()) {
+            return payment;
+        }
+
+        Session session = sessionOpt.get();
+        String paymentStatus = String.valueOf(session.getPaymentStatus()).toLowerCase(Locale.ROOT);
+        if (!"paid".equals(paymentStatus) && !"no_payment_required".equals(paymentStatus)) {
+            return payment;
+        }
+
+        log.info("Reconciling pending payment via Stripe API: paymentId={} stripeSessionId={}",
+                payment.getId(), payment.getStripeSessionId());
+        return markSuccessAndPublishIfNeeded(payment, session.getPaymentIntent());
     }
 
-    private void markPaymentSuccessfulAndPublish(Payment payment, String stripePaymentIntentId, String source) {
-        // Idempotency: Stripe webhooks and fallback reconciliation can both hit this path.
-        if (payment.getStatus() == PaymentStatus.SUCCESS) {
-            log.info("Payment already SUCCESS for paymentId={} (source={}, idempotent skip)",
-                    payment.getId(), source);
-            return;
+    private Payment markSuccessAndPublishIfNeeded(Payment payment, String paymentIntentId) {
+        Payment lockedPayment = paymentRepository
+                .findByIdForUpdate(payment.getId())
+                .orElse(payment);
+
+        // Idempotency: Stripe may retry webhooks; only publish once when transitioning.
+        if (lockedPayment.getStatus() == PaymentStatus.SUCCESS) {
+            log.info("Payment already SUCCESS for paymentId={} (idempotent skip)", lockedPayment.getId());
+            return lockedPayment;
         }
 
-        payment.setStatus(PaymentStatus.SUCCESS);
-        payment.setStripePaymentIntentId(stripePaymentIntentId);
-        payment.setPaymentMethod("CARD");
-        Payment saved = paymentRepository.save(payment);
+        lockedPayment.setStatus(PaymentStatus.SUCCESS);
+        lockedPayment.setStripePaymentIntentId(paymentIntentId);
+        lockedPayment.setPaymentMethod("CARD");
+        Payment saved = paymentRepository.save(lockedPayment);
 
         PaymentConfirmedEvent confirmedEvent = PaymentConfirmedEvent.builder()
                 .paymentId(saved.getId())
@@ -252,9 +263,10 @@ public class PaymentServiceImpl implements PaymentService {
                 .timestamp(saved.getUpdatedAt())
                 .build();
 
-        log.info("Publishing payment.confirmed from {} for appointmentId={} paymentId={}",
-                source, saved.getAppointmentId(), saved.getId());
+        log.info("Publishing payment.confirmed for appointmentId={} paymentId={}",
+                saved.getAppointmentId(), saved.getId());
         paymentEventPublisher.publishPaymentConfirmed(confirmedEvent);
+        return saved;
     }
 
     private PaymentResponse toResponse(Payment payment) {

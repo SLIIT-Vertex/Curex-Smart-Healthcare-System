@@ -23,11 +23,14 @@ import java.util.UUID;
 @Slf4j
 public class ReportServiceImpl implements ReportService {
 
-    private static final Set<String> ALLOWED_EXTENSIONS = Set.of("pdf", "png", "jpg", "jpeg");
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of("pdf", "png", "jpg", "jpeg", "webp");
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
             "application/pdf",
             "image/png",
-            "image/jpeg");
+            "image/jpeg",
+            "image/jpg",
+            "image/pjpeg",
+            "image/webp");
 
     private final ReportRepository reportRepository;
     private final CloudinaryService cloudinaryService;
@@ -94,8 +97,12 @@ public class ReportServiceImpl implements ReportService {
     public void deleteFile(UUID id) {
         Report report = getFile(id);
         
-        // Delete from Cloudinary
-        cloudinaryService.delete(report.getPublicId());
+        // Delete from Cloudinary - handle errors gracefully so DB record can still be deleted
+        try {
+            cloudinaryService.delete(report.getPublicId());
+        } catch (Exception ex) {
+            log.warn("Failed to delete Cloudinary asset {} for file {}: {}", report.getPublicId(), id, ex.getMessage());
+        }
         
         reportRepository.delete(report);
     }

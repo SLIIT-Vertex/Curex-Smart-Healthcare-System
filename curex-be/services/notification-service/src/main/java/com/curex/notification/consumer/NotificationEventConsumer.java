@@ -260,11 +260,12 @@ public class NotificationEventConsumer {
             String appointmentId = (String) event.get("appointmentId");
 
             if (patientId != null && !patientId.isBlank()
-                && (patientEmail == null || patientEmail.isBlank())) {
-            String resolved = userPreferenceClient.resolveUserEmail(patientId);
-            if (resolved != null) {
-                patientEmail = resolved;
-            }
+                && (patientEmail == null || patientEmail.isBlank() || patientName == null || patientName.isBlank())) {
+                UserPreferenceClient.UserDetails details = userPreferenceClient.resolveUserDetails(patientId);
+                if (details != null) {
+                    if (patientEmail == null || patientEmail.isBlank()) patientEmail = details.getEmail();
+                    if (patientName == null || patientName.isBlank()) patientName = details.getFullName();
+                }
             }
 
             String safePatientName = (patientName == null || patientName.isBlank())
@@ -336,10 +337,11 @@ public class NotificationEventConsumer {
             String safeRxId        = prescriptionId != null ? HtmlUtils.htmlEscape(prescriptionId) : "—";
 
             if (patientId != null && !patientId.isBlank()
-                    && (patientEmail == null || patientEmail.isBlank())) {
-                String resolved = userPreferenceClient.resolveUserEmail(patientId);
-                if (resolved != null) {
-                    patientEmail = resolved;
+                    && (patientEmail == null || patientEmail.isBlank() || patientName == null || patientName.isBlank())) {
+                UserPreferenceClient.UserDetails details = userPreferenceClient.resolveUserDetails(patientId);
+                if (details != null) {
+                    if (patientEmail == null || patientEmail.isBlank()) patientEmail = details.getEmail();
+                    if (patientName == null || patientName.isBlank()) patientName = details.getFullName();
                 }
             }
 
@@ -447,10 +449,11 @@ public class NotificationEventConsumer {
             String safeRxId = prescriptionId != null ? HtmlUtils.htmlEscape(prescriptionId) : "—";
 
             if (patientId != null && !patientId.isBlank()
-                    && (patientEmail == null || patientEmail.isBlank())) {
-                String resolved = userPreferenceClient.resolveUserEmail(patientId);
-                if (resolved != null) {
-                    patientEmail = resolved;
+                    && (patientEmail == null || patientEmail.isBlank() || patientName == null || patientName.isBlank())) {
+                UserPreferenceClient.UserDetails details = userPreferenceClient.resolveUserDetails(patientId);
+                if (details != null) {
+                    if (patientEmail == null || patientEmail.isBlank()) patientEmail = details.getEmail();
+                    if (patientName == null || patientName.isBlank()) patientName = details.getFullName();
                 }
             }
 
@@ -524,13 +527,14 @@ public class NotificationEventConsumer {
 
     private String buildPaymentConfirmationContent(String patientName, String amount, String appointmentId) {
         return String.format("""
-                <div style="background:#d4edda;padding:15px;border-radius:5px;">
+                <div style="background:#e7f3ff;padding:15px;border-radius:5px;">
                     <h3>Payment Confirmed!</h3>
                     <p><strong>Patient:</strong> %s</p>
-                    <p><strong>Amount:</strong> %s</p>
+                    <p><strong>Amount Paid:</strong> %s</p>
                     <p><strong>Appointment ID:</strong> %s</p>
                 </div>
-                <p>Your appointment is fully confirmed. You will receive a reminder before your appointment.</p>
+                <p>Your appointment is now fully confirmed. You can view your receipt in the "Payments & Billing" section of your dashboard.</p>
+                <p>Best regards,<br>The Curex Healthcare Team</p>
                 """,
                 HtmlUtils.htmlEscape(patientName),
                 HtmlUtils.htmlEscape(amount),

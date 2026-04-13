@@ -245,6 +245,19 @@ resilience4j:
         waitDurationInOpenState: 10s
         permittedNumberOfCallsInHalfOpenState: 3
 
+  timelimiter:
+    instances:
+      reportServiceCB:
+        timeoutDuration: 60s
+      aiSymptomServiceCB:
+        timeoutDuration: 30s
+      userServiceCB:
+        timeoutDuration: 10s
+      appointmentServiceCB:
+        timeoutDuration: 10s
+      paymentServiceCB:
+        timeoutDuration: 20s
+
 management:
   endpoints:
     web:

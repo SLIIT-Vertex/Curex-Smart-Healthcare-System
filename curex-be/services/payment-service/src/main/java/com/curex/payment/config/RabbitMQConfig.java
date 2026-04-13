@@ -27,6 +27,11 @@ public class RabbitMQConfig {
     }
 
     @Bean
+    public TopicExchange notificationPaymentExchange() {
+        return new TopicExchange(NOTIFICATION_PAYMENT_EXCHANGE);
+    }
+
+    @Bean
     public Queue paymentConfirmedQueue() {
         return new Queue(PAYMENT_CONFIRMED_QUEUE, true);
     }
