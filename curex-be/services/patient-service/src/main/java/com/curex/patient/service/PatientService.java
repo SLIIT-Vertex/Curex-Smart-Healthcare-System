@@ -20,15 +20,19 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class PatientService {
+
+    private static final long USER_IDENTITY_RETRY_COOLDOWN_MS = 60_000;
 
     private final PatientRepository patientRepository;
     private final MedicalHistoryRepository medicalHistoryRepository;
@@ -36,6 +40,7 @@ public class PatientService {
     private final DoctorServiceClient doctorServiceClient;
     private final UserServiceClient userServiceClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final Map<String, Long> userIdentityRetryAfter = new ConcurrentHashMap<>();
 
     @Transactional
     public PatientResponse create(CreatePatientRequest request) {
@@ -219,9 +224,30 @@ public class PatientService {
     }
 
     private InternalUserResponse getUserIdentity(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return null;
+        }
+
+        long now = Instant.now().toEpochMilli();
+        final boolean[] shouldCall = {false};
+        userIdentityRetryAfter.compute(userId, (key, retryAfter) -> {
+            if (retryAfter != null && retryAfter > now) {
+                return retryAfter;
+            }
+            shouldCall[0] = true;
+            return now + USER_IDENTITY_RETRY_COOLDOWN_MS;
+        });
+
+        if (!shouldCall[0]) {
+            return null;
+        }
+
         try {
-            return userServiceClient.getUserById(userId);
+            InternalUserResponse user = userServiceClient.getUserById(userId);
+            userIdentityRetryAfter.remove(userId);
+            return user;
         } catch (Exception ex) {
+            userIdentityRetryAfter.put(userId, now + USER_IDENTITY_RETRY_COOLDOWN_MS);
             log.warn("Failed to resolve user identity for patient userId {}: {}", userId, ex.getMessage());
             return null;
         }

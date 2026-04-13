@@ -184,6 +184,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/curex_patients
       DB_USERNAME: ${DB_USERNAME:-curex_user}
       DB_PASSWORD: ${DB_PASSWORD:-curex_password}
+      SERVICES_USER_URL: ${SERVICES_USER_URL:-http://user-service:8081}
       SERVICES_DOCTOR_URL: http://doctor-service:8084
     depends_on:
       postgres:
