@@ -22,24 +22,23 @@ public class UserPreferenceClient {
     private String userServiceBaseUrl;
 
     /**
-     * Resolves the account email for a user id (internal API). Used when domain events omit email.
+     * Resolves user details (email and name) for a user id (internal API).
      */
-    public String resolveUserEmail(String userId) {
+    public UserDetails resolveUserDetails(String userId) {
         if (userId == null || userId.isBlank()) {
             return null;
         }
         String url = userServiceBaseUrl + "/api/internal/users/" + userId.trim();
         RestTemplate restTemplate = restTemplateBuilder.build();
         try {
-            ResponseEntity<InternalUserResponse> response =
-                    restTemplate.getForEntity(url, InternalUserResponse.class);
+            ResponseEntity<UserDetails> response =
+                    restTemplate.getForEntity(url, UserDetails.class);
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
                 return null;
             }
-            String email = response.getBody().getEmail();
-            return email != null && !email.isBlank() ? email.trim() : null;
+            return response.getBody();
         } catch (RestClientException ex) {
-            log.warn("Could not resolve email for user {}: {}", userId, ex.getMessage());
+            log.warn("Could not resolve details for user {}: {}", userId, ex.getMessage());
             return null;
         }
     }
@@ -105,7 +104,15 @@ public class UserPreferenceClient {
 
     @Getter
     @Setter
-    private static class InternalUserResponse {
+    public static class UserDetails {
         private String email;
+        private String firstName;
+        private String lastName;
+
+        public String getFullName() {
+            if (firstName == null) return "";
+            if (lastName == null) return firstName;
+            return firstName + " " + lastName;
+        }
     }
 }

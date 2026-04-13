@@ -126,6 +126,7 @@ services:
       TEXT_LK_API_TOKEN: ${TEXT_LK_API_TOKEN:-}
       TEXT_LK_SENDER_ID: ${TEXT_LK_SENDER_ID:-CUREX}
       TEXT_LK_API_BASE_URL: ${TEXT_LK_API_BASE_URL:-https://app.text.lk/api/v3}
+      USER_SERVICE_BASE_URL: http://user-service:8081
     depends_on:
       postgres:
         condition: service_healthy
@@ -256,6 +257,13 @@ services:
         condition: service_healthy
       doctor-service:
         condition: service_healthy
+    healthcheck:
+      test:
+        ["CMD-SHELL", "curl -f http://localhost:8088/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   payment-service:
     build:
@@ -354,23 +362,23 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
     depends_on:
       user-service:
-        condition: service_started
+        condition: service_healthy
       notification-service:
-        condition: service_started
+        condition: service_healthy
       telemedicine-service:
-        condition: service_started
+        condition: service_healthy
       appointment-service:
-        condition: service_started
+        condition: service_healthy
       patient-service:
-        condition: service_started
+        condition: service_healthy
       doctor-service:
-        condition: service_started
+        condition: service_healthy
       payment-service:
-        condition: service_started
+        condition: service_healthy
       ai-symptom-service:
-        condition: service_started
+        condition: service_healthy
       report-service:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test:
         ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]

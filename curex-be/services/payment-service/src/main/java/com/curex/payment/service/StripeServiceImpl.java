@@ -16,6 +16,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -113,6 +114,23 @@ public class StripeServiceImpl implements StripeService {
             return Webhook.constructEvent(payload, signatureHeader, stripeProperties.getWebhookSecret());
         } catch (SignatureVerificationException e) {
             throw new IllegalArgumentException("Invalid Stripe webhook signature", e);
+        }
+    }
+
+    @Override
+    public Optional<Session> retrieveCheckoutSession(String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            return Optional.empty();
+        }
+        if (!StringUtils.hasText(stripeProperties.getSecretKey())) {
+            return Optional.empty();
+        }
+
+        Stripe.apiKey = stripeProperties.getSecretKey();
+        try {
+            return Optional.ofNullable(Session.retrieve(sessionId));
+        } catch (Exception ex) {
+            return Optional.empty();
         }
     }
 
