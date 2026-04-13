@@ -1,111 +1,259 @@
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+@import "tailwindcss";
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+@theme {
+  /*  Core palette  */
+  --color-primary: #1C274C;
+  --color-primary-light: #3A4F8A;
+  --color-background: #F7FAFF;
+  --color-surface: #FFFFFF;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /*  Accents  */
+  --color-accent-mint: #6EE7B7;
+  --color-accent-sky: #7DD3FC;
+  --color-accent-peach: #FDBA74;
+  --color-accent-violet: #A78BFA;
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
+  /*  Feedback  */
+  --color-error: #F87171;
+
+  /*  Text  */
+  --color-text-primary: #1C274C;
+  --color-text-secondary: #6B7280;
+
+  /*  Status  */
+  --color-status-healthy: #6EE7B7;
+  --color-status-attention: #FDBA74;
+  --color-status-critical: #F87171;
+  --color-status-info: #7DD3FC;
+
+  /*  Fonts  */
+  --font-sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, Consolas, monospace;
+
+  /*  Layout  */
+  --width-content: 72rem;
+  --shadow-header: 0 1px 0 rgb(28 39 76 / 0.06), 0 4px 24px rgb(28 39 76 / 0.04);
+  --shadow-card: 0 4px 24px rgb(28 39 76 / 0.06);
+}
+
+@layer base {
+  html {
+    font-size: 18px;
+    line-height: 1.45;
+    letter-spacing: 0.18px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
+
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --color-primary: #E2E8F0;
+    --color-primary-light: #93C5FD;
+    --color-background: #0B1220;
+    --color-surface: #111A2E;
+    --color-text-primary: #E2E8F0;
+    --color-text-secondary: #9CA3AF;
+    --shadow-header: 0 1px 0 rgb(15 23 42 / 0.6), 0 10px 30px rgb(2 6 23 / 0.35);
+    --shadow-card: 0 8px 28px rgb(2 6 23 / 0.45);
+  }
+
+  body {
+    @apply m-0 bg-background text-text-primary font-sans min-h-dvh;
+  }
+
+  #root {
+    @apply min-h-dvh flex flex-col;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-primary-light;
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(var(--float-rotate, 0deg)); }
+  50%      { transform: translateY(var(--float-y, -10px)) rotate(var(--float-rotate, 0deg)); }
+}
+
+@layer components {
+  /* Shared content width — use with Tailwind: max-w-content */
+  .layout-content {
+    @apply mx-auto w-full max-w-(--width-content) px-4 sm:px-6 lg:px-8;
   }
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
+  .link-subtle {
+    @apply text-text-secondary transition-colors hover:text-primary;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg bg-primary-light px-5 py-2.5 text-sm font-semibold text-surface shadow-sm transition hover:bg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-light;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-lg border border-primary-light/30 bg-surface px-5 py-2.5 text-sm font-semibold text-primary transition hover:border-primary-light hover:bg-primary-light/5;
+  }
+
+  .section-screen {
+    /* items-center + justify-center: block is centered in viewport; w-full child still spans width */
+    @apply flex w-full min-h-svh flex-col items-center justify-center;
+  }
+
+  /*  Auth form input  */
+  .auth-input {
+    @apply w-full rounded-xl border border-text-secondary/20 bg-surface px-4 py-2.5 text-sm text-primary
+           placeholder:text-text-secondary
+           focus:border-primary-light focus:outline-none focus:ring-2 focus:ring-primary-light/20
+           transition-colors;
   }
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
+/*  Toast slide-in animation  */
+@keyframes slideInRight {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
 }
 
-body {
-  margin: 0;
+/*  Auth step transitions  */
+@keyframes stepSlideInForward {
+  from { transform: translateX(40px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes stepSlideInBack {
+  from { transform: translateX(-40px); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+@keyframes stepFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
+@layer components {
+  /* ── Registration step indicator ─────────────────────────────────────────── */
+  .register-step-dot {
+    @apply shrink-0 h-7 w-7 rounded-full flex items-center justify-center
+           text-[11px] font-semibold transition-all duration-300;
   }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
+  .register-step-dot.done   { @apply bg-primary-light text-surface; }
+  .register-step-dot.active { @apply bg-primary text-surface ring-4 ring-primary/15 shadow-sm; }
+  .register-step-dot.todo   { @apply border-2 border-text-secondary/20 text-text-secondary/35; }
+
+  .register-step-line {
+    @apply h-px flex-1 mx-0.5 transition-all duration-500;
   }
-}
-p {
-  margin: 0;
-}
+  .register-step-line.done { @apply bg-primary-light; }
+  .register-step-line.todo { @apply bg-text-secondary/15; }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
+  /* OTP 6-digit input grid */
+  .otp-grid {
+    @apply grid gap-2;
+    grid-template-columns: repeat(6, 1fr);
+  }
+  .otp-cell {
+    @apply w-full aspect-square rounded-xl border-2 border-text-secondary/20
+           bg-surface text-center text-lg font-semibold text-primary
+           focus:border-primary-light focus:outline-none focus:ring-2 focus:ring-primary-light/20
+           transition-all duration-200;
+  }
+  .otp-cell.filled { @apply border-primary-light bg-primary-light/5; }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+  /* Password strength bar */
+  .pw-strength-track {
+    @apply h-1 w-full rounded-full bg-text-secondary/15 overflow-hidden mt-2;
+  }
+  .pw-strength-fill {
+    @apply h-full rounded-full transition-all duration-500;
+  }
+
+  /* Auth wizard card animation */
+  .auth-step-enter-forward {
+    animation: stepSlideInForward 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  }
+  .auth-step-enter-back {
+    animation: stepSlideInBack 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+  }
+  .auth-fade-in {
+    animation: stepFadeIn 0.3s ease forwards;
+  }
+
+  /* Role selection card */
+  .role-card {
+    @apply flex flex-col items-start gap-2 rounded-2xl border-2 p-4 text-left
+           cursor-pointer transition-all duration-200 select-none;
+  }
+  .role-card.selected {
+    @apply border-primary-light bg-primary-light/8 shadow-md;
+  }
+  .role-card.unselected {
+    @apply border-text-secondary/15 bg-surface hover:border-primary-light/40 hover:bg-primary-light/4;
+  }
+
+  /* Auth panel left brand gradient */
+  .auth-brand-panel {
+    @apply hidden lg:flex lg:w-[45%] flex-col justify-between relative overflow-hidden;
+    background: linear-gradient(145deg, #1C274C 0%, #253672 55%, #3A4F8A 100%);
+  }
+
+  /* Decorative blobs in auth brand panel — eliminates inline styles */
+  .auth-blobs-wrap {
+    @apply pointer-events-none absolute inset-0 overflow-hidden;
+  }
+
+  .auth-blob-base {
+    @apply absolute rounded-full;
+    animation: float ease-in-out infinite;
+  }
+
+  /* Login page blobs */
+  .auth-blob-login-1 {
+    @apply -top-24 -right-24 h-80 w-80 opacity-20;
+    --float-y: -20px;
+    background: radial-gradient(circle, var(--color-accent-mint) 0%, transparent 70%);
+    animation-duration: 8s;
+  }
+
+  .auth-blob-login-2 {
+    @apply bottom-20 -left-20 h-64 w-64;
+    opacity: 0.15;
+    --float-y: -14px;
+    background: radial-gradient(circle, var(--color-accent-sky) 0%, transparent 70%);
+    animation-duration: 11s;
+    animation-delay: 2s;
+  }
+
+  .auth-blob-login-3 {
+    @apply top-1/2 right-10 h-40 w-40;
+    opacity: 0.10;
+    --float-y: -12px;
+    background: radial-gradient(circle, var(--color-accent-peach) 0%, transparent 70%);
+    animation-duration: 9s;
+    animation-delay: 4s;
+  }
+
+  /* Register page brand panel blobs */
+  .auth-blob-reg-1 {
+    @apply -top-20 -right-20 h-72 w-72 opacity-20;
+    --float-y: -18px;
+    background: radial-gradient(circle, var(--color-accent-mint) 0%, transparent 70%);
+    animation-duration: 8s;
+  }
+
+  .auth-blob-reg-2 {
+    @apply bottom-16 -left-16 h-56 w-56;
+    opacity: 0.15;
+    --float-y: -12px;
+    background: radial-gradient(circle, var(--color-accent-sky) 0%, transparent 70%);
+    animation-duration: 10s;
+    animation-delay: 3s;
+  }
+
+  .auth-blob-reg-3 {
+    @apply top-1/3 right-8 h-36 w-36;
+    opacity: 0.10;
+    --float-y: -10px;
+    background: radial-gradient(circle, var(--color-accent-peach) 0%, transparent 70%);
+    animation-duration: 7s;
+    animation-delay: 1.5s;
+  }
 }

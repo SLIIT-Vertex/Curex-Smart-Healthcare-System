@@ -1,0 +1,39 @@
+---
+# 
+# PostgreSQL persistent volume claim
+# 
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: curex
+  labels:
+    app: postgres
+    app.kubernetes.io/part-of: curex-healthcare
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # storageClassName: standard   # uncomment and set to your cluster's StorageClass
+
+---
+# 
+# RabbitMQ persistent volume claim
+# 
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rabbitmq-pvc
+  namespace: curex
+  labels:
+    app: rabbitmq
+    app.kubernetes.io/part-of: curex-healthcare
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  # storageClassName: standard

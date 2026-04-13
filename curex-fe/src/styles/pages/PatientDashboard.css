@@ -1,0 +1,203 @@
+@reference "../../index.css";
+
+@layer components {
+  /*  Welcome Banner  */
+  .welcome-banner {
+    @apply relative overflow-hidden rounded-2xl bg-surface;
+    box-shadow: var(--shadow-card);
+  }
+
+  .welcome-banner__gradient {
+    @apply pointer-events-none absolute inset-0 bg-gradient-to-r from-accent-peach/5 via-transparent to-accent-sky/5;
+  }
+
+  /*  Progress chart (area chart card)  */
+  .progress-chart {
+    @apply rounded-2xl bg-surface p-5;
+    box-shadow: var(--shadow-card);
+  }
+
+  /*  Quick action cards  */
+  .quick-action-card {
+    @apply block rounded-2xl bg-surface p-5 transition-transform duration-200 ease-out hover:scale-[1.02];
+    box-shadow: var(--shadow-card);
+  }
+
+  .quick-action-card:hover {
+    box-shadow: 0 6px 28px rgb(28 39 76 / 0.08);
+  }
+
+  /*  Consultation history  */
+  .consultation-row {
+    @apply flex flex-wrap items-center justify-between gap-3 rounded-xl border border-text-secondary/10
+           bg-background/50 px-4 py-3 transition-colors duration-150 hover:border-primary-light/20 hover:bg-background/80;
+  }
+
+  /*  Details card */
+  .details-card {
+    @apply relative overflow-hidden rounded-2xl bg-surface text-primary;
+    box-shadow: var(--shadow-card);
+  }
+
+  .details-card__header {
+    background: linear-gradient(135deg, #1c274c 0%, #3a4f8a 60%, #6ee7b7 100%);
+    @apply relative flex items-center justify-between px-4 py-2.5;
+  }
+
+  .details-card__header::after {
+    content: '';
+    @apply pointer-events-none absolute inset-0;
+    background: radial-gradient(
+      circle at 85% 0%,
+      rgb(255 255 255 / 0.18),
+      transparent 55%
+    );
+  }
+
+  .details-card__header-title {
+    @apply relative z-[1] text-xs font-semibold tracking-wide text-white;
+  }
+
+  .details-card__edit {
+    @apply relative z-[1] text-white/85 transition-colors hover:text-white;
+  }
+
+  .details-card__body {
+    @apply px-4 pb-3.5 pt-3;
+  }
+
+  .details-card__row {
+    @apply border-b border-text-secondary/10 py-2 last:border-b-0 last:pb-0;
+  }
+
+  .details-card dt {
+    @apply text-[10px] font-medium uppercase leading-tight tracking-wider text-text-secondary;
+  }
+
+  .details-card dd {
+    @apply mt-0.5 text-xs font-semibold leading-snug text-primary;
+  }
+
+  .details-card dd.details-card__value-muted {
+    @apply font-medium text-text-secondary;
+  }
+
+  /*  Symptom checker  */
+  .symptom-input {
+    @apply w-full min-h-[120px] resize-y rounded-xl border border-text-secondary/20 bg-surface px-4 py-3
+           text-sm text-primary placeholder:text-text-secondary
+           focus:border-primary-light focus:outline-none focus:ring-2 focus:ring-primary-light/20;
+  }
+
+  .symptom-result {
+    @apply rounded-2xl bg-surface p-6 lg:p-8;
+    box-shadow: var(--shadow-card);
+  }
+
+  .urgency-badge {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium;
+  }
+
+  .urgency-badge--low {
+    @apply border-accent-mint/40 bg-accent-mint/20 text-primary;
+  }
+
+  .urgency-badge--medium {
+    @apply border-accent-peach/40 bg-accent-peach/20 text-primary;
+  }
+
+  .urgency-badge--high {
+    @apply border-error/40 bg-error/20 text-primary;
+  }
+
+  .condition-card {
+    @apply rounded-xl border border-text-secondary/20 bg-surface p-4 text-center transition-colors hover:border-primary-light/20;
+  }
+
+  /*  Symptom result — rich output sections  */
+  .symptom-result__emergency-alert {
+    @apply mt-4 flex gap-3 rounded-xl border-2 border-error bg-error/10 px-4 py-3 text-error;
+  }
+
+  .symptom-result__seek-care-callout {
+    @apply rounded-xl border border-primary-light/30 bg-primary-light/5 px-4 py-3;
+  }
+
+  /*  Patient page polish  */
+  .patient-page-select {
+    @apply rounded-xl border border-text-secondary/20 bg-surface px-3 py-2 text-sm text-primary
+           focus:border-primary-light focus:outline-none focus:ring-2 focus:ring-primary-light/20;
+  }
+
+  .patient-page-input {
+    @apply w-full rounded-xl border border-text-secondary/20 bg-surface px-4 py-2.5 text-sm text-primary
+           placeholder:text-text-secondary focus:border-primary-light focus:outline-none focus:ring-2 focus:ring-primary-light/20;
+  }
+
+  .patient-card {
+    @apply rounded-2xl bg-surface;
+    box-shadow: var(--shadow-card);
+  }
+
+  .patient-empty-state {
+    @apply flex flex-col items-center justify-center rounded-xl border border-dashed border-text-secondary/20
+           bg-background/50 px-6 py-12 text-center;
+  }
+
+  .patient-loading-skeleton {
+    @apply animate-pulse rounded-xl bg-text-secondary/10;
+  }
+
+  .patient-section-divider {
+    @apply border-t border-text-secondary/10 pt-6;
+  }
+
+  /*  Prescriptions — summary strip   */
+  .rx-summary-strip {
+    @apply rounded-2xl border border-text-secondary/10 bg-gradient-to-br from-surface via-surface to-background/40 p-5 sm:p-6;
+  }
+
+  .rx-filter-chip {
+    @apply rounded-full border border-text-secondary/20 bg-surface px-3 py-1.5 text-xs font-medium text-primary
+           transition-colors duration-150 hover:border-primary-light/30 hover:bg-primary-light/5;
+  }
+
+  .rx-filter-chip--active {
+    @apply border-primary-light/50 bg-primary-light/10 text-primary shadow-sm;
+  }
+
+  .rx-validity-pill {
+    @apply inline-flex max-w-full items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium;
+  }
+
+  .rx-validity-pill--ok {
+    @apply border-accent-mint/35 bg-accent-mint/15 text-primary;
+  }
+
+  .rx-validity-pill--soon {
+    @apply border-accent-peach/40 bg-accent-peach/15 text-primary;
+  }
+
+  .rx-validity-pill--ended {
+    @apply border-text-secondary/25 bg-text-secondary/10 text-text-secondary;
+  }
+
+  .rx-validity-pill--future {
+    @apply border-accent-sky/35 bg-accent-sky/12 text-primary;
+  }
+
+  .rx-validity-pill--neutral {
+    @apply border-text-secondary/20 bg-background/80 text-text-secondary;
+  }
+
+  /*  Symptom result — print-friendly layout  */
+  @media print {
+    .symptom-result-print {
+      break-inside: avoid;
+    }
+
+    .symptom-result-print .btn-primary {
+      @apply border border-primary bg-transparent text-primary no-underline;
+    }
+  }
+}

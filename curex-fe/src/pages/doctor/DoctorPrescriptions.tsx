@@ -1,0 +1,1802 @@
+import {
+  useState,
+  useMemo,
+  useEffect,
+  useCallback,
+  Fragment,
+  type ComponentType,
+  type ReactNode,
+} from 'react'
+import {
+  Plus,
+  Search,
+  X,
+  FileText,
+  User,
+  Pill,
+  ClipboardList,
+  Stethoscope,
+  AlertCircle,
+  Filter,
+  Video,
+  MapPin,
+  ChevronDown,
+  ChevronUp,
+  CalendarClock,
+  Ban,
+} from 'lucide-react'
+import { PrescriptionForm } from '../../components/doctor/PrescriptionForm'
+import { VisitPhaseAtIssueBadge } from '../../components/prescription/VisitPhaseAtIssueBadge'
+import type { Prescription, PrescriptionStatus } from '../../types/doctor'
+import type { PrescriptionFormData } from '../../components/doctor/PrescriptionForm'
+import { getDoctorByUserId } from '../../services/doctorService'
+import { getApiErrorMessage } from '../../services/axiosInstance'
+import {
+  getPrescriptionsByDoctor,
+  issuePrescription,
+  updatePrescriptionStatus,
+} from '../../services/prescriptionService'
+import {
+  doctorCancellationDeadlineEnd,
+  isWithinDoctorCancellationWindow,
+} from '../../lib/prescriptionCancellation'
+import { getAppointmentsByDoctor } from '../../services/appointmentService'
+import type { AppointmentRecord } from '../../types/appointment'
+import type { PatientProfile } from '../../types/patient'
+import { getPatientClinicalProfileForAppointment } from '../../services/patientService'
+import { useAuth } from '../../store/hooks'
+import { useToast } from '../../store/hooks'
+import '../../styles/pages/DoctorPrescriptions.css'
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function parseDisplayDate(iso: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [y, m, d] = iso.split('-').map(Number)
+    return new Date(y, m - 1, d)
+  }
+  return new Date(iso)
+}
+
+function formatDateShort(iso: string): string {
+  return parseDisplayDate(iso).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+  })
+}
+
+function formatIssuedDetail(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return formatDate(iso)
+  return d.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatAppointmentDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+/** Visit row: date and time for appointment context (no raw IDs). */
+function formatVisitDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function appointmentTypeLabel(type: 'IN_PERSON' | 'TELEMEDICINE'): string {
+  return type === 'IN_PERSON' ? 'In person' : 'Telemedicine'
+}
+
+function appointmentStatusLabel(status: AppointmentRecord['status']): string {
+  const labels: Record<AppointmentRecord['status'], string> = {
+    PENDING: 'Pending',
+    CONFIRMED: 'Confirmed',
+    IN_SESSION: 'In session',
+    COMPLETED: 'Completed',
+    CANCELLED: 'Cancelled',
+  }
+  return labels[status]
+}
+
+function parseMedicines(raw: string): string[] {
+  return raw
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function ageFromDateOfBirth(iso?: string): string | null {
+  if (!iso?.trim()) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  const today = new Date()
+  let age = today.getFullYear() - d.getFullYear()
+  const m = today.getMonth() - d.getMonth()
+  if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age -= 1
+  if (age < 0 || age > 130) return null
+  return String(age)
+}
+
+function formatClinicalList(items: string[] | undefined, emptyLabel: string): string {
+  if (!items?.length) return emptyLabel
+  return items.join(', ')
+}
+
+function RxDetailDetailBlock({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="space-y-0.5">
+      <dt className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+        {label}
+      </dt>
+      <dd className="text-sm font-medium leading-snug text-primary">{value}</dd>
+    </div>
+  )
+}
+
+function RxDetailPanelCard({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <section
+      className="rounded-2xl border border-text-secondary/12 bg-surface p-4 shadow-sm"
+      style={{ boxShadow: 'var(--shadow-card)' }}
+    >
+      <div className="mb-3 flex items-center gap-2 border-b border-text-secondary/10 pb-2">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-light/10 text-primary-light">
+          <Icon className="h-4 w-4" strokeWidth={1.75} />
+        </div>
+        <h3 className="text-sm font-semibold text-primary">{title}</h3>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+/** Days before validTo to highlight as “expiring soon” (same as patient view). */
+const EXPIRING_SOON_DAYS = 14
+
+function startOfLocalDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+interface MedicineTableRow {
+  name: string
+  dosage: string
+  frequency: string
+  duration: string
+}
+
+function looksLikeDuration(s: string): boolean {
+  const t = s.trim().toLowerCase()
+  if (!t) return false
+  if (/(?:^|\s)(?:days?|weeks?|months?|years?)\b/.test(t)) return true
+  if (/^\d[\d\s]*(?:-|–)?\s*\d*\s*(?:days?|weeks?|months?)?$/i.test(t)) return true
+  return /\d/.test(t) && /\b(for\s+)?\d+\b/.test(t)
+}
+
+function parseMedicineLineSerialized(line: string): MedicineTableRow {
+  const t = line.trim()
+  if (!t) return { name: '', dosage: '', frequency: '', duration: '' }
+
+  const parts = t.split(', ').map((p) => p.trim())
+  let nameHead = ''
+  let frequency = ''
+  let duration = ''
+
+  if (parts.length === 1) {
+    return { name: parts[0]!, dosage: '', frequency: '', duration: '' }
+  }
+
+  if (parts.length === 2) {
+    nameHead = parts[0]!
+    const second = parts[1]!
+    if (looksLikeDuration(second)) duration = second
+    else frequency = second
+  } else {
+    duration = parts[parts.length - 1]!
+    frequency = parts[parts.length - 2]!
+    nameHead = parts.slice(0, -2).join(', ')
+  }
+
+  const sp = nameHead.indexOf(' ')
+  if (sp === -1) {
+    return { name: nameHead, dosage: '', frequency, duration }
+  }
+  return {
+    name: nameHead.slice(0, sp),
+    dosage: nameHead.slice(sp + 1).trim(),
+    frequency,
+    duration,
+  }
+}
+
+function parseMedicinesForTable(raw: string): MedicineTableRow[] {
+  return parseMedicines(raw).map(parseMedicineLineSerialized)
+}
+
+const STATUS_STYLES: Record<PrescriptionStatus, string> = {
+  PENDING:
+    'border border-accent-peach/45 border-l-[3px] border-l-accent-peach bg-accent-peach/25 text-primary',
+  ACTIVE:
+    'border border-accent-mint/45 border-l-[3px] border-l-accent-mint bg-accent-mint/25 text-primary',
+  ISSUED:
+    'border border-primary-light/50 border-l-[3px] border-l-primary-light bg-primary-light/22 text-primary',
+  COMPLETED:
+    'border border-accent-sky/45 border-l-[3px] border-l-accent-sky bg-accent-sky/25 text-primary',
+  CANCELLED:
+    'border border-error/45 border-l-[3px] border-l-error bg-error/22 text-primary',
+}
+
+const STATUS_SECTION_BG: Record<PrescriptionStatus, string> = {
+  PENDING: 'bg-accent-peach/[0.14]',
+  ACTIVE: 'bg-accent-mint/[0.14]',
+  ISSUED: 'bg-primary-light/[0.12]',
+  COMPLETED: 'bg-accent-sky/[0.14]',
+  CANCELLED: 'bg-error/[0.10]',
+}
+
+const STATUS_DETAIL_BORDER: Record<PrescriptionStatus, string> = {
+  PENDING: 'border-accent-peach/35',
+  ACTIVE: 'border-accent-mint/35',
+  ISSUED: 'border-primary-light/40',
+  COMPLETED: 'border-accent-sky/35',
+  CANCELLED: 'border-error/35',
+}
+
+const STATUS_LABELS: Record<PrescriptionStatus, string> = {
+  PENDING: 'Pending',
+  ACTIVE: 'Active',
+  ISSUED: 'Issued',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+}
+
+function normalizeRxStatus(status?: PrescriptionStatus): PrescriptionStatus {
+  const s = status ?? 'PENDING'
+  if (
+    s === 'PENDING' ||
+    s === 'ACTIVE' ||
+    s === 'ISSUED' ||
+    s === 'COMPLETED' ||
+    s === 'CANCELLED'
+  ) {
+    return s
+  }
+  return 'PENDING'
+}
+
+function StatusBadge({ status }: { status?: PrescriptionStatus }) {
+  const s = normalizeRxStatus(status)
+  const label = STATUS_LABELS[s] ?? s
+  return (
+    <span
+      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLES[s] ?? STATUS_STYLES.PENDING}`}
+    >
+      {label}
+    </span>
+  )
+}
+
+type ValidityKind = 'ok' | 'soon' | 'ended' | 'future' | 'neutral'
+
+function getValidityKind(rx: Prescription, today: Date): ValidityKind {
+  const t = startOfLocalDay(today)
+  const from = rx.validFrom ? startOfLocalDay(parseDisplayDate(rx.validFrom)) : null
+  const to = rx.validTo ? startOfLocalDay(parseDisplayDate(rx.validTo)) : null
+
+  if (!from && !to) return 'neutral'
+  if (from && t < from) return 'future'
+  if (to && t > to) return 'ended'
+  if (to) {
+    const msLeft = to.getTime() - t.getTime()
+    const daysLeft = msLeft / (24 * 60 * 60 * 1000)
+    if (daysLeft >= 0 && daysLeft <= EXPIRING_SOON_DAYS) return 'soon'
+  }
+  return 'ok'
+}
+
+function PendingNa({ className = '' }: { className?: string }) {
+  return (
+    <span
+      className={`text-sm font-medium tabular-nums text-text-secondary ${className}`.trim()}
+    >
+      N/A
+    </span>
+  )
+}
+
+const LINKED_VISIT_TH =
+  'w-[5.25rem] shrink-0 py-0.5 pr-2 align-top font-normal text-text-secondary'
+
+/** Linked visit block oriented for the doctor: patient + visit logistics. */
+function DoctorLinkedVisitSection({
+  appointment,
+  patientLabel,
+}: {
+  appointment: AppointmentRecord
+  patientLabel: string
+}) {
+  const leftRows: [string, string][] = [
+    ['Patient', patientLabel],
+    ['Date & time', formatVisitDateTime(appointment.appointmentTime)],
+  ]
+  const rightRows: [string, string][] = [
+    ['Visit type', appointmentTypeLabel(appointment.type)],
+    ['Visit status (live)', appointmentStatusLabel(appointment.status)],
+  ]
+
+  return (
+    <div className="rounded-lg border border-primary-light/20 bg-primary-light/[0.06] px-3 py-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+        Linked visit
+      </p>
+      <div className="mt-1.5 flex flex-row items-start gap-2 sm:gap-3">
+        <div className="min-w-0 flex-1">
+          <table className="w-full border-collapse text-left text-xs">
+            <tbody>
+              {leftRows.map(([label, val]) => (
+                <tr key={label}>
+                  <th scope="row" className={LINKED_VISIT_TH}>
+                    {label}
+                  </th>
+                  <td className="py-0.5 font-medium leading-snug text-primary">{val}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <span
+          className="shrink-0 select-none self-stretch pt-0.5 text-sm font-light leading-none text-text-secondary/30"
+          aria-hidden
+        >
+          |
+        </span>
+        <div className="min-w-0 flex-1">
+          <table className="w-full border-collapse text-left text-xs">
+            <tbody>
+              {rightRows.map(([label, val]) => (
+                <tr key={label}>
+                  <th scope="row" className={LINKED_VISIT_TH}>
+                    {label}
+                  </th>
+                  <td className="py-0.5 font-medium leading-snug text-primary">{val}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function cellOrDash(val: string) {
+  const t = val.trim()
+  return t ? t : '—'
+}
+
+function MedicinesDetailTable({ raw }: { raw: string }) {
+  const rows = parseMedicinesForTable(raw)
+  if (rows.length === 0) {
+    return <p className="text-xs text-text-secondary">No medicines listed.</p>
+  }
+  return (
+    <div className="overflow-x-auto rounded-md border border-text-secondary/12">
+      <table className="w-full min-w-[36rem] border-collapse text-left text-xs">
+        <thead>
+          <tr className="border-b border-text-secondary/12 bg-background/70">
+            <th className="w-7 px-1.5 py-1.5 font-semibold text-text-secondary">#</th>
+            <th className="min-w-[6.5rem] px-1.5 py-1.5 font-semibold text-text-secondary">
+              Medicine name
+            </th>
+            <th className="min-w-[5rem] px-1.5 py-1.5 font-semibold text-text-secondary">Dosage</th>
+            <th className="min-w-[5.5rem] px-1.5 py-1.5 font-semibold text-text-secondary">
+              Frequency
+            </th>
+            <th className="min-w-[5rem] px-1.5 py-1.5 font-semibold text-text-secondary">Duration</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} className="border-b border-text-secondary/8 last:border-b-0">
+              <td className="px-1.5 py-1.5 align-top tabular-nums text-text-secondary">{i + 1}</td>
+              <td className="px-1.5 py-1.5 align-top leading-snug text-primary">
+                {cellOrDash(row.name)}
+              </td>
+              <td className="px-1.5 py-1.5 align-top leading-snug text-primary">
+                {cellOrDash(row.dosage)}
+              </td>
+              <td className="px-1.5 py-1.5 align-top leading-snug text-primary">
+                {cellOrDash(row.frequency)}
+              </td>
+              <td className="px-1.5 py-1.5 align-top leading-snug text-primary">
+                {cellOrDash(row.duration)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ValidityPill({ rx }: { rx: Prescription }) {
+  const today = new Date()
+  const kind = getValidityKind(rx, today)
+  const cls = {
+    ok: 'rx-validity-pill rx-validity-pill--ok',
+    soon: 'rx-validity-pill rx-validity-pill--soon',
+    ended: 'rx-validity-pill rx-validity-pill--ended',
+    future: 'rx-validity-pill rx-validity-pill--future',
+    neutral: 'rx-validity-pill rx-validity-pill--neutral',
+  }[kind]
+
+  let label = '—'
+  if (rx.validFrom && rx.validTo) {
+    label = `${formatDateShort(rx.validFrom)} – ${formatDateShort(rx.validTo)}`
+  } else if (rx.validTo) {
+    label = `Until ${formatDateShort(rx.validTo)}`
+  } else if (rx.validFrom) {
+    label = `From ${formatDateShort(rx.validFrom)}`
+  }
+
+  const hint =
+    kind === 'ended'
+      ? 'Period ended'
+      : kind === 'soon'
+        ? `≤ ${EXPIRING_SOON_DAYS} days left`
+        : kind === 'future'
+          ? 'Not yet valid'
+          : kind === 'neutral'
+            ? 'No dates on file'
+            : null
+
+  return (
+    <span className="inline-flex max-w-full flex-col gap-0.5" title={hint ?? label}>
+      <span className={`${cls} max-w-full`}>
+        <CalendarClock className="h-3.5 w-3.5 shrink-0 opacity-80" strokeWidth={1.5} />
+        <span className="truncate">{label}</span>
+      </span>
+      {hint && (
+        <span className="text-[10px] font-medium text-text-secondary">{hint}</span>
+      )}
+    </span>
+  )
+}
+
+function truncateStr(str: string, maxLen: number): string {
+  if (!str) return ''
+  if (str.length <= maxLen) return str
+  return str.slice(0, maxLen) + '…'
+}
+
+const TABLE_COL_COUNT = 9
+
+const INPUT_CLASS =
+  'rounded-xl border border-text-secondary/20 bg-surface px-4 py-2.5 text-sm text-primary placeholder:text-text-secondary focus:border-primary-light focus:outline-none focus:ring-2 focus:ring-primary-light/20 transition-colors'
+
+const DATE_INPUT_CLASS = `${INPUT_CLASS} !px-3 !py-2 min-w-[9.25rem] max-w-[10.5rem] shrink-0`
+
+const STATUS_FILTER_OPTIONS: { value: PrescriptionStatus | ''; label: string }[] = [
+  { value: '', label: 'All' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'ISSUED', label: 'Issued' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'PENDING', label: 'Pending' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+]
+
+/** ISSUED = prescribed but not yet in validity window; ACTIVE = currently valid. */
+function matchesPrescriptionStatusFilter(
+  rx: Prescription,
+  filter: PrescriptionStatus | ''
+): boolean {
+  if (!filter) return true
+  const s = rx.status ?? 'PENDING'
+  return s === filter
+}
+
+export function DoctorPrescriptions() {
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const [doctorId, setDoctorId] = useState<string | null>(null)
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
+  const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [patientFilter, setPatientFilter] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [statusFilter, setStatusFilter] = useState<PrescriptionStatus | ''>('')
+  const [selectedPrescription, setSelectedPrescription] =
+    useState<Prescription | null>(null)
+  const [detailPatientProfile, setDetailPatientProfile] =
+    useState<PatientProfile | null>(null)
+  const [detailProfileResolvedForPatientId, setDetailProfileResolvedForPatientId] =
+    useState<string | null>(null)
+  const [prefill, setPrefill] = useState<{ patientId: string; appointmentId: string } | undefined>(undefined)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
+  const [cancelSubmitting, setCancelSubmitting] = useState(false)
+
+  const patientNames = useMemo(() => {
+    const map: Record<string, string> = {}
+    prescriptions.forEach((rx) => {
+      if (rx.patientName) map[rx.patientId] = rx.patientName
+    })
+    appointments.forEach((a) => {
+      if (a.patientName && !map[a.patientId]) map[a.patientId] = a.patientName
+    })
+    return map
+  }, [prescriptions, appointments])
+
+  const appointmentById = useMemo(() => {
+    const map: Record<string, AppointmentRecord> = {}
+    appointments.forEach((a) => {
+      map[a.id] = a
+    })
+    return map
+  }, [appointments])
+
+  useEffect(() => {
+    const pid = selectedPrescription?.patientId
+    if (!pid) {
+      setDetailPatientProfile(null)
+      setDetailProfileResolvedForPatientId(null)
+      return
+    }
+    let cancelled = false
+    setDetailProfileResolvedForPatientId(null)
+    getPatientClinicalProfileForAppointment(pid)
+      .then((profile) => {
+        if (!cancelled) {
+          setDetailPatientProfile(profile)
+          setDetailProfileResolvedForPatientId(pid)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDetailPatientProfile({
+            id: pid,
+            name: '',
+            email: '',
+            createdAt: '',
+          })
+          setDetailProfileResolvedForPatientId(pid)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedPrescription?.patientId])
+
+  useEffect(() => {
+    setCancelConfirmOpen(false)
+  }, [selectedPrescription?.id])
+
+  const eligibleAppointments = useMemo(() => {
+    return appointments.filter(
+      (a) => a.status === 'IN_SESSION' || a.status === 'COMPLETED'
+    )
+  }, [appointments])
+
+  const prescribedAppointmentIds = useMemo(
+    () => new Set(prescriptions.map((rx) => rx.appointmentId).filter(Boolean)),
+    [prescriptions]
+  )
+
+  const appointmentsWithoutPrescription = useMemo(
+    () =>
+      eligibleAppointments.filter((a) => !prescribedAppointmentIds.has(a.id)),
+    [eligibleAppointments, prescribedAppointmentIds]
+  )
+
+  const formAppointments = useMemo(
+    () =>
+      appointmentsWithoutPrescription.map((a) => ({
+        id: a.id,
+        patientId: a.patientId,
+        patientName: a.patientName,
+        patientEmail: a.patientEmail,
+        date: formatAppointmentDate(a.appointmentTime),
+        appointmentTime: a.appointmentTime,
+        type: a.type,
+        status: a.status,
+      })),
+    [appointmentsWithoutPrescription]
+  )
+
+  const formPatients = useMemo(() => {
+    const seen = new Set<string>()
+    return appointmentsWithoutPrescription
+      .filter((a) => {
+        if (seen.has(a.patientId)) return false
+        seen.add(a.patientId)
+        return true
+      })
+      .map((a) => ({
+        id: a.patientId,
+        name: a.patientName ?? a.patientId,
+      }))
+  }, [appointmentsWithoutPrescription])
+
+  const pendingFromAppointments: Prescription[] = useMemo(
+    () =>
+      appointmentsWithoutPrescription.map((a) => ({
+        id: `pending-appt-${a.id}`,
+        doctorId: doctorId ?? '',
+        patientId: a.patientId,
+        patientName: a.patientName,
+        appointmentId: a.id,
+        medicines: '',
+        issuedAt: a.appointmentTime,
+        status: 'PENDING' as PrescriptionStatus,
+      })),
+    [appointmentsWithoutPrescription, doctorId]
+  )
+
+  const noIssueReason = useMemo(() => {
+    if (loading) return null
+    if (appointments.length === 0) {
+      return 'You have no appointments yet. Prescriptions can only be issued after you have visits with patients.'
+    }
+    if (eligibleAppointments.length === 0) {
+      return 'None of your appointments are in session or completed yet. Start or finish a visit before issuing a prescription.'
+    }
+    if (appointmentsWithoutPrescription.length === 0) {
+      return 'Every in-session or completed visit already has a prescription linked.'
+    }
+    return null
+  }, [
+    loading,
+    appointments.length,
+    eligibleAppointments.length,
+    appointmentsWithoutPrescription.length,
+  ])
+
+  const openIssueModal = useCallback(() => {
+    if (appointmentsWithoutPrescription.length === 0) {
+      const msg =
+        noIssueReason ??
+        'No eligible appointments. Prescriptions require an appointment that is in session or completed, without an existing prescription for that visit.'
+      toast(msg, 'info')
+      return
+    }
+    setModalOpen(true)
+  }, [appointmentsWithoutPrescription.length, noIssueReason, toast])
+
+  const fetchDoctorAndData = useCallback(async () => {
+    if (!user?.id || user.role !== 'DOCTOR') return
+    setLoading(true)
+    setError(null)
+    try {
+      const doctor = await getDoctorByUserId(user.id, user)
+      setDoctorId(doctor.id)
+      const [rxList, apptList] = await Promise.all([
+        getPrescriptionsByDoctor(doctor.id),
+        getAppointmentsByDoctor(doctor.id),
+      ])
+      setPrescriptions(rxList as Prescription[])
+      setAppointments(apptList)
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, 'Failed to load prescriptions')
+      setError(msg)
+      toast(msg, 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [user, toast])
+
+  useEffect(() => {
+    fetchDoctorAndData()
+  }, [fetchDoctorAndData])
+
+  const allPrescriptions = useMemo(
+    () => [...pendingFromAppointments, ...prescriptions],
+    [pendingFromAppointments, prescriptions]
+  )
+
+  const filteredSorted = useMemo(() => {
+    const list = allPrescriptions.filter((rx) => {
+      if (patientFilter) {
+        const name = patientNames[rx.patientId] ?? ''
+        if (
+          !name.toLowerCase().includes(patientFilter.toLowerCase()) &&
+          !rx.patientId.toLowerCase().includes(patientFilter.toLowerCase())
+        ) {
+          return false
+        }
+      }
+      if (dateFrom && rx.issuedAt < dateFrom) return false
+      if (dateTo && rx.issuedAt > `${dateTo}T23:59:59`) return false
+      if (statusFilter && !matchesPrescriptionStatusFilter(rx, statusFilter)) return false
+      return true
+    })
+    return [...list].sort(
+      (a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime()
+    )
+  }, [allPrescriptions, patientFilter, dateFrom, dateTo, statusFilter, patientNames])
+
+  const emptyBecauseFilters =
+    allPrescriptions.length > 0 && filteredSorted.length === 0
+
+  const activeFilterCount = [patientFilter, dateFrom, dateTo, statusFilter].filter(
+    Boolean
+  ).length
+
+  const clearFilters = () => {
+    setPatientFilter('')
+    setDateFrom('')
+    setDateTo('')
+    setStatusFilter('')
+  }
+
+  const toggleExpand = (id: string) => {
+    setExpandedId((prev) => (prev === id ? null : id))
+  }
+
+  const handleIssuePrescription = async (data: PrescriptionFormData) => {
+    if (!doctorId) {
+      toast('Doctor profile not loaded', 'error')
+      return
+    }
+    const medicinesStr = data.medicines
+      .map(
+        (m) =>
+          `${m.name}${m.dosage ? ` ${m.dosage}` : ''}${m.frequency ? `, ${m.frequency}` : ''}${m.duration ? `, ${m.duration}` : ''}`
+      )
+      .join('; ')
+
+    try {
+      await issuePrescription({
+        doctorId,
+        patientId: data.patientId,
+        appointmentId: data.appointmentId,
+        patientEmail: data.patientEmail,
+        patientName: data.patientName,
+        diagnosis: data.diagnosis,
+        medicines: medicinesStr,
+        instructions: data.instructions || undefined,
+        validFrom: data.validFrom,
+        validTo: data.validTo,
+      })
+      toast('Prescription issued successfully', 'success')
+      setModalOpen(false)
+      window.dispatchEvent(new CustomEvent('curex:notification-preferences-changed'))
+      await fetchDoctorAndData()
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, 'Failed to issue prescription')
+      toast(msg, 'error')
+    }
+  }
+
+  const isPendingPlaceholder = (rx: Prescription) =>
+    rx.id.startsWith('pending-appt-')
+
+  const handleCardClick = (rx: Prescription) => {
+    if (isPendingPlaceholder(rx)) {
+      setPrefill({ patientId: rx.patientId, appointmentId: rx.appointmentId! })
+      setModalOpen(true)
+    } else {
+      setSelectedPrescription(rx)
+    }
+  }
+
+  const displayName = (rx: Prescription) =>
+    rx.patientName ?? patientNames[rx.patientId] ?? rx.patientId
+
+  const detailCancelEligibility = useMemo(() => {
+    if (!selectedPrescription || isPendingPlaceholder(selectedPrescription)) {
+      return null
+    }
+    if (normalizeRxStatus(selectedPrescription.status) === 'CANCELLED') {
+      return { show: false as const, reason: 'cancelled' as const }
+    }
+    const withinWindow = isWithinDoctorCancellationWindow(
+      selectedPrescription.issuedAt,
+      selectedPrescription.validFrom
+    )
+    const deadlineEnd = doctorCancellationDeadlineEnd(
+      selectedPrescription.issuedAt,
+      selectedPrescription.validFrom
+    )
+    return { show: true as const, withinWindow, deadlineEnd }
+  }, [selectedPrescription])
+
+  const handleConfirmCancelPrescription = useCallback(async () => {
+    if (!selectedPrescription) return
+    setCancelSubmitting(true)
+    try {
+      await updatePrescriptionStatus(selectedPrescription.id, 'CANCELLED')
+      toast('Prescription cancelled', 'success')
+      setCancelConfirmOpen(false)
+      setSelectedPrescription(null)
+      await fetchDoctorAndData()
+    } catch (err: unknown) {
+      toast(getApiErrorMessage(err, 'Failed to cancel prescription'), 'error')
+    } finally {
+      setCancelSubmitting(false)
+    }
+  }, [selectedPrescription, toast, fetchDoctorAndData])
+
+  if (loading && !doctorId) {
+    return (
+      <div className="flex min-h-[400px] flex-col items-center justify-center gap-4">
+        <div className="h-10 w-10 animate-spin rounded-full border-3 border-primary-light/20 border-t-primary-light" />
+        <p className="text-sm text-text-secondary">Loading prescriptions...</p>
+      </div>
+    )
+  }
+
+  if (user?.role !== 'DOCTOR') {
+    return (
+      <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 rounded-2xl bg-surface p-8" style={{ boxShadow: 'var(--shadow-card)' }}>
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-error/10">
+          <AlertCircle className="h-7 w-7 text-error" strokeWidth={1.5} />
+        </div>
+        <p className="text-center text-text-secondary">
+          You must be logged in as a doctor to view prescriptions.
+        </p>
+      </div>
+    )
+  }
+
+  if (error && !doctorId) {
+    return (
+      <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 rounded-2xl border border-error/20 bg-surface p-8" style={{ boxShadow: 'var(--shadow-card)' }}>
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-error/10">
+          <AlertCircle className="h-7 w-7 text-error" strokeWidth={1.5} />
+        </div>
+        <p className="text-center font-medium text-primary">{error}</p>
+        <p className="text-center text-sm text-text-secondary">
+          Ensure you have created a doctor profile. Prescriptions require a doctor
+          profile linked to your account.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rx-page flex min-h-0 flex-1 flex-col gap-6">
+      <div className="shrink-0 space-y-6">
+      {/* ── Header ──────────────────────────────────────────────── */}
+      <div className="rx-fade-in flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-light/10">
+              <ClipboardList className="h-5.5 w-5.5 text-primary-light" strokeWidth={1.5} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-primary sm:text-3xl">
+                Prescriptions
+              </h1>
+              <p className="mt-0.5 text-sm text-text-secondary">
+                Manage and track all patient prescriptions
+              </p>
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={openIssueModal}
+          className="group btn-primary gap-2 shadow-md shadow-primary-light/20 hover:shadow-lg hover:shadow-primary-light/30 transition-all"
+          title={
+            appointmentsWithoutPrescription.length === 0
+              ? 'Tap for details on why issuing is unavailable'
+              : undefined
+          }
+        >
+          <Plus className="h-4 w-4 transition-transform group-hover:rotate-90" strokeWidth={2} />
+          New Prescription
+        </button>
+      </div>
+
+      {/* ── Info banner ─────────────────────────────────────────── */}
+      {noIssueReason && (
+        <div
+          className="rx-fade-in flex items-start gap-3 rounded-2xl border border-accent-peach/30 bg-accent-peach/5 px-4 py-3.5"
+          role="status"
+          style={{ animationDelay: '0.05s' }}
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" strokeWidth={1.5} />
+          <p className="text-sm text-text-secondary">{noIssueReason}</p>
+        </div>
+      )}
+
+      {/* ── Search & filters (single row; horizontal scroll on narrow viewports) ── */}
+      <div className="rx-filter-bar rx-fade-in" style={{ animationDelay: '0.15s' }}>
+        <div className="rx-filter-row flex flex-nowrap items-center gap-2 overflow-x-auto pb-0.5 [-webkit-overflow-scrolling:touch] sm:gap-3">
+          <div className="relative min-w-[10rem] w-[min(100%,18rem)] shrink-0 sm:min-w-[12rem] sm:w-auto sm:max-w-md sm:flex-1">
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" strokeWidth={1.5} />
+            <input
+              type="text"
+              value={patientFilter}
+              onChange={(e) => setPatientFilter(e.target.value)}
+              placeholder="Search patient…"
+              className={`w-full pl-10 ${INPUT_CLASS} !py-2`}
+              aria-label="Search by patient name or ID"
+            />
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1.5">
+            <label
+              htmlFor="rx-prescriptions-date-from"
+              className="whitespace-nowrap text-[11px] font-medium uppercase tracking-wider text-text-secondary"
+            >
+              From
+            </label>
+            <input
+              id="rx-prescriptions-date-from"
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className={DATE_INPUT_CLASS}
+            />
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1.5">
+            <label
+              htmlFor="rx-prescriptions-date-to"
+              className="whitespace-nowrap text-[11px] font-medium uppercase tracking-wider text-text-secondary"
+            >
+              To
+            </label>
+            <input
+              id="rx-prescriptions-date-to"
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className={DATE_INPUT_CLASS}
+            />
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1.5 border-l border-text-secondary/15 pl-2 sm:pl-3">
+            <label
+              htmlFor="rx-prescriptions-status"
+              className="whitespace-nowrap text-[11px] font-medium uppercase tracking-wider text-text-secondary"
+            >
+              Status
+            </label>
+            <select
+              id="rx-prescriptions-status"
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter((e.target.value || '') as PrescriptionStatus | '')
+              }
+              className={`min-w-[9.5rem] max-w-[11rem] shrink-0 cursor-pointer ${INPUT_CLASS} !py-2`}
+              aria-label="Filter by prescription status"
+            >
+              {STATUS_FILTER_OPTIONS.map((opt) => (
+                <option key={opt.value || 'all'} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="shrink-0 whitespace-nowrap text-xs font-medium text-primary-light hover:underline"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Results summary ─────────────────────────────────────── */}
+      {!loading && (
+        <div className="rx-fade-in flex items-center gap-2 text-sm text-text-secondary" style={{ animationDelay: '0.2s' }}>
+          <Filter className="h-3.5 w-3.5" strokeWidth={1.5} />
+          Showing <span className="font-semibold text-primary">{filteredSorted.length}</span> of{' '}
+          <span className="font-semibold text-primary">{allPrescriptions.length}</span> prescriptions
+        </div>
+      )}
+      </div>
+
+      {/* ── Prescription list: fills width; only this region scrolls ── */}
+      <div
+        className="rx-prescription-scroll min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-1"
+        role="region"
+        aria-label="Prescription list"
+      >
+      <div className="rx-table-shell overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="rx-table w-full">
+            <thead>
+              <tr className="border-b border-text-secondary/20 bg-background/50">
+                <th
+                  className="w-10 px-4 py-3 text-left text-xs font-medium text-text-secondary"
+                  aria-label="Expand"
+                />
+                <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                  Issued
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                  Patient
+                </th>
+                <th className="hidden px-4 py-3 text-left text-xs font-medium text-text-secondary sm:table-cell">
+                  Visit
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                  Medicines & diagnosis
+                </th>
+                <th className="hidden min-w-[7.5rem] px-4 py-3 text-left text-xs font-medium text-text-secondary md:table-cell">
+                  Validity
+                </th>
+                <th className="hidden px-4 py-3 text-left text-xs font-medium text-text-secondary lg:table-cell">
+                  Instructions
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredSorted.length > 0 ? (
+                filteredSorted.map((rx) => {
+                  const isExpanded = expandedId === rx.id
+                  const awaitingRx = isPendingPlaceholder(rx)
+                  const statusKey = normalizeRxStatus(rx.status)
+                  const sectionBg = STATUS_SECTION_BG[statusKey]
+                  const detailBorder = STATUS_DETAIL_BORDER[statusKey]
+                  const appt = rx.appointmentId ? appointmentById[rx.appointmentId] : undefined
+                  const visitWhenIso = appt?.appointmentTime ?? rx.issuedAt
+                  const patientLabel = displayName(rx)
+                  return (
+                    <Fragment key={rx.id}>
+                      <tr className={`border-b border-text-secondary/10 ${sectionBg}`}>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpand(rx.id)}
+                            className="flex items-center justify-center rounded-lg p-1 text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-light/25"
+                            aria-expanded={isExpanded}
+                            aria-label={isExpanded ? 'Collapse' : 'Expand'}
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="h-4 w-4" strokeWidth={1.5} />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" strokeWidth={1.5} />
+                            )}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-text-secondary">
+                          {awaitingRx ? (
+                            <PendingNa />
+                          ) : (
+                            <span className="tabular-nums">{formatDateShort(rx.issuedAt)}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-medium text-primary">
+                          {patientLabel}
+                        </td>
+                        <td className="hidden px-4 py-3 text-sm text-text-secondary sm:table-cell">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="tabular-nums text-primary/90">
+                              {formatDateShort(visitWhenIso)}
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+                              {appt?.type === 'TELEMEDICINE' ? (
+                                <Video className="h-3.5 w-3.5 shrink-0 opacity-70" strokeWidth={1.5} />
+                              ) : appt ? (
+                                <MapPin className="h-3.5 w-3.5 shrink-0 opacity-70" strokeWidth={1.5} />
+                              ) : null}
+                              {appt ? appointmentTypeLabel(appt.type) : '—'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="max-w-[12rem] px-4 py-3 text-sm sm:max-w-[16rem]">
+                          {awaitingRx ? (
+                            <p className="text-text-secondary">
+                              <span className="font-medium text-primary/90">Awaiting prescription</span>
+                              <span className="mt-0.5 block text-xs text-text-secondary/90">
+                                Issue medicines for this visit
+                              </span>
+                            </p>
+                          ) : (
+                            <>
+                              <p className="truncate text-text-secondary">
+                                {truncateStr(rx.medicines, 42)}
+                              </p>
+                              {rx.diagnosis && (
+                                <p
+                                  className="mt-1 line-clamp-2 text-xs leading-snug text-text-secondary/90"
+                                  title={rx.diagnosis}
+                                >
+                                  <span className="font-medium text-primary/80">Dx: </span>
+                                  {truncateStr(rx.diagnosis, 90)}
+                                </p>
+                              )}
+                              <div className="mt-1.5">
+                                <VisitPhaseAtIssueBadge
+                                  visitStatusAtIssue={rx.visitStatusAtIssue}
+                                  compact
+                                  legacyMode="hide"
+                                />
+                              </div>
+                            </>
+                          )}
+                        </td>
+                        <td className="hidden px-4 py-3 md:table-cell">
+                          {awaitingRx ? <PendingNa /> : <ValidityPill rx={rx} />}
+                        </td>
+                        <td className="hidden max-w-[11rem] px-4 py-3 text-sm text-text-secondary lg:table-cell">
+                          {awaitingRx ? (
+                            <PendingNa />
+                          ) : rx.instructions?.trim() ? (
+                            <p
+                              className="line-clamp-4 break-words leading-snug text-primary"
+                              title={rx.instructions}
+                            >
+                              {rx.instructions}
+                            </p>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={rx.status} />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleCardClick(rx)}
+                            className="text-sm font-medium text-primary-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-light/25 focus-visible:ring-offset-2"
+                          >
+                            {awaitingRx ? 'Issue' : 'Details'}
+                          </button>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className={`border-b border-text-secondary/10 ${sectionBg}`}>
+                          <td colSpan={TABLE_COL_COUNT} className="px-3 py-3">
+                            <div
+                              className={`rounded-lg border bg-surface/90 px-3 py-2.5 ${detailBorder}`}
+                            >
+                              <div className="space-y-2.5">
+                                {rx.appointmentId ? (
+                                  appointmentById[rx.appointmentId] ? (
+                                    <DoctorLinkedVisitSection
+                                      appointment={appointmentById[rx.appointmentId]}
+                                      patientLabel={patientLabel}
+                                    />
+                                  ) : (
+                                    <div className="rounded-lg border border-text-secondary/12 bg-background/40 px-3 py-2">
+                                      <p className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                                        Linked visit
+                                      </p>
+                                      <p className="mt-1 text-xs leading-snug text-text-secondary">
+                                        Visit details could not be loaded. Try refreshing the page.
+                                      </p>
+                                    </div>
+                                  )
+                                ) : null}
+
+                                <div>
+                                  <p className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                                    Prescription details
+                                  </p>
+                                  {awaitingRx ? (
+                                    <div
+                                      className={`mt-2 rounded-md border bg-accent-peach/15 px-2.5 py-2 ${detailBorder}`}
+                                    >
+                                      <p className="text-xs leading-snug text-primary">
+                                        No prescription has been issued for this visit yet. Use{' '}
+                                        <span className="font-semibold">Issue</span> to add medicines
+                                        and send the script to the patient.
+                                      </p>
+                                      <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-text-secondary">
+                                        <span>Status</span>
+                                        <StatusBadge status={rx.status} />
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <div className="mt-2 space-y-2.5">
+                                      <div className="grid gap-3 sm:grid-cols-2 sm:items-start sm:gap-x-8">
+                                        <div className="min-w-0">
+                                          <table className="w-full border-collapse text-left text-xs">
+                                            <tbody>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="w-[5.5rem] shrink-0 py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Rx ID
+                                                </th>
+                                                <td className="break-all py-0.5 font-mono text-[11px] leading-snug text-primary">
+                                                  {rx.id}
+                                                </td>
+                                              </tr>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Issued
+                                                </th>
+                                                <td className="py-0.5 font-medium leading-snug text-primary">
+                                                  {formatIssuedDetail(rx.issuedAt)}
+                                                </td>
+                                              </tr>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Status
+                                                </th>
+                                                <td className="py-0.5">
+                                                  <StatusBadge status={rx.status} />
+                                                </td>
+                                              </tr>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Visit timing
+                                                </th>
+                                                <td className="py-0.5">
+                                                  <VisitPhaseAtIssueBadge
+                                                    visitStatusAtIssue={rx.visitStatusAtIssue}
+                                                    legacyMode="hint"
+                                                  />
+                                                  <p className="mt-1 max-w-[18rem] text-[10px] leading-snug text-text-secondary/95">
+                                                    Whether this was saved during the live visit
+                                                    or after it finished. Older prescriptions may
+                                                    not show this.
+                                                  </p>
+                                                </td>
+                                              </tr>
+                                              {rx.diagnosis ? (
+                                                <tr>
+                                                  <th
+                                                    scope="row"
+                                                    className="py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                  >
+                                                    Diagnosis
+                                                  </th>
+                                                  <td className="py-0.5 leading-snug text-primary">
+                                                    <p className="whitespace-pre-wrap">{rx.diagnosis}</p>
+                                                  </td>
+                                                </tr>
+                                              ) : null}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                        <div className="min-w-0">
+                                          <table className="w-full border-collapse text-left text-xs">
+                                            <tbody>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="w-[5.5rem] shrink-0 py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Patient
+                                                </th>
+                                                <td className="py-0.5 font-medium leading-snug text-primary">
+                                                  {patientLabel}
+                                                </td>
+                                              </tr>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Valid period
+                                                </th>
+                                                <td className="py-0.5">
+                                                  <ValidityPill rx={rx} />
+                                                  {(rx.validFrom || rx.validTo) && (
+                                                    <p className="mt-1 text-[11px] leading-snug text-text-secondary">
+                                                      {rx.validFrom && rx.validTo
+                                                        ? `${formatDate(rx.validFrom)} – ${formatDate(rx.validTo)}`
+                                                        : rx.validFrom
+                                                          ? `From ${formatDate(rx.validFrom)}`
+                                                          : rx.validTo
+                                                            ? `Until ${formatDate(rx.validTo)}`
+                                                            : null}
+                                                    </p>
+                                                  )}
+                                                </td>
+                                              </tr>
+                                              <tr>
+                                                <th
+                                                  scope="row"
+                                                  className="py-0.5 pr-2 align-top font-normal text-text-secondary"
+                                                >
+                                                  Visit
+                                                </th>
+                                                <td className="py-0.5 leading-snug text-primary">
+                                                  {appt
+                                                    ? `${formatVisitDateTime(appt.appointmentTime)} · ${appointmentTypeLabel(appt.type)}`
+                                                    : '—'}
+                                                </td>
+                                              </tr>
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </div>
+
+                                      {rx.instructions ? (
+                                        <div className="rounded-md border border-text-secondary/10 bg-background/45 px-2.5 py-2">
+                                          <p className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                                            Instructions
+                                          </p>
+                                          <p
+                                            className="mt-1 line-clamp-4 break-words text-xs leading-relaxed text-primary"
+                                            title={rx.instructions}
+                                          >
+                                            {rx.instructions}
+                                          </p>
+                                        </div>
+                                      ) : null}
+
+                                      <div>
+                                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                                          Medicines
+                                        </p>
+                                        <MedicinesDetailTable raw={rx.medicines} />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })
+              ) : (
+                <tr>
+                  <td colSpan={TABLE_COL_COUNT} className="p-0">
+                    <div className="rx-table-empty">
+                      <p className="text-text-secondary">
+                        {loading
+                          ? 'Loading prescriptions…'
+                          : emptyBecauseFilters
+                            ? 'No prescriptions match your filters. Try adjusting status or date range.'
+                            : allPrescriptions.length === 0
+                              ? 'Issue your first prescription using the button above, or complete a visit that still needs a script.'
+                              : 'No prescriptions found.'}
+                      </p>
+                      {emptyBecauseFilters && !loading && (
+                        <button
+                          type="button"
+                          className="mt-4 text-sm font-medium text-primary-light hover:underline"
+                          onClick={clearFilters}
+                        >
+                          Clear filters
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      </div>
+
+      {/* ── Issue modal ─────────────────────────────────────────── */}
+      <PrescriptionForm
+        key={
+          prefill
+            ? `prefill-${prefill.appointmentId}`
+            : 'issue-prescription-blank'
+        }
+        isOpen={modalOpen}
+        onClose={() => {
+          setModalOpen(false)
+          setPrefill(undefined)
+        }}
+        onSubmit={handleIssuePrescription}
+        patients={formPatients}
+        appointments={formAppointments}
+        prefill={prefill}
+      />
+
+      {/* ── Detail modal ────────────────────────────────────────── */}
+      {selectedPrescription && (
+        <div
+          className="rx-backdrop-enter fixed inset-0 z-[140] flex items-center justify-center bg-primary/25 p-3 backdrop-blur-sm sm:p-5"
+          onClick={(e) =>
+            e.target === e.currentTarget && setSelectedPrescription(null)
+          }
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rx-detail-modal-title"
+            className="rx-modal-enter relative flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-surface shadow-2xl ring-1 ring-primary/8"
+            style={{ boxShadow: '0 24px 80px rgb(28 39 76 / 0.18)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-text-secondary/10 bg-surface px-5 py-4 sm:px-7 sm:py-5">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-light/10">
+                  <FileText className="h-5 w-5 text-primary-light" strokeWidth={1.5} />
+                </div>
+                <div className="min-w-0">
+                  <h2
+                    id="rx-detail-modal-title"
+                    className="truncate text-lg font-semibold tracking-tight text-primary sm:text-xl"
+                  >
+                    Prescription Details
+                  </h2>
+                  <p className="mt-0.5 break-all font-mono text-[11px] leading-snug text-text-secondary sm:text-xs">
+                    {selectedPrescription.id}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedPrescription(null)}
+                className="ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-text-secondary transition-colors hover:bg-primary-light/10 hover:text-primary"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" strokeWidth={1.5} />
+              </button>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+              <aside className="flex max-h-[42vh] shrink-0 flex-col gap-4 overflow-y-auto border-b border-text-secondary/10 bg-background/50 p-4 sm:p-5 lg:max-h-none lg:w-[min(100%,20rem)] lg:border-b-0 lg:border-r xl:w-[22rem]">
+                <RxDetailPanelCard icon={User} title="Patient details">
+                  {(() => {
+                    const pid = selectedPrescription.patientId
+                    const detailLoading =
+                      Boolean(pid) && detailProfileResolvedForPatientId !== pid
+                    const appt = selectedPrescription.appointmentId
+                      ? appointmentById[selectedPrescription.appointmentId]
+                      : undefined
+                    const emailFromProfile =
+                      detailPatientProfile?.email?.trim() || ''
+                    const emailFromAppt = appt?.patientEmail?.trim() || ''
+                    const emailLine =
+                      emailFromProfile || emailFromAppt || null
+                    const patientAge = detailPatientProfile
+                      ? ageFromDateOfBirth(detailPatientProfile.dateOfBirth)
+                      : null
+                    const bloodDisplay =
+                      detailPatientProfile?.bloodType?.trim() || null
+                    const allergiesDisplay = detailPatientProfile
+                      ? formatClinicalList(
+                          detailPatientProfile.medicalHistory?.allergies,
+                          'None on file'
+                        )
+                      : null
+                    const chronicDisplay = detailPatientProfile
+                      ? formatClinicalList(
+                          detailPatientProfile.medicalHistory?.conditions,
+                          'None on file'
+                        )
+                      : null
+
+                    if (detailLoading) {
+                      return (
+                        <p className="text-sm text-text-secondary">
+                          Loading patient details…
+                        </p>
+                      )
+                    }
+
+                    return (
+                      <dl className="space-y-3">
+                        <RxDetailDetailBlock
+                          label="Name"
+                          value={displayName(selectedPrescription)}
+                        />
+                        {emailLine ? (
+                          <RxDetailDetailBlock label="Email" value={emailLine} />
+                        ) : null}
+                        <RxDetailDetailBlock
+                          label="Age"
+                          value={
+                            patientAge != null
+                              ? `${patientAge} years`
+                              : detailPatientProfile?.dateOfBirth
+                                ? '—'
+                                : 'Not on file'
+                          }
+                        />
+                        <RxDetailDetailBlock
+                          label="Blood group"
+                          value={bloodDisplay ?? 'Not on file'}
+                        />
+                        <RxDetailDetailBlock
+                          label="Known allergies"
+                          value={allergiesDisplay ?? '—'}
+                        />
+                        <RxDetailDetailBlock
+                          label="Chronic conditions"
+                          value={chronicDisplay ?? '—'}
+                        />
+                      </dl>
+                    )
+                  })()}
+                </RxDetailPanelCard>
+
+                <RxDetailPanelCard icon={CalendarClock} title="Appointment details">
+                  {(() => {
+                    const aid = selectedPrescription.appointmentId
+                    const appt = aid ? appointmentById[aid] : undefined
+                    if (!aid) {
+                      return (
+                        <p className="text-sm text-text-secondary">
+                          This prescription is not linked to an appointment in your
+                          schedule.
+                        </p>
+                      )
+                    }
+                    if (!appt) {
+                      return (
+                        <p className="text-sm text-text-secondary">
+                          Appointment details are not available (the visit may have
+                          been removed from your list).
+                        </p>
+                      )
+                    }
+                    return (
+                      <div className="space-y-3">
+                        <dl className="space-y-3">
+                          <RxDetailDetailBlock
+                            label="Date & time"
+                            value={formatVisitDateTime(appt.appointmentTime)}
+                          />
+                          <RxDetailDetailBlock
+                            label="Visit type"
+                            value={appointmentTypeLabel(appt.type)}
+                          />
+                          <RxDetailDetailBlock
+                            label="Visit status (live)"
+                            value={appointmentStatusLabel(appt.status)}
+                          />
+                        </dl>
+                        {!isPendingPlaceholder(selectedPrescription) ? (
+                          <div className="rounded-xl border border-primary-light/20 bg-primary-light/[0.07] px-3 py-2.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                              Prescription snapshot
+                            </p>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                              <VisitPhaseAtIssueBadge
+                                visitStatusAtIssue={
+                                  selectedPrescription.visitStatusAtIssue
+                                }
+                                legacyMode="hint"
+                              />
+                            </div>
+                            <p className="mt-2 text-[11px] leading-relaxed text-text-secondary/95">
+                              “Visit status (live)” is the appointment today. The badge
+                              shows when this prescription was saved — useful if the visit
+                              continued after you issued the script.
+                            </p>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })()}
+                </RxDetailPanelCard>
+              </aside>
+
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4 sm:p-6 lg:p-7">
+                <div className="flex flex-col gap-4 rounded-2xl border border-text-secondary/12 bg-surface p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-5">
+                  <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+                        Status
+                      </span>
+                      <StatusBadge status={selectedPrescription.status} />
+                    </div>
+                    {!isPendingPlaceholder(selectedPrescription) ? (
+                      <div className="flex min-w-0 flex-col gap-1.5 sm:border-l sm:border-text-secondary/15 sm:pl-5">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+                          Visit phase when prescribed
+                        </span>
+                        <VisitPhaseAtIssueBadge
+                          visitStatusAtIssue={selectedPrescription.visitStatusAtIssue}
+                          legacyMode="hint"
+                        />
+                        <p className="max-w-xl text-[11px] leading-relaxed text-text-secondary/95">
+                          This is the visit moment we store with the script. The linked
+                          appointment may show a newer status if the visit moved on after
+                          you issued medicines.
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="grid flex-1 gap-4 sm:min-w-[12rem] sm:grid-cols-2 lg:grid-cols-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+                        Issued
+                      </p>
+                      <p className="mt-1 text-sm font-medium leading-snug text-primary">
+                        {formatIssuedDetail(selectedPrescription.issuedAt)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
+                        Valid period
+                      </p>
+                      <div className="mt-1">
+                        <ValidityPill rx={selectedPrescription} />
+                        {(selectedPrescription.validFrom ||
+                          selectedPrescription.validTo) && (
+                          <p className="mt-1.5 text-xs leading-snug text-text-secondary">
+                            {selectedPrescription.validFrom &&
+                            selectedPrescription.validTo
+                              ? `${formatDate(selectedPrescription.validFrom)} – ${formatDate(selectedPrescription.validTo)}`
+                              : selectedPrescription.validFrom
+                                ? `From ${formatDate(selectedPrescription.validFrom)}`
+                                : selectedPrescription.validTo
+                                  ? `Until ${formatDate(selectedPrescription.validTo)}`
+                                  : null}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {selectedPrescription.diagnosis ? (
+                  <section className="overflow-hidden rounded-2xl border border-text-secondary/12 bg-background/40">
+                    <div className="flex items-center gap-2 border-b border-text-secondary/10 bg-surface/80 px-4 py-3">
+                      <Stethoscope
+                        className="h-4 w-4 shrink-0 text-primary-light"
+                        strokeWidth={1.5}
+                      />
+                      <h3 className="text-sm font-semibold text-primary">Diagnosis</h3>
+                    </div>
+                    <p className="px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-primary">
+                      {selectedPrescription.diagnosis}
+                    </p>
+                  </section>
+                ) : null}
+
+                <section className="overflow-hidden rounded-2xl border border-text-secondary/12 bg-background/40">
+                  <div className="flex items-center gap-2 border-b border-text-secondary/10 bg-surface/80 px-4 py-3">
+                    <Pill className="h-4 w-4 shrink-0 text-primary-light" strokeWidth={1.5} />
+                    <h3 className="text-sm font-semibold text-primary">Medicines</h3>
+                  </div>
+                  <div className="p-3 sm:p-4">
+                    <MedicinesDetailTable raw={selectedPrescription.medicines} />
+                  </div>
+                </section>
+
+                {selectedPrescription.instructions ? (
+                  <section className="overflow-hidden rounded-2xl border border-text-secondary/12 bg-background/40">
+                    <div className="flex items-center gap-2 border-b border-text-secondary/10 bg-surface/80 px-4 py-3">
+                      <FileText
+                        className="h-4 w-4 shrink-0 text-primary-light"
+                        strokeWidth={1.5}
+                      />
+                      <h3 className="text-sm font-semibold text-primary">
+                        Instructions
+                      </h3>
+                    </div>
+                    <p className="px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-primary">
+                      {selectedPrescription.instructions}
+                    </p>
+                  </section>
+                ) : null}
+                </div>
+
+                {detailCancelEligibility?.show ? (
+                  <div className="shrink-0 border-t border-text-secondary/10 bg-surface/95 px-4 py-4 sm:px-6 lg:px-7">
+                    <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-4">
+                      <p className="max-w-xl text-right text-xs leading-snug text-text-secondary">
+                        {detailCancelEligibility.withinWindow
+                          ? `Cancellation allowed until ${formatIssuedDetail(
+                              detailCancelEligibility.deadlineEnd.toISOString()
+                            )} (1 hour from issue or from when it becomes active; server is authoritative).`
+                          : `Cancellation window closed (deadline was ${formatIssuedDetail(
+                              detailCancelEligibility.deadlineEnd.toISOString()
+                            )}).`}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={!detailCancelEligibility.withinWindow || cancelSubmitting}
+                        onClick={() => setCancelConfirmOpen(true)}
+                        className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-error/35 bg-error/10 px-4 py-2.5 text-sm font-semibold text-error transition hover:bg-error/15 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <Ban className="h-4 w-4" strokeWidth={1.75} />
+                        Cancel prescription
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {cancelConfirmOpen && detailCancelEligibility?.show ? (
+                  <div
+                    className="absolute inset-0 z-[160] flex items-center justify-center rounded-3xl bg-primary/35 p-4 backdrop-blur-sm"
+                    role="presentation"
+                    onClick={(e) =>
+                      e.target === e.currentTarget && !cancelSubmitting && setCancelConfirmOpen(false)
+                    }
+                  >
+                    <div
+                      role="alertdialog"
+                      aria-modal="true"
+                      aria-labelledby="rx-cancel-title"
+                      aria-describedby="rx-cancel-desc"
+                      className="w-full max-w-md rounded-2xl border border-text-secondary/12 bg-surface p-6 shadow-xl"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <h3
+                        id="rx-cancel-title"
+                        className="text-lg font-semibold text-primary"
+                      >
+                        Cancel this prescription?
+                      </h3>
+                      <p
+                        id="rx-cancel-desc"
+                        className="mt-2 text-sm leading-relaxed text-text-secondary"
+                      >
+                        Are you sure? This will mark the prescription as cancelled. The patient
+                        will see it as cancelled. This cannot be undone from the app.
+                      </p>
+                      <div className="mt-6 flex flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={cancelSubmitting}
+                          onClick={() => setCancelConfirmOpen(false)}
+                          className="btn-secondary"
+                        >
+                          No, keep it
+                        </button>
+                        <button
+                          type="button"
+                          disabled={cancelSubmitting}
+                          onClick={() => void handleConfirmCancelPrescription()}
+                          className="rounded-xl bg-error px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-error/90 disabled:opacity-50"
+                        >
+                          {cancelSubmitting ? 'Cancelling…' : 'Yes, cancel prescription'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

@@ -1,0 +1,104 @@
+@reference "../../index.css";
+
+@layer components {
+  /*  Hero Section  */
+
+  .hero {
+    @apply flex w-full min-h-svh flex-col items-center justify-center
+      relative scroll-mt-20 overflow-hidden
+      border-b border-text-secondary/10
+      sm:scroll-mt-[4.25rem];
+    background:
+      radial-gradient(ellipse 80% 60% at 50% -20%, rgb(125 211 252 / 0.15), transparent),
+      radial-gradient(ellipse 60% 50% at 80% 100%, rgb(110 231 183 / 0.12), transparent),
+      linear-gradient(to bottom, var(--color-surface), var(--color-background));
+  }
+
+  .hero__heading {
+    @apply mt-6 text-balance text-3xl font-bold tracking-tight text-primary
+      sm:text-4xl lg:text-[2.75rem] lg:leading-[1.15] xl:text-5xl;
+  }
+
+  .hero__image-wrap {
+    @apply relative flex w-full items-center justify-center
+      lg:max-h-[min(90vh,60rem)];
+  }
+
+  .hero__backdrop-inner {
+    @apply pointer-events-none absolute -inset-4 -z-10 rounded-[2rem]
+      bg-gradient-to-br from-accent-sky/15 via-surface to-accent-mint/10
+      ring-1 ring-primary/5
+      sm:-inset-5 sm:rounded-[2.5rem]
+      lg:-inset-7 lg:rounded-[3.5rem];
+  }
+
+  .hero__backdrop-outer {
+    @apply pointer-events-none absolute -inset-7 -z-20 rounded-[2.5rem]
+      ring-1 ring-accent-sky/10
+      sm:-inset-9 sm:rounded-[3rem]
+      lg:-inset-12 lg:rounded-[4rem];
+  }
+
+  .hero__radial-glow {
+    @apply pointer-events-none absolute left-1/2 top-1/2 -z-10
+      h-96 w-96 -translate-x-1/2 -translate-y-1/2
+      rounded-full blur-[100px]
+      sm:h-[28rem] sm:w-[28rem]
+      lg:h-[40rem] lg:w-[40rem];
+    background: linear-gradient(
+      to bottom right,
+      rgb(125 211 252 / 0.2),
+      rgb(110 231 183 / 0.1),
+      rgb(253 186 116 / 0.1)
+    );
+  }
+
+  .hero__corner-tl {
+    @apply pointer-events-none absolute -left-1 -top-1 z-20
+      h-7 w-7 rounded-tl-xl border-l-[3px] border-t-[3px] border-accent-sky/30
+      sm:h-9 sm:w-9
+      lg:-left-3 lg:-top-3 lg:h-12 lg:w-12;
+  }
+
+  .hero__corner-br {
+    @apply pointer-events-none absolute -bottom-1 -right-1 z-20
+      h-7 w-7 rounded-br-xl border-b-[3px] border-r-[3px] border-accent-mint/30
+      sm:h-9 sm:w-9
+      lg:-bottom-3 lg:-right-3 lg:h-12 lg:w-12;
+  }
+
+  .hero__image {
+    @apply relative h-auto w-full rounded-2xl object-contain
+      drop-shadow-[0_28px_64px_rgba(28,39,76,0.15)]
+      sm:rounded-3xl
+      lg:w-full lg:max-h-[min(88vh,58rem)]
+      lg:drop-shadow-[0_36px_80px_rgba(28,39,76,0.17)];
+  }
+
+  /*  Reusable Section Patterns  */
+
+  .section-heading {
+    @apply text-balance text-2xl font-semibold tracking-tight text-primary sm:text-3xl;
+  }
+
+  .section-subtext {
+    @apply mt-3 text-pretty text-text-secondary;
+  }
+
+  .section-inner {
+    @apply mx-auto w-full max-w-[var(--width-content)]
+      px-4 sm:px-6 lg:px-8
+      flex flex-col items-center py-10 sm:py-14 lg:py-16;
+  }
+
+  /*  Card Components  */
+
+  .card {
+    @apply flex w-full max-w-md flex-col overflow-hidden
+      rounded-2xl border text-center md:max-w-none;
+  }
+
+  .card__image {
+    @apply h-auto w-full max-h-60 object-contain sm:max-h-72 lg:max-h-80;
+  }
+}

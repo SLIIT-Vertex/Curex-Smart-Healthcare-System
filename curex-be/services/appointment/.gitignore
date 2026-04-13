@@ -1,0 +1,15 @@
+/.metadata/
+
+# IDE files
+**/.idea/
+**/.settings/
+**/.classpath
+**/.project
+**/*.iml
+
+# Build outputs
+**/target/
+
+# Frontend artifacts under nested UI modules
+**/node_modules/
+**/dist/

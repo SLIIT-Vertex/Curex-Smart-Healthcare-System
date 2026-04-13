@@ -1,0 +1,103 @@
+---
+# 
+# PostgreSQL — Deployment + ClusterIP Service
+# 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: curex
+  labels:
+    app: postgres
+    app.kubernetes.io/part-of: curex-healthcare
+spec:
+  replicas: 1       # postgres with ReadWriteOnce PVC must stay at 1 replica
+  selector:
+    matchLabels:
+      app: postgres
+  strategy:
+    type: Recreate  # required for RWO volumes — no rolling update
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: curex_main
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: curex-secrets
+                  key: db-username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: curex-secrets
+                  key: db-password
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d/init-db.sql
+              subPath: init-db.sql
+              readOnly: true
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - curex_user
+                - -d
+                - curex_main
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - curex_user
+                - -d
+                - curex_main
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+        - name: init-sql
+          configMap:
+            name: postgres-init-sql
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: curex
+  labels:
+    app: postgres
+    app.kubernetes.io/part-of: curex-healthcare
+spec:
+  type: ClusterIP       # internal only — not exposed outside the cluster
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP

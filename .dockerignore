@@ -1,0 +1,68 @@
+# Curex Smart Healthcare System — .dockerignore
+# Keeps build contexts lean; secrets never reach the daemon.
+
+#  Secrets & environment
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+*.jks
+secrets/
+client_secret*.json
+*credentials*.json
+*service-account*.json
+token.json
+
+# Git & CI 
+.git/
+.gitignore
+.github/
+.gitattributes
+
+# Maven build output
+**/target/
+**/.mvn/
+**/mvnw
+**/mvnw.cmd
+
+# Node / frontend artefacts
+**/node_modules/
+**/dist/
+**/.cache/
+**/.vite/
+**/dist-ssr/
+
+# Logs
+logs/
+*.log
+
+# IDEs & OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Docs & non-runtime files
+README*.md
+ARCHITECTURE*.md
+docs/
+postman/
+k8s/
+
+# Test artefacts
+**/src/test/
+coverage/
+*.lcov
+
+# Kubernetes secrets
+k8s/*-secret.yaml
+k8s/*-secrets.yaml
+
+# Misc
+*.tmp
+*.swp
+*~
+Makefile
