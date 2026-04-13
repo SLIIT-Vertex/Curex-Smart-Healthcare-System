@@ -67,6 +67,31 @@ public class ProfileBridgeService {
         }
     }
 
+    public Map<String, Object> getDoctorProfileByUserId(String userId) {
+        String url = doctorServiceUrl + "/doctors/by-user/" + userId;
+        Map<String, Object> doctor = restTemplate.getForObject(url, Map.class);
+        return doctor == null ? Collections.emptyMap() : doctor;
+    }
+
+    public Map<String, Object> getPatientProfileByUserId(String userId) {
+        String url = patientServiceUrl + "/api/patients/by-user/" + userId;
+        Map<String, Object> patient = restTemplate.getForObject(url, Map.class);
+        return patient == null ? Collections.emptyMap() : patient;
+    }
+
+    public Map<String, Object> bootstrapRoleProfile(User user) {
+        RegisterRequest minimal = new RegisterRequest();
+        if (user.getRole() == User.Role.DOCTOR) {
+            ensureDoctorProfile(user, minimal);
+            return getDoctorProfileByUserId(user.getId());
+        }
+        if (user.getRole() == User.Role.PATIENT) {
+            ensurePatientProfile(user, minimal);
+            return getPatientProfileByUserId(user.getId());
+        }
+        return Collections.emptyMap();
+    }
+
     private void enrichDoctorFields(UserResponse response) {
         String url = doctorServiceUrl + "/doctors/by-user/" + response.getId();
         Map<String, Object> doctor = restTemplate.getForObject(url, Map.class);
@@ -114,10 +139,6 @@ public class ProfileBridgeService {
         String postUrl = doctorServiceUrl + "/doctors";
         Map<String, Object> body = new HashMap<>();
         body.put("userId", user.getId());
-        body.put("firstName", user.getFirstName());
-        body.put("lastName", user.getLastName());
-        body.put("email", user.getEmail());
-        body.put("phone", user.getPhoneNumber());
         body.put("specialization", defaultIfBlank(request.getSpecialty(), "General Medicine"));
         body.put("qualifications", request.getCertifications());
         body.put("medicalLicenseNumber", request.getMedicalLicenseNumber());
@@ -148,10 +169,6 @@ public class ProfileBridgeService {
         String postUrl = patientServiceUrl + "/api/patients";
         Map<String, Object> body = new HashMap<>();
         body.put("userId", user.getId());
-        body.put("firstName", user.getFirstName());
-        body.put("lastName", user.getLastName());
-        body.put("email", user.getEmail());
-        body.put("phone", user.getPhoneNumber());
         body.put("dateOfBirth", request.getDob());
         body.put("gender", request.getGender());
         body.put("bloodType", request.getBloodGroup());
@@ -181,10 +198,6 @@ public class ProfileBridgeService {
 
             String putUrl = doctorServiceUrl + "/doctors/" + doctorId;
             Map<String, Object> update = new HashMap<>();
-            update.put("firstName", coalesce(request.getFirstName(), user.getFirstName()));
-            update.put("lastName", coalesce(request.getLastName(), user.getLastName()));
-            update.put("email", user.getEmail());
-            update.put("phone", coalesce(request.getPhoneNumber(), str(doctor.get("phone"))));
             update.put("specialization", coalesce(request.getSpecialty(), str(doctor.get("specialization"))));
             update.put("qualifications", coalesce(request.getCertifications(), str(doctor.get("qualifications"))));
             update.put("medicalLicenseNumber", coalesce(request.getMedicalLicenseNumber(), str(doctor.get("medicalLicenseNumber"))));
@@ -211,14 +224,8 @@ public class ProfileBridgeService {
                 return;
             }
 
-            String[] nameParts = splitName(coalesce(request.getFirstName(), user.getFirstName()),
-                    coalesce(request.getLastName(), user.getLastName()));
-
             String putUrl = patientServiceUrl + "/api/patients/" + patientId;
             Map<String, Object> update = new HashMap<>();
-            update.put("firstName", nameParts[0]);
-            update.put("lastName", nameParts[1]);
-            update.put("phone", coalesce(request.getPhoneNumber(), str(patient.get("phone"))));
             update.put("dateOfBirth", coalesce(request.getDob(), patient.get("dateOfBirth")));
             update.put("gender", coalesce(request.getGender(), str(patient.get("gender"))));
             update.put("bloodType", coalesce(request.getBloodGroup(), str(patient.get("bloodType"))));
@@ -357,9 +364,4 @@ public class ProfileBridgeService {
         return Collections.emptyList();
     }
 
-    private static String[] splitName(String first, String last) {
-        String f = first == null ? "" : first.trim();
-        String l = last == null ? "" : last.trim();
-        return new String[] { f.isBlank() ? "Unknown" : f, l.isBlank() ? "Unknown" : l };
-    }
 }

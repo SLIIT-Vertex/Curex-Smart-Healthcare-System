@@ -27,18 +27,6 @@ public class Doctor {
     @Column(name = "user_id", unique = true)
     private String userId;
 
-    @Column(name = "first_name", nullable = false)
-    private String firstName;
-
-    @Column(name = "last_name", nullable = false)
-    private String lastName;
-
-    @Column(nullable = false, unique = true)
-    private String email;
-
-    @Column(name = "phone")
-    private String phone;
-
     @Column(name = "specialization")
     private String specialization;
 
@@ -79,7 +67,4 @@ public class Doctor {
     @Builder.Default
     private List<DoctorAvailability> availabilitySlots = new ArrayList<>();
 
-    public String getFullName() {
-        return firstName + " " + lastName;
-    }
 }

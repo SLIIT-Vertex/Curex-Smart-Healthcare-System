@@ -45,16 +45,9 @@ public class DoctorService {
         if (doctorRepository.existsByUserId(request.getUserId())) {
             throw new DoctorAlreadyExistsException("Doctor profile already exists for user: " + request.getUserId());
         }
-        if (doctorRepository.existsByEmail(request.getEmail())) {
-            throw new DoctorAlreadyExistsException("A doctor with email " + request.getEmail() + " already exists");
-        }
 
         Doctor doctor = Doctor.builder()
                 .userId(request.getUserId())
-                .firstName(request.getFirstName())
-                .lastName(request.getLastName())
-                .email(request.getEmail())
-                .phone(request.getPhone())
                 .specialization(request.getSpecialization())
                 .qualifications(request.getQualifications())
                 .medicalLicenseNumber(request.getMedicalLicenseNumber())
@@ -89,10 +82,6 @@ public class DoctorService {
         Doctor doctor = doctorRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Doctor not found with id: " + id));
 
-        if (request.getFirstName() != null) doctor.setFirstName(request.getFirstName());
-        if (request.getLastName() != null) doctor.setLastName(request.getLastName());
-        if (request.getEmail() != null) doctor.setEmail(request.getEmail());
-        if (request.getPhone() != null) doctor.setPhone(request.getPhone());
         if (request.getSpecialization() != null) doctor.setSpecialization(request.getSpecialization());
         if (request.getQualifications() != null) doctor.setQualifications(request.getQualifications());
         if (request.getMedicalLicenseNumber() != null) doctor.setMedicalLicenseNumber(request.getMedicalLicenseNumber());
@@ -124,8 +113,10 @@ public class DoctorService {
         Set<String> userIds = approved.stream()
                 .map(ApprovedUserFeignDto::getId)
                 .collect(Collectors.toSet());
+        Map<String, ApprovedUserFeignDto> approvedByUserId = approved.stream()
+            .collect(Collectors.toMap(ApprovedUserFeignDto::getId, u -> u, (a, b) -> a));
         return doctorRepository.findByUserIdIn(userIds).stream()
-                .map(doctor -> toBookableDoctorResponse(doctor))
+            .map(doctor -> toBookableDoctorResponse(doctor, approvedByUserId.get(doctor.getUserId())))
                 .collect(Collectors.toList());
     }
 
@@ -267,14 +258,14 @@ public class DoctorService {
         return result;
     }
 
-    private BookableDoctorResponse toBookableDoctorResponse(Doctor doctor) {
+    private BookableDoctorResponse toBookableDoctorResponse(Doctor doctor, ApprovedUserFeignDto user) {
         return BookableDoctorResponse.builder()
                 .userId(doctor.getUserId())
                 .id(doctor.getId())
-                .firstName(doctor.getFirstName())
-                .lastName(doctor.getLastName())
-                .email(doctor.getEmail())
-                .phone(doctor.getPhone())
+                .firstName(user == null ? null : user.getFirstName())
+                .lastName(user == null ? null : user.getLastName())
+                .email(user == null ? null : user.getEmail())
+                .phone(user == null ? null : user.getPhoneNumber())
                 .specialization(doctor.getSpecialization())
                 .qualifications(doctor.getQualifications())
                 .medicalLicenseNumber(doctor.getMedicalLicenseNumber())
@@ -282,18 +273,19 @@ public class DoctorService {
                 .experience(doctor.getExperience())
                 .consultationFee(doctor.getConsultationFee())
                 .bio(doctor.getBio())
-                .avatarUrl(doctor.getAvatarUrl())
+                .avatarUrl(user == null ? doctor.getAvatarUrl() : user.getProfileImageUrl())
                 .verified(doctor.isVerified())
                 .build();
     }
 
     private DoctorResponse toDoctorResponse(Doctor doctor) {
+        ApprovedUserFeignDto user = getUserIdentity(doctor.getUserId());
         return DoctorResponse.builder()
                 .id(doctor.getId())
-                .firstName(doctor.getFirstName())
-                .lastName(doctor.getLastName())
-                .email(doctor.getEmail())
-                .phone(doctor.getPhone())
+                .firstName(user == null ? null : user.getFirstName())
+                .lastName(user == null ? null : user.getLastName())
+                .email(user == null ? null : user.getEmail())
+                .phone(user == null ? null : user.getPhoneNumber())
                 .specialization(doctor.getSpecialization())
                 .qualifications(doctor.getQualifications())
                 .medicalLicenseNumber(doctor.getMedicalLicenseNumber())
@@ -301,9 +293,18 @@ public class DoctorService {
                 .experience(doctor.getExperience())
                 .consultationFee(doctor.getConsultationFee())
                 .bio(doctor.getBio())
-                .avatarUrl(doctor.getAvatarUrl())
+                .avatarUrl(user == null ? doctor.getAvatarUrl() : user.getProfileImageUrl())
                 .verified(doctor.isVerified())
                 .build();
+    }
+
+    private ApprovedUserFeignDto getUserIdentity(String userId) {
+        try {
+            return userServiceClient.getUserById(userId);
+        } catch (Exception ex) {
+            log.warn("Failed to resolve user identity for doctor userId {}: {}", userId, ex.getMessage());
+            return null;
+        }
     }
 
     private AvailabilitySlotResponse toAvailabilitySlotResponse(DoctorAvailability slot) {

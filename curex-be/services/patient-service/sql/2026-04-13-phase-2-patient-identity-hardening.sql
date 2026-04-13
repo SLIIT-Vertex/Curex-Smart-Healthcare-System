@@ -6,10 +6,15 @@
 -- If your runtime DB migration tool supports it, enforce NOT NULL as a manual step:
 -- ALTER TABLE patients ALTER COLUMN user_id SET NOT NULL;
 
+-- Remove legacy common identity columns if they still exist from older schema versions.
+-- For PostgreSQL runtime migration use:
+-- ALTER TABLE patients DROP COLUMN IF EXISTS first_name;
+-- ALTER TABLE patients DROP COLUMN IF EXISTS last_name;
+-- ALTER TABLE patients DROP COLUMN IF EXISTS email;
+-- ALTER TABLE patients DROP COLUMN IF EXISTS phone;
+
 -- Ensure deterministic lookups for sync and read paths.
 CREATE INDEX IF NOT EXISTS idx_patients_user_id ON patients (user_id);
-CREATE INDEX IF NOT EXISTS idx_patients_email ON patients (email);
 
 -- Enforce uniqueness constraints.
 ALTER TABLE patients ADD CONSTRAINT uq_patients_user_id UNIQUE (user_id);
-ALTER TABLE patients ADD CONSTRAINT uq_patients_email UNIQUE (email);

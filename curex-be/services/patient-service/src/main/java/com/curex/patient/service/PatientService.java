@@ -3,6 +3,8 @@ package com.curex.patient.service;
 import com.curex.patient.dto.*;
 import com.curex.patient.entity.EmergencyContact;
 import com.curex.patient.feign.DoctorServiceClient;
+import com.curex.patient.feign.UserServiceClient;
+import com.curex.patient.feign.dto.InternalUserResponse;
 import com.curex.patient.feign.dto.PrescriptionResponse;
 import com.curex.patient.entity.MedicalHistory;
 import com.curex.patient.entity.Patient;
@@ -32,6 +34,7 @@ public class PatientService {
     private final MedicalHistoryRepository medicalHistoryRepository;
     private final EmergencyContactRepository emergencyContactRepository;
     private final DoctorServiceClient doctorServiceClient;
+    private final UserServiceClient userServiceClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Transactional
@@ -39,16 +42,9 @@ public class PatientService {
         if (patientRepository.existsByUserId(request.getUserId())) {
             throw new PatientAlreadyExistsException("Patient profile already exists for user: " + request.getUserId());
         }
-        if (patientRepository.existsByEmail(request.getEmail())) {
-            throw new PatientAlreadyExistsException("A patient with email " + request.getEmail() + " already exists");
-        }
 
         Patient patient = Patient.builder()
                 .userId(request.getUserId())
-                .firstName(request.getFirstName())
-                .lastName(request.getLastName())
-                .email(request.getEmail())
-                .phone(request.getPhone())
                 .dateOfBirth(request.getDateOfBirth())
                 .gender(request.getGender())
                 .bloodType(request.getBloodType())
@@ -79,9 +75,6 @@ public class PatientService {
         Patient patient = patientRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Patient not found with id: " + id));
 
-        if (request.getFirstName() != null) patient.setFirstName(request.getFirstName());
-        if (request.getLastName() != null) patient.setLastName(request.getLastName());
-        if (request.getPhone() != null) patient.setPhone(request.getPhone());
         if (request.getDateOfBirth() != null) patient.setDateOfBirth(request.getDateOfBirth());
         if (request.getGender() != null) patient.setGender(request.getGender());
         if (request.getBloodType() != null) patient.setBloodType(request.getBloodType());
@@ -198,6 +191,7 @@ public class PatientService {
     }
 
     private PatientResponse toPatientResponse(Patient patient) {
+        InternalUserResponse user = getUserIdentity(patient.getUserId());
         MedicalHistoryResponse historyResponse = null;
         if (patient.getMedicalHistory() != null) {
             historyResponse = toMedicalHistoryResponse(patient.getMedicalHistory());
@@ -210,18 +204,37 @@ public class PatientService {
 
         return PatientResponse.builder()
                 .id(patient.getId())
-                .name(patient.getFullName())
-                .email(patient.getEmail())
-                .phone(patient.getPhone())
+                .name(fullName(user))
+                .email(user == null ? null : user.getEmail())
+                .phone(user == null ? null : user.getPhoneNumber())
                 .dateOfBirth(patient.getDateOfBirth())
                 .gender(patient.getGender() != null ? patient.getGender().name() : null)
                 .bloodType(patient.getBloodType())
                 .address(patient.getAddress())
-                .avatarUrl(patient.getAvatarUrl())
+                .avatarUrl(user == null ? patient.getAvatarUrl() : user.getProfileImageUrl())
                 .createdAt(patient.getCreatedAt())
                 .medicalHistory(historyResponse)
                 .emergencyContact(contactResponse)
                 .build();
+    }
+
+    private InternalUserResponse getUserIdentity(String userId) {
+        try {
+            return userServiceClient.getUserById(userId);
+        } catch (Exception ex) {
+            log.warn("Failed to resolve user identity for patient userId {}: {}", userId, ex.getMessage());
+            return null;
+        }
+    }
+
+    private String fullName(InternalUserResponse user) {
+        if (user == null) {
+            return null;
+        }
+        String first = user.getFirstName() == null ? "" : user.getFirstName().trim();
+        String last = user.getLastName() == null ? "" : user.getLastName().trim();
+        String full = (first + " " + last).trim();
+        return full.isEmpty() ? null : full;
     }
 
     private MedicalHistoryResponse toMedicalHistoryResponse(MedicalHistory history) {

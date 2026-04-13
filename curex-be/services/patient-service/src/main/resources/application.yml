@@ -31,6 +31,8 @@ spring:
 services:
   doctor:
     url: ${SERVICES_DOCTOR_URL:http://localhost:8084}
+  user:
+    url: ${SERVICES_USER_URL:http://localhost:8081}
 
 management:
   endpoints:

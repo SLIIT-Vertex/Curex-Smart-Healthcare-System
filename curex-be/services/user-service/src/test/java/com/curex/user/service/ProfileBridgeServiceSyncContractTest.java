@@ -37,7 +37,7 @@ class ProfileBridgeServiceSyncContractTest {
     }
 
     @Test
-    void syncAfterProfileUpdate_doctorRole_pushesCanonicalIdentityAndRoleFields() {
+        void syncAfterProfileUpdate_doctorRole_pushesRoleFieldsOnly() {
         User user = new User();
         user.setId("u-1");
         user.setRole(User.Role.DOCTOR);
@@ -56,7 +56,6 @@ class ProfileBridgeServiceSyncContractTest {
 
         Map<String, Object> doctorLookup = new HashMap<>();
         doctorLookup.put("id", "d-1");
-        doctorLookup.put("phone", null);
         doctorLookup.put("specialization", "General Medicine");
         doctorLookup.put("qualifications", null);
         doctorLookup.put("medicalLicenseNumber", null);
@@ -74,10 +73,6 @@ class ProfileBridgeServiceSyncContractTest {
                 .put(eq("http://doctor-service:8084/doctors/d-1"), payloadCaptor.capture());
 
         Map<String, Object> payload = payloadCaptor.getValue();
-        assertThat(payload.get("firstName")).isEqualTo("John");
-        assertThat(payload.get("lastName")).isEqualTo("Doe");
-        assertThat(payload.get("email")).isEqualTo("john@curex.com");
-        assertThat(payload.get("phone")).isEqualTo("+94710000000");
         assertThat(payload.get("specialization")).isEqualTo("Cardiology");
         assertThat(payload.get("medicalLicenseNumber")).isEqualTo("SLMC-123");
         assertThat(payload.get("proofDocumentUrls")).isEqualTo("https://proofs/doc1.pdf");
@@ -85,7 +80,7 @@ class ProfileBridgeServiceSyncContractTest {
     }
 
     @Test
-    void syncAfterProfileUpdate_patientRole_pushesCanonicalIdentityToPatientProfile() {
+        void syncAfterProfileUpdate_patientRole_pushesPatientDomainFieldsOnly() {
         User user = new User();
         user.setId("u-2");
         user.setRole(User.Role.PATIENT);
@@ -98,7 +93,6 @@ class ProfileBridgeServiceSyncContractTest {
 
         Map<String, Object> patientLookup = new HashMap<>();
         patientLookup.put("id", "p-1");
-        patientLookup.put("phone", null);
         patientLookup.put("dateOfBirth", null);
         patientLookup.put("gender", null);
         patientLookup.put("bloodType", null);
@@ -114,9 +108,6 @@ class ProfileBridgeServiceSyncContractTest {
                 .put(eq("http://patient-service:8083/api/patients/p-1"), payloadCaptor.capture());
 
         Map<String, Object> payload = payloadCaptor.getValue();
-        assertThat(payload.get("firstName")).isEqualTo("Jane");
-        assertThat(payload.get("lastName")).isEqualTo("Roe");
-        assertThat(payload.get("phone")).isEqualTo("+94712223333");
         assertThat(payload.get("bloodType")).isEqualTo("A+");
 
         verify(restTemplate, times(0)).exchange(

@@ -12,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
+
 /**
  * Handles mutable profile operations for authenticated users.
  *
@@ -107,5 +109,21 @@ public class UserProfileService {
         userDataDeletionOrchestrator.purgeUserDataAcrossServices(user.getId());
         userRepository.delete(user);
         log.info("Deleted user account {} ({})", user.getId(), user.getEmail());
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getDoctorProfileByUserId(String userId) {
+        return profileBridgeService.getDoctorProfileByUserId(userId);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getPatientProfileByUserId(String userId) {
+        return profileBridgeService.getPatientProfileByUserId(userId);
+    }
+
+    public Map<String, Object> bootstrapOwnRoleProfile(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException(email));
+        return profileBridgeService.bootstrapRoleProfile(user);
     }
 }
