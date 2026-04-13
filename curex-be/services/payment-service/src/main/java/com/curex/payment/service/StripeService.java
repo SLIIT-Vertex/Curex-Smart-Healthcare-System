@@ -4,6 +4,8 @@ import com.curex.payment.entity.Payment;
 import com.stripe.model.Event;
 import com.stripe.model.checkout.Session;
 
+import java.util.Optional;
+
 /**
  * Stripe integration boundary.
  *
@@ -28,5 +30,5 @@ public interface StripeService {
     /**
      * Retrieve an existing Stripe Checkout Session by id.
      */
-    Session retrieveCheckoutSession(String sessionId);
+    Optional<Session> retrieveCheckoutSession(String sessionId);
 }

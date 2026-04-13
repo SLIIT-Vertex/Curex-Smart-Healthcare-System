@@ -16,11 +16,16 @@ RUN --mount=type=cache,target=/root/.m2 \
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
-# Non-root user for security
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
-USER appuser
+# curl is needed for the Docker Compose healthcheck
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://security.ubuntu.com/ubuntu|g' /etc/apt/sources.list \
+    && apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
+# Non-root user for security
+RUN groupadd --system curex && useradd --system --gid curex curex
 COPY --from=build /app/target/*.jar app.jar
+RUN chown curex:curex app.jar
+USER curex
 
 EXPOSE 8088
 

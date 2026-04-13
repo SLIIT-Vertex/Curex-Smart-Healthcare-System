@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CreditCard,
   CheckCircle2,
@@ -14,6 +14,20 @@ import {
 import type { PaymentRecord } from "../../services/paymentService";
 import { useAuth } from "../../store/hooks";
 
+function paymentStatusRank(status: string | undefined): number {
+  const normalized = String(status ?? "").toUpperCase();
+  if (normalized === "SUCCESS" || normalized === "COMPLETED") {
+    return 3;
+  }
+  if (normalized === "PENDING") {
+    return 2;
+  }
+  if (normalized === "FAILED" || normalized === "CANCELLED") {
+    return 1;
+  }
+  return 0;
+}
+
 export function PatientPayments() {
   const { user } = useAuth();
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
@@ -22,6 +36,41 @@ export function PatientPayments() {
   const [selectedPayment, setSelectedPayment] = useState<PaymentRecord | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
+
+  const latestPayments = useMemo(() => {
+    const byAppointment = new Map<string, PaymentRecord>();
+
+    for (const payment of payments) {
+      const key = String(payment.appointmentId || payment.id);
+      const existing = byAppointment.get(key);
+      if (!existing) {
+        byAppointment.set(key, payment);
+        continue;
+      }
+
+      const existingRank = paymentStatusRank(existing.status);
+      const currentRank = paymentStatusRank(payment.status);
+      if (currentRank > existingRank) {
+        byAppointment.set(key, payment);
+        continue;
+      }
+      if (currentRank < existingRank) {
+        continue;
+      }
+
+      const currentTs = new Date(payment.updatedAt || payment.createdAt).getTime();
+      const existingTs = new Date(existing.updatedAt || existing.createdAt).getTime();
+      if (currentTs >= existingTs) {
+        byAppointment.set(key, payment);
+      }
+    }
+
+    return [...byAppointment.values()].sort(
+      (a, b) =>
+        new Date(b.updatedAt || b.createdAt).getTime() -
+        new Date(a.updatedAt || a.createdAt).getTime(),
+    );
+  }, [payments]);
 
   useEffect(() => {
     async function loadPayments() {
@@ -34,7 +83,7 @@ export function PatientPayments() {
         const data = await getPatientPayments(user.id);
         setPayments(Array.isArray(data) ? data : []);
       } catch {
-        setError("Failed to load payment history.");
+        setError("Failed to load payment history. Please try again later.");
       } finally {
         setLoading(false);
       }
@@ -43,26 +92,26 @@ export function PatientPayments() {
   }, [user?.id]);
 
   const getStatusIcon = (status: string) => {
-    switch (status) {
+    switch (status.toUpperCase()) {
       case "SUCCESS":
       case "COMPLETED":
-        return <CheckCircle2 className="h-4 w-4 text-accent-mint" />;
+        return <CheckCircle2 className="h-4 w-4" />;
       case "PENDING":
-        return <Clock className="h-4 w-4 text-accent-sky" />;
+        return <Clock className="h-4 w-4" />;
       default:
-        return <AlertCircle className="h-4 w-4 text-error" />;
+        return <AlertCircle className="h-4 w-4" />;
     }
   };
 
   const getStatusClass = (status: string) => {
-    switch (status) {
+    switch (status.toUpperCase()) {
       case "SUCCESS":
       case "COMPLETED":
-        return "bg-accent-mint/10 text-accent-mint border-accent-mint/20";
+        return "bg-accent-mint/10 text-accent-mint border-accent-mint/20 shadow-sm shadow-accent-mint/5";
       case "PENDING":
-        return "bg-accent-sky/10 text-accent-sky border-accent-sky/20";
+        return "bg-accent-sky/10 text-accent-sky border-accent-sky/20 shadow-sm shadow-accent-sky/5";
       case "CANCELLED":
-        return "bg-error/10 text-error border-error/20";
+        return "bg-error/10 text-error border-error/20 shadow-sm shadow-error/5";
       default:
         return "bg-text-secondary/10 text-text-secondary border-text-secondary/20";
     }
@@ -77,7 +126,7 @@ export function PatientPayments() {
       const latest = await getPaymentDetails(payment.id);
       setSelectedPayment(latest);
     } catch {
-      setDetailsError("Could not load latest payment details.");
+      setDetailsError("Could not refresh latest transaction state.");
     } finally {
       setDetailsLoading(false);
     }
@@ -90,87 +139,118 @@ export function PatientPayments() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="section-heading">Payments & Billing</h1>
-        <p className="section-subtext mt-1">
-          Review your transaction history and payment status.
-        </p>
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">Payments & Billing</h1>
+          <p className="text-text-secondary mt-1">
+            Manage your invoices, track transaction history, and view receipts.
+          </p>
+        </div>
       </div>
 
       {loading ? (
-        <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+        <div className="flex h-96 flex-col items-center justify-center space-y-4">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary/20 border-t-primary shadow-lg shadow-primary/5"></div>
+          <p className="text-sm font-medium text-text-secondary animate-pulse">Syncing transactions...</p>
         </div>
       ) : error ? (
-        <div className="rounded-2xl border border-error/20 bg-error/5 p-6 text-center text-primary">
-          {error}
+        <div className="rounded-3xl border border-error/20 bg-error/5 p-8 text-center animate-in shake-1">
+          <AlertCircle className="h-10 w-10 text-error mx-auto mb-4 opacity-50" />
+          <p className="text-primary font-semibold">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-primary/10 text-primary rounded-xl text-sm font-bold hover:bg-primary/20 transition-colors"
+          >
+            Retry Connection
+          </button>
         </div>
-      ) : payments.length === 0 ? (
-        <div className="patient-card patient-empty-state">
-          <CreditCard className="h-12 w-12 text-text-secondary/30 mb-3" />
-          <p className="text-text-secondary">No payment records found.</p>
+      ) : latestPayments.length === 0 ? (
+        <div className="patient-card p-20 flex flex-col items-center justify-center text-center bg-background/30 border-dashed border-2 border-text-secondary/10 rounded-3xl">
+          <div className="h-20 w-20 rounded-full bg-primary/5 flex items-center justify-center mb-6">
+            <CreditCard className="h-10 w-10 text-text-secondary/30" strokeWidth={1} />
+          </div>
+          <h4 className="text-lg font-bold text-primary mb-2">No transactions yet</h4>
+          <p className="text-sm text-text-secondary max-w-xs mx-auto mb-6">
+            You haven't made any payments yet. Completed appointment bookings will appear here.
+          </p>
         </div>
       ) : (
-        <div className="appointment-panel overflow-hidden">
+        <div className="bg-surface rounded-3xl border border-text-secondary/5 overflow-hidden shadow-xl shadow-primary/5">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-text-secondary/10 bg-background/50">
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-text-secondary">
-                    Date
+                <tr className="border-b border-text-secondary/10 bg-primary/5">
+                  <th className="px-8 py-5 text-[11px] font-bold uppercase tracking-[0.1em] text-text-secondary">
+                    Transaction Date
                   </th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-text-secondary">
-                    Appointment ID
+                  <th className="px-8 py-5 text-[11px] font-bold uppercase tracking-[0.1em] text-text-secondary">
+                    Reference
                   </th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-text-secondary">
-                    Amount
+                  <th className="px-8 py-5 text-[11px] font-bold uppercase tracking-[0.1em] text-text-secondary">
+                    Total Amount
                   </th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-text-secondary">
-                    Status
+                  <th className="px-8 py-5 text-[11px] font-bold uppercase tracking-[0.1em] text-text-secondary">
+                    Current Status
                   </th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-text-secondary">
+                  <th className="px-8 py-5 text-[11px] font-bold uppercase tracking-[0.1em] text-text-secondary text-right">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-text-secondary/10">
-                {payments.map((payment) => (
+              <tbody className="divide-y divide-text-secondary/5">
+                {latestPayments.map((payment) => (
                   <tr
                     key={payment.id}
-                    className="hover:bg-primary-light/5 transition"
+                    className="hover:bg-primary/5 transition-colors duration-300 group"
                   >
-                    <td className="px-6 py-4 text-sm text-primary whitespace-nowrap">
-                      {new Date(payment.createdAt ?? Date.now()).toLocaleDateString("en-GB", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
+                    <td className="px-8 py-5">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-primary">
+                          {new Date(payment.createdAt ?? Date.now()).toLocaleDateString("en-GB", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </span>
+                        <span className="text-[10px] text-text-secondary/60 font-medium">
+                          {new Date(payment.createdAt ?? Date.now()).toLocaleTimeString("en-GB", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-text-secondary font-mono">
-                      {String(payment.appointmentId ?? "-").substring(0, 8)}...
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono text-text-secondary bg-background px-2 py-0.5 rounded border border-text-secondary/10">
+                          #{String(payment.appointmentId ?? payment.id).substring(0, 8)}
+                        </span>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 text-sm font-semibold text-primary">
-                      {new Intl.NumberFormat("en-US", {
-                        style: "currency",
-                        currency: payment.currency,
-                      }).format(payment.amount)}
+                    <td className="px-8 py-5">
+                      <span className="text-sm font-black text-primary tracking-tight">
+                        {new Intl.NumberFormat("en-US", {
+                          style: "currency",
+                          currency: payment.currency,
+                        }).format(payment.amount)}
+                      </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-8 py-5">
                       <div
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${getStatusClass(payment.status)}`}
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black tracking-wider uppercase transition-all group-hover:scale-105 duration-300 ${getStatusClass(payment.status)}`}
                       >
                         {getStatusIcon(payment.status)}
                         {payment.status}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-8 py-5 text-right">
                       <button
                         type="button"
                         onClick={() => openPaymentDetails(payment)}
-                        className="text-primary hover:text-primary-light flex items-center gap-1 text-xs font-medium transition"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-primary/5 text-primary hover:bg-primary text-xs font-bold rounded-xl transition-all duration-300 hover:text-white hover:shadow-lg hover:shadow-primary/20"
                       >
-                        View Details <ExternalLink size={12} />
+                        View Details <ExternalLink size={14} />
                       </button>
                     </td>
                   </tr>
@@ -182,95 +262,69 @@ export function PatientPayments() {
       )}
 
       {selectedPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-text-primary/40 p-4 backdrop-blur-md animate-in fade-in duration-300">
           <div
-            className="w-full max-w-lg rounded-2xl bg-surface p-5"
-            style={{ boxShadow: "var(--shadow-card)" }}
+            className="w-full max-w-xl rounded-[32px] bg-surface p-8 shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-8 duration-500"
+            style={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}
           >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-primary">Payment Details</h2>
-                <p className="text-sm text-text-secondary">Reference: {selectedPayment.id}</p>
+            <div className="flex items-start justify-between gap-4 mb-8">
+              <div className="flex items-center gap-4">
+                <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                  <CreditCard className="h-6 w-6" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black tracking-tight text-text-primary">Payment Details</h2>
+                  <p className="text-[10px] uppercase font-bold text-text-secondary/40 tracking-[0.2em] mt-1">Transaction Receipt</p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={closePaymentDetails}
-                className="rounded-lg border border-text-secondary/20 p-2 text-text-secondary transition hover:text-primary"
+                className="rounded-2xl border border-text-secondary/10 p-3 text-text-secondary transition hover:bg-error/5 hover:text-error hover:border-error/20"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="mt-4 space-y-3 text-sm">
+            <div className="space-y-6">
               {detailsLoading ? (
-                <div className="flex items-center gap-2 text-text-secondary">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
-                  Loading latest details...
+                <div className="flex flex-col items-center py-12 space-y-4">
+                  <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/10 border-t-primary"></div>
+                  <p className="text-xs font-bold text-text-secondary uppercase tracking-[0.2em]">Authenticating...</p>
                 </div>
               ) : (
-                <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">Appointment ID</span>
-                    <span className="font-medium text-primary">{selectedPayment.appointmentId}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">Patient ID</span>
-                    <span className="font-medium text-primary">{selectedPayment.patientId}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">Amount</span>
-                    <span className="font-medium text-primary">
-                      {new Intl.NumberFormat("en-US", {
-                        style: "currency",
-                        currency: selectedPayment.currency || "USD",
-                      }).format(selectedPayment.amount)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">Status</span>
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${getStatusClass(selectedPayment.status)}`}
-                    >
-                      {getStatusIcon(selectedPayment.status)}
-                      {selectedPayment.status}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">Method</span>
-                    <span className="font-medium text-primary">{selectedPayment.paymentMethod || "-"}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">Created</span>
-                    <span className="font-medium text-primary">
-                      {new Date(selectedPayment.createdAt).toLocaleString("en-GB")}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">Updated</span>
-                    <span className="font-medium text-primary">
-                      {new Date(selectedPayment.updatedAt).toLocaleString("en-GB")}
-                    </span>
-                  </div>
-                  {selectedPayment.stripeSessionId && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-text-secondary">Stripe Session</span>
-                      <span className="font-mono text-xs text-primary">{selectedPayment.stripeSessionId}</span>
-                    </div>
-                  )}
-                  {selectedPayment.stripePaymentIntentId && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-text-secondary">Payment Intent</span>
-                      <span className="font-mono text-xs text-primary">{selectedPayment.stripePaymentIntentId}</span>
-                    </div>
-                  )}
-                </>
+                <div className="grid gap-4">
+                  <DetailRow label="Appointment Reference" value={selectedPayment.appointmentId} mono isCopyable />
+                  <DetailRow label="Billing Amount" value={new Intl.NumberFormat("en-US", { style: "currency", currency: selectedPayment.currency || "USD" }).format(selectedPayment.amount)} highlight />
+                  <DetailRow 
+                    label="Transaction Status" 
+                    customValue={(
+                      <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[10px] font-black uppercase ${getStatusClass(selectedPayment.status)}`}>
+                        {getStatusIcon(selectedPayment.status)}
+                        {selectedPayment.status}
+                      </div>
+                    )} 
+                  />
+                  <DetailRow label="Payment Method" value={selectedPayment.paymentMethod || "Direct Payment"} />
+                  <div className="h-px bg-text-secondary/5 my-2" />
+                  <DetailRow label="Initiated At" value={new Date(selectedPayment.createdAt).toLocaleString("en-GB", { dateStyle: 'medium', timeStyle: 'short' })} />
+                  <DetailRow label="Last Activity" value={new Date(selectedPayment.updatedAt).toLocaleString("en-GB", { dateStyle: 'medium', timeStyle: 'short' })} />
+                </div>
               )}
 
               {detailsError && (
-                <p className="rounded-lg border border-error/20 bg-error/5 px-3 py-2 text-xs text-error">
-                  {detailsError}
-                </p>
+                <div className="rounded-2xl border border-error/20 bg-error/5 p-4 flex items-center gap-3 animate-in shake-1">
+                  <AlertCircle className="h-5 w-5 text-error shrink-0" />
+                  <p className="text-xs font-medium text-error">{detailsError}</p>
+                </div>
               )}
+              
+              <button
+                onClick={closePaymentDetails}
+                className="w-full py-4 bg-text-primary text-white rounded-2xl font-bold tracking-tight shadow-xl shadow-text-primary/10 hover:bg-primary transition-all duration-300 mt-6"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>
@@ -278,3 +332,24 @@ export function PatientPayments() {
     </div>
   );
 }
+
+function DetailRow({ label, value, mono, highlight, isCopyable, customValue }: { 
+  label: string, 
+  value?: string | number, 
+  mono?: boolean, 
+  highlight?: boolean,
+  isCopyable?: boolean,
+  customValue?: React.ReactNode
+}) {
+  return (
+    <div className="flex items-center justify-between group py-1">
+      <span className="text-xs font-semibold text-text-secondary/70">{label}</span>
+      {customValue ? customValue : (
+        <span className={`text-sm ${mono ? 'font-mono' : 'font-bold'} ${highlight ? 'text-primary' : 'text-primary/90'} transition-all`}>
+          {value}
+        </span>
+      )}
+    </div>
+  );
+}
+

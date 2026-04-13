@@ -16,6 +16,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -117,21 +118,19 @@ public class StripeServiceImpl implements StripeService {
     }
 
     @Override
-    public Session retrieveCheckoutSession(String sessionId) {
+    public Optional<Session> retrieveCheckoutSession(String sessionId) {
         if (!StringUtils.hasText(sessionId)) {
-            throw new IllegalArgumentException("sessionId is required");
+            return Optional.empty();
         }
         if (!StringUtils.hasText(stripeProperties.getSecretKey())) {
-            throw new IllegalStateException(
-                    "Stripe secret key is not configured (stripe.secret-key / STRIPE_SECRET_KEY)");
+            return Optional.empty();
         }
 
         Stripe.apiKey = stripeProperties.getSecretKey();
-
         try {
-            return Session.retrieve(sessionId.trim());
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to retrieve Stripe Checkout Session", e);
+            return Optional.ofNullable(Session.retrieve(sessionId));
+        } catch (Exception ex) {
+            return Optional.empty();
         }
     }
 
