@@ -491,7 +491,7 @@ export function DoctorTelemedicineCenter() {
                     type="date"
                     value={queueDateFilter}
                     onChange={(e) => setQueueDateFilter(e.target.value)}
-                    className="patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                    className="calendar-filter-input patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
                   />
                 </label>
               </div>
@@ -618,7 +618,7 @@ export function DoctorTelemedicineCenter() {
                             type="date"
                             value={endedDateFilter}
                             onChange={(e) => setEndedDateFilter(e.target.value)}
-                            className="patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                            className="calendar-filter-input patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
                           />
                         </label>
                       </div>

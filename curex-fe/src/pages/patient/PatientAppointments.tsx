@@ -40,7 +40,7 @@ import "../../styles/pages/AppointmentFlow.css";
 
 function generateTimeSlots(): string[] {
   const slots: string[] = [];
-  for (let h = 8; h <= 17; h++) {
+  for (let h = 8; h <= 21; h++) {
     for (let m = 0; m < 60; m += 30) {
       slots.push(
         `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`,
@@ -309,7 +309,9 @@ export function PatientAppointments() {
   const patientName = user ? `${user.firstName} ${user.lastName}`.trim() : "";
   const patientEmail = user?.email ?? "";
 
-  const loadPatientAppointments = useCallback(async (): Promise<
+  const loadPatientAppointments = useCallback(async (
+    silent = false,
+  ): Promise<
     Record<string, PaymentRecord>
   > => {
     if (!patientId) {
@@ -317,7 +319,9 @@ export function PatientAppointments() {
     }
 
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       const [appointmentsResult, paymentsResult] = await Promise.allSettled([
         getAppointmentsByPatient(patientId),
         getPatientPayments(patientId),
@@ -371,13 +375,17 @@ export function PatientAppointments() {
 
       return map;
     } catch {
-      toast(
-        "Could not fetch appointment data. Please ensure backend is running.",
-        "error",
-      );
+      if (!silent) {
+        toast(
+          "Could not fetch appointment data. Please ensure backend is running.",
+          "error",
+        );
+      }
       return {};
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [patientId, toast]);
 
@@ -805,6 +813,20 @@ export function PatientAppointments() {
   useEffect(() => {
     void loadPatientAppointments();
   }, [loadPatientAppointments]);
+
+  useEffect(() => {
+    if (activeTab !== "bookings" || !patientId) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadPatientAppointments(true);
+    }, 8000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [activeTab, patientId, loadPatientAppointments]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
