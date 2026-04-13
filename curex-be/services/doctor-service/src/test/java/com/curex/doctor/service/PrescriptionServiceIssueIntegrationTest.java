@@ -72,9 +72,6 @@ class PrescriptionServiceIssueIntegrationTest {
         doctorRepository.deleteAll();
 
         primaryDoctor = Objects.requireNonNull(doctorRepository.save(Objects.requireNonNull(Doctor.builder()
-                .firstName("Primary")
-                .lastName("Doctor")
-                .email("primary.doc@test.com")
                 .userId(primaryDoctorUserId)
                 .specialization("General")
                 .isVerified(true)
@@ -177,9 +174,6 @@ class PrescriptionServiceIssueIntegrationTest {
             mockAppointment(appointmentWithStatus("IN_SESSION"));
             // Appointment belongs to primaryDoctor; request targets another doctor id
             Doctor other = Objects.requireNonNull(doctorRepository.save(Objects.requireNonNull(Doctor.builder()
-                    .firstName("Other")
-                    .lastName("Doc")
-                    .email("other@test.com")
                     .userId("user-other")
                     .specialization("GP")
                     .isVerified(true)
