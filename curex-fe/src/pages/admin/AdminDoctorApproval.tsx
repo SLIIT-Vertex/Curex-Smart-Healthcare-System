@@ -171,7 +171,7 @@ function DetailRow({
         <p className="text-xs font-medium uppercase tracking-wide text-text-secondary/60">
           {label}
         </p>
-        <p className="mt-0.5 text-sm text-primary break-words">{value}</p>
+        <p className="mt-0.5 text-sm text-primary wrap-break-words">{value}</p>
       </div>
     </div>
   );
@@ -320,7 +320,7 @@ function DoctorDetailModal({
                       href={url}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center gap-3 rounded-xl border border-text-secondary/15 bg-background px-4 py-3 text-sm text-primary hover:border-primary-light/30 hover:bg-primary/[0.02] transition-colors group"
+                      className="flex items-center gap-3 rounded-xl border border-text-secondary/15 bg-background px-4 py-3 text-sm text-primary hover:border-primary-light/30 hover:bg-primary/2 transition-colors group"
                     >
                       <FileText
                         className="h-4 w-4 shrink-0 text-primary-light"
