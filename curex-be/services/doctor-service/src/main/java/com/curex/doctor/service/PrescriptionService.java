@@ -12,6 +12,8 @@ import com.curex.doctor.exception.ForbiddenException;
 import com.curex.doctor.exception.InvalidPrescriptionException;
 import com.curex.doctor.exception.ResourceNotFoundException;
 import com.curex.doctor.feign.AppointmentClient;
+import com.curex.doctor.feign.UserServiceClient;
+import com.curex.doctor.feign.dto.ApprovedUserFeignDto;
 import com.curex.doctor.feign.dto.AppointmentResponseDto;
 import com.curex.doctor.repository.DoctorRepository;
 import com.curex.doctor.repository.PrescriptionRepository;
@@ -41,6 +43,7 @@ public class PrescriptionService {
     private final DoctorRepository doctorRepository;
     private final RabbitTemplate rabbitTemplate;
     private final AppointmentClient appointmentClient;
+    private final UserServiceClient userServiceClient;
 
     @Value("${curex.prescriptions.status-zone:UTC}")
     private String prescriptionStatusZone;
@@ -128,13 +131,17 @@ public class PrescriptionService {
 
         prescription = Objects.requireNonNull(prescriptionRepository.save(Objects.requireNonNull(prescription)));
 
+        ApprovedUserFeignDto doctorUser = fetchUserByIdSafe(doctor.getUserId());
+        String doctorName = resolveDoctorName(doctorUser);
+        String doctorEmail = doctorUser != null ? doctorUser.getEmail() : null;
+
         // Publish prescription.issued event only after the DB transaction commits
         PrescriptionIssuedEvent event = PrescriptionIssuedEvent.builder()
                 .prescriptionId(prescription.getId())
                 .doctorId(doctor.getId())
                 .doctorUserId(doctor.getUserId())
-                .doctorName(doctor.getFullName())
-                .doctorEmail(doctor.getEmail())
+            .doctorName(doctorName)
+            .doctorEmail(doctorEmail)
                 .patientId(request.getPatientId())
                 .patientName(prescription.getPatientName())
                 .patientEmail(request.getPatientEmail())
@@ -199,12 +206,16 @@ public class PrescriptionService {
         prescription = prescriptionRepository.save(prescription);
         log.info("Cancelled prescription {} by doctor user {}", prescriptionId, requestingUserId);
 
+        ApprovedUserFeignDto doctorUser = fetchUserByIdSafe(doctor.getUserId());
+        String doctorName = resolveDoctorName(doctorUser);
+        String doctorEmail = doctorUser != null ? doctorUser.getEmail() : null;
+
         PrescriptionCancelledEvent cancelEvent = PrescriptionCancelledEvent.builder()
                 .prescriptionId(prescription.getId())
                 .doctorId(doctor.getId())
                 .doctorUserId(doctor.getUserId())
-                .doctorName(doctor.getFullName())
-                .doctorEmail(doctor.getEmail())
+            .doctorName(doctorName)
+            .doctorEmail(doctorEmail)
                 .patientId(prescription.getPatientId())
                 .patientName(prescription.getPatientName())
                 .diagnosis(prescription.getDiagnosis())
@@ -313,10 +324,11 @@ public class PrescriptionService {
     }
 
     private PrescriptionResponse toPrescriptionResponse(Prescription prescription) {
+        ApprovedUserFeignDto doctorUser = fetchUserByIdSafe(prescription.getDoctor().getUserId());
         return PrescriptionResponse.builder()
                 .id(prescription.getId())
                 .doctorId(prescription.getDoctor().getId())
-                .doctorName(prescription.getDoctor().getFullName())
+            .doctorName(resolveDoctorName(doctorUser))
                 .doctorSpecialty(prescription.getDoctor().getSpecialization())
                 .patientId(prescription.getPatientId())
                 .patientName(prescription.getPatientName())
@@ -330,5 +342,27 @@ public class PrescriptionService {
                 .status(resolveEffectiveStatus(prescription))
                 .issuedAt(prescription.getIssuedAt())
                 .build();
+    }
+
+    private ApprovedUserFeignDto fetchUserByIdSafe(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return null;
+        }
+        try {
+            return userServiceClient.getUserById(userId);
+        } catch (Exception ex) {
+            log.warn("Could not resolve doctor user {} from user-service: {}", userId, ex.getMessage());
+            return null;
+        }
+    }
+
+    private String resolveDoctorName(ApprovedUserFeignDto user) {
+        if (user == null) {
+            return null;
+        }
+        String firstName = user.getFirstName() != null ? user.getFirstName().trim() : "";
+        String lastName = user.getLastName() != null ? user.getLastName().trim() : "";
+        String fullName = (firstName + " " + lastName).trim();
+        return fullName.isBlank() ? null : fullName;
     }
 }

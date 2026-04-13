@@ -25,18 +25,6 @@ public class Patient {
     @Column(name = "user_id", unique = true)
     private String userId;
 
-    @Column(name = "first_name", nullable = false)
-    private String firstName;
-
-    @Column(name = "last_name", nullable = false)
-    private String lastName;
-
-    @Column(nullable = false, unique = true)
-    private String email;
-
-    @Column(name = "phone")
-    private String phone;
-
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
 
@@ -66,7 +54,4 @@ public class Patient {
     @OneToOne(mappedBy = "patient", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private EmergencyContact emergencyContact;
 
-    public String getFullName() {
-        return firstName + " " + lastName;
-    }
 }

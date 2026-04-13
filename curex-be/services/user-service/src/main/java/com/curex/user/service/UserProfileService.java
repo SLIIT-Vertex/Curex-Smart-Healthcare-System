@@ -12,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
+
 /**
  * Handles mutable profile operations for authenticated users.
  *
@@ -26,6 +28,7 @@ public class UserProfileService {
 
     private final UserRepository userRepository;
     private final UserDataDeletionOrchestrator userDataDeletionOrchestrator;
+    private final ProfileBridgeService profileBridgeService;
 
     /**
      * Updates the profile of the currently authenticated user.
@@ -54,24 +57,11 @@ public class UserProfileService {
         if (request.getAddress() != null) user.setAddress(request.getAddress());
         if (request.getBio() != null)     user.setBio(request.getBio());
 
-        // Doctor-specific
-        if (request.getSpecialty() != null)            user.setSpecialty(request.getSpecialty());
-        if (request.getMedicalLicenseNumber() != null) user.setMedicalLicenseNumber(request.getMedicalLicenseNumber());
-        if (request.getYearsOfExperience() != null)    user.setYearsOfExperience(request.getYearsOfExperience());
-        if (request.getCertifications() != null)       user.setCertifications(request.getCertifications());
-        if (request.getProofDocumentUrls() != null)    user.setProofDocumentUrls(request.getProofDocumentUrls());
-
-        // Patient-specific
-        if (request.getBloodGroup() != null)           user.setBloodGroup(request.getBloodGroup());
-        if (request.getAllergies() != null)             user.setAllergies(request.getAllergies());
-        if (request.getChronicConditions() != null)    user.setChronicConditions(request.getChronicConditions());
-        if (request.getEmergencyContactName() != null) user.setEmergencyContactName(request.getEmergencyContactName());
-        if (request.getEmergencyContactPhone() != null) user.setEmergencyContactPhone(request.getEmergencyContactPhone());
-
         User saved = userRepository.save(user);
+        profileBridgeService.syncAfterProfileUpdate(saved, request);
         log.info("Profile updated for user: {}", saved.getEmail());
 
-        return new UserResponse(saved);
+        return profileBridgeService.enrich(new UserResponse(saved));
     }
 
     @Transactional(readOnly = true)
@@ -119,5 +109,21 @@ public class UserProfileService {
         userDataDeletionOrchestrator.purgeUserDataAcrossServices(user.getId());
         userRepository.delete(user);
         log.info("Deleted user account {} ({})", user.getId(), user.getEmail());
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getDoctorProfileByUserId(String userId) {
+        return profileBridgeService.getDoctorProfileByUserId(userId);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getPatientProfileByUserId(String userId) {
+        return profileBridgeService.getPatientProfileByUserId(userId);
+    }
+
+    public Map<String, Object> bootstrapOwnRoleProfile(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException(email));
+        return profileBridgeService.bootstrapRoleProfile(user);
     }
 }

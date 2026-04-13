@@ -5,6 +5,14 @@ spring:
   application:
     name: patient-service
 
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 2000
+            readTimeout: 3000
+
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/curex_patients}
     username: ${DB_USERNAME:curex_user}
@@ -31,6 +39,8 @@ spring:
 services:
   doctor:
     url: ${SERVICES_DOCTOR_URL:http://localhost:8084}
+  user:
+    url: ${SERVICES_USER_URL:http://localhost:8081}
 
 management:
   endpoints:

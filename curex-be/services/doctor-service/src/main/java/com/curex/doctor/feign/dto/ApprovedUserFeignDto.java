@@ -13,4 +13,9 @@ import lombok.NoArgsConstructor;
 public class ApprovedUserFeignDto {
 
     private String id;
+    private String firstName;
+    private String lastName;
+    private String email;
+    private String phoneNumber;
+    private String profileImageUrl;
 }

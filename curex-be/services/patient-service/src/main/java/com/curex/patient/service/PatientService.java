@@ -3,11 +3,14 @@ package com.curex.patient.service;
 import com.curex.patient.dto.*;
 import com.curex.patient.entity.EmergencyContact;
 import com.curex.patient.feign.DoctorServiceClient;
+import com.curex.patient.feign.UserServiceClient;
+import com.curex.patient.feign.dto.InternalUserResponse;
 import com.curex.patient.feign.dto.PrescriptionResponse;
 import com.curex.patient.entity.MedicalHistory;
 import com.curex.patient.entity.Patient;
 import com.curex.patient.exception.PatientAlreadyExistsException;
 import com.curex.patient.exception.ResourceNotFoundException;
+import com.curex.patient.repository.EmergencyContactRepository;
 import com.curex.patient.repository.MedicalHistoryRepository;
 import com.curex.patient.repository.PatientRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -17,36 +20,36 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class PatientService {
 
+    private static final long USER_IDENTITY_RETRY_COOLDOWN_MS = 60_000;
+
     private final PatientRepository patientRepository;
     private final MedicalHistoryRepository medicalHistoryRepository;
+    private final EmergencyContactRepository emergencyContactRepository;
     private final DoctorServiceClient doctorServiceClient;
+    private final UserServiceClient userServiceClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final Map<String, Long> userIdentityRetryAfter = new ConcurrentHashMap<>();
 
     @Transactional
     public PatientResponse create(CreatePatientRequest request) {
         if (patientRepository.existsByUserId(request.getUserId())) {
             throw new PatientAlreadyExistsException("Patient profile already exists for user: " + request.getUserId());
         }
-        if (patientRepository.existsByEmail(request.getEmail())) {
-            throw new PatientAlreadyExistsException("A patient with email " + request.getEmail() + " already exists");
-        }
 
         Patient patient = Patient.builder()
                 .userId(request.getUserId())
-                .firstName(request.getFirstName())
-                .lastName(request.getLastName())
-                .email(request.getEmail())
-                .phone(request.getPhone())
                 .dateOfBirth(request.getDateOfBirth())
                 .gender(request.getGender())
                 .bloodType(request.getBloodType())
@@ -77,13 +80,10 @@ public class PatientService {
         Patient patient = patientRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Patient not found with id: " + id));
 
-        patient.setFirstName(request.getFirstName());
-        patient.setLastName(request.getLastName());
-        patient.setPhone(request.getPhone());
-        patient.setDateOfBirth(request.getDateOfBirth());
-        patient.setGender(request.getGender());
-        patient.setBloodType(request.getBloodType());
-        patient.setAddress(request.getAddress());
+        if (request.getDateOfBirth() != null) patient.setDateOfBirth(request.getDateOfBirth());
+        if (request.getGender() != null) patient.setGender(request.getGender());
+        if (request.getBloodType() != null) patient.setBloodType(request.getBloodType());
+        if (request.getAddress() != null) patient.setAddress(request.getAddress());
 
         patient = patientRepository.save(patient);
         log.info("Updated patient profile {}", id);
@@ -133,6 +133,38 @@ public class PatientService {
         return toMedicalHistoryResponse(history);
     }
 
+    @Transactional
+    public EmergencyContactResponse updateEmergencyContact(String patientId, UpdateEmergencyContactRequest request) {
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found with id: " + patientId));
+
+        EmergencyContact contact = emergencyContactRepository.findByPatient_Id(patientId)
+                .orElseGet(() -> EmergencyContact.builder().patient(patient).build());
+
+        if (request.getName() != null) {
+            contact.setName(request.getName());
+        }
+        if (request.getPhone() != null) {
+            contact.setPhone(request.getPhone());
+        }
+        if (request.getRelationship() != null) {
+            contact.setRelationship(request.getRelationship());
+        }
+
+        // Keep DB constraint happy when caller sends only phone update.
+        if (contact.getName() == null || contact.getName().isBlank()) {
+            contact.setName("Emergency Contact");
+        }
+
+        contact = emergencyContactRepository.save(contact);
+        if (patient.getEmergencyContact() == null) {
+            patient.setEmergencyContact(contact);
+            patientRepository.save(patient);
+        }
+
+        return toEmergencyContactResponse(contact);
+    }
+
     /**
      * Doctor-service stores {@code patientId} as the user-service user id (same as on appointments).
      * Patient API paths use the patient-profile id; resolve to {@link Patient#getUserId()} for Feign.
@@ -164,6 +196,7 @@ public class PatientService {
     }
 
     private PatientResponse toPatientResponse(Patient patient) {
+        InternalUserResponse user = getUserIdentity(patient.getUserId());
         MedicalHistoryResponse historyResponse = null;
         if (patient.getMedicalHistory() != null) {
             historyResponse = toMedicalHistoryResponse(patient.getMedicalHistory());
@@ -176,18 +209,58 @@ public class PatientService {
 
         return PatientResponse.builder()
                 .id(patient.getId())
-                .name(patient.getFullName())
-                .email(patient.getEmail())
-                .phone(patient.getPhone())
+                .name(fullName(user))
+                .email(user == null ? null : user.getEmail())
+                .phone(user == null ? null : user.getPhoneNumber())
                 .dateOfBirth(patient.getDateOfBirth())
                 .gender(patient.getGender() != null ? patient.getGender().name() : null)
                 .bloodType(patient.getBloodType())
                 .address(patient.getAddress())
-                .avatarUrl(patient.getAvatarUrl())
+                .avatarUrl(user == null ? patient.getAvatarUrl() : user.getProfileImageUrl())
                 .createdAt(patient.getCreatedAt())
                 .medicalHistory(historyResponse)
                 .emergencyContact(contactResponse)
                 .build();
+    }
+
+    private InternalUserResponse getUserIdentity(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return null;
+        }
+
+        long now = Instant.now().toEpochMilli();
+        final boolean[] shouldCall = {false};
+        userIdentityRetryAfter.compute(userId, (key, retryAfter) -> {
+            if (retryAfter != null && retryAfter > now) {
+                return retryAfter;
+            }
+            shouldCall[0] = true;
+            return now + USER_IDENTITY_RETRY_COOLDOWN_MS;
+        });
+
+        if (!shouldCall[0]) {
+            return null;
+        }
+
+        try {
+            InternalUserResponse user = userServiceClient.getUserById(userId);
+            userIdentityRetryAfter.remove(userId);
+            return user;
+        } catch (Exception ex) {
+            userIdentityRetryAfter.put(userId, now + USER_IDENTITY_RETRY_COOLDOWN_MS);
+            log.warn("Failed to resolve user identity for patient userId {}: {}", userId, ex.getMessage());
+            return null;
+        }
+    }
+
+    private String fullName(InternalUserResponse user) {
+        if (user == null) {
+            return null;
+        }
+        String first = user.getFirstName() == null ? "" : user.getFirstName().trim();
+        String last = user.getLastName() == null ? "" : user.getLastName().trim();
+        String full = (first + " " + last).trim();
+        return full.isEmpty() ? null : full;
     }
 
     private MedicalHistoryResponse toMedicalHistoryResponse(MedicalHistory history) {

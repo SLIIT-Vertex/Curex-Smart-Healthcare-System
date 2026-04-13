@@ -12,11 +12,13 @@ import java.math.BigDecimal;
 @Builder
 public class UpdateDoctorRequest {
 
-    private String phone;
-
     private String specialization;
 
     private String qualifications;
+
+    private String medicalLicenseNumber;
+
+    private String proofDocumentUrls;
 
     @Min(value = 0, message = "Experience must be non-negative")
     private Integer experience;

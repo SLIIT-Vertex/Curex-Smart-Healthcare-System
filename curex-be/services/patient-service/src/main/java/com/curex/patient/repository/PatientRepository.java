@@ -9,10 +9,6 @@ public interface PatientRepository extends JpaRepository<Patient, String> {
 
     Optional<Patient> findByUserId(String userId);
 
-    Optional<Patient> findByEmail(String email);
-
-    boolean existsByEmail(String email);
-
     boolean existsByUserId(String userId);
 
     long deleteByUserId(String userId);

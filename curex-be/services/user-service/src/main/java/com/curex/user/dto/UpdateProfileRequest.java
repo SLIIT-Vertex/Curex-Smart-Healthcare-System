@@ -47,7 +47,7 @@ public class UpdateProfileRequest {
     @Size(max = 2000, message = "Bio must be at most 2000 characters")
     private String bio;
 
-    // ── Doctor-specific ──────────────────────────────────────────────────────
+    // Compatibility fields retained for FE contract; persisted in doctor/patient services.
 
     @Size(max = 100, message = "Specialty must be at most 100 characters")
     private String specialty;
@@ -64,8 +64,6 @@ public class UpdateProfileRequest {
     @Size(max = 2000, message = "Proof document URLs must be at most 2000 characters")
     private String proofDocumentUrls;
 
-    // ── Patient-specific ─────────────────────────────────────────────────────
-
     @Size(max = 10, message = "Blood group must be at most 10 characters")
     private String bloodGroup;
 
@@ -80,4 +78,5 @@ public class UpdateProfileRequest {
 
     @Size(max = 30, message = "Emergency contact phone must be at most 30 characters")
     private String emergencyContactPhone;
+
 }

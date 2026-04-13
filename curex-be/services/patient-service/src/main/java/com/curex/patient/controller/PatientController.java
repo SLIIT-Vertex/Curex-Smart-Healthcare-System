@@ -55,6 +55,14 @@ public class PatientController {
         return ResponseEntity.ok(patientService.updateHistory(id, request));
     }
 
+    @PutMapping("/{id}/emergency-contact")
+    public ResponseEntity<EmergencyContactResponse> updateEmergencyContact(
+            @PathVariable String id,
+            @RequestBody UpdateEmergencyContactRequest request
+    ) {
+        return ResponseEntity.ok(patientService.updateEmergencyContact(id, request));
+    }
+
     @GetMapping("/{id}/prescriptions")
     public ResponseEntity<List<PrescriptionResponse>> getPrescriptions(@PathVariable String id) {
         return ResponseEntity.ok(patientService.getPrescriptions(id));
