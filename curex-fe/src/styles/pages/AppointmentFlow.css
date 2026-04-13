@@ -31,7 +31,25 @@
   }
 
   .calendar-surface {
-    background-color: #e2e8f2;
+    @apply bg-background/80;
+  }
+
+  .calendar-filter-input {
+    color-scheme: light;
+  }
+
+  .calendar-filter-input::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.8;
+  }
+
+  html[data-theme='dark'] .calendar-filter-input {
+    color-scheme: dark;
+    @apply border-primary-light/45 bg-surface text-text-primary;
+  }
+
+  html[data-theme='dark'] .calendar-filter-input::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.1);
   }
 
   .doctor-card-horizontal {
