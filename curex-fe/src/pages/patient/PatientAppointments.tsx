@@ -40,7 +40,7 @@ import "../../styles/pages/AppointmentFlow.css";
 
 function generateTimeSlots(): string[] {
   const slots: string[] = [];
-  for (let h = 8; h <= 17; h++) {
+  for (let h = 8; h <= 21; h++) {
     for (let m = 0; m < 60; m += 30) {
       slots.push(
         `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`,
@@ -284,7 +284,9 @@ export function PatientAppointments() {
   const [myAppointments, setMyAppointments] = useState<AppointmentRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [booking, setBooking] = useState(false);
-  const [payingAppointmentId, setPayingAppointmentId] = useState<string | null>(null);
+  const [payingAppointmentId, setPayingAppointmentId] = useState<string | null>(
+    null,
+  );
   const [paymentsByAppointmentId, setPaymentsByAppointmentId] = useState<
     Record<string, PaymentRecord>
   >({});
@@ -300,26 +302,35 @@ export function PatientAppointments() {
   const [telemedicineSessions, setTelemedicineSessions] = useState<
     Record<string, TelemedicineSessionRecord | null>
   >({});
+  const handledPaymentReturnRef = useRef<string | null>(null);
   const handledPaymentReturnQueryRef = useRef<string | null>(null);
 
   const patientId = user?.id ?? "";
   const patientName = user ? `${user.firstName} ${user.lastName}`.trim() : "";
   const patientEmail = user?.email ?? "";
 
-  const loadPatientAppointments = useCallback(async (): Promise<Record<string, PaymentRecord>> => {
+  const loadPatientAppointments = useCallback(async (
+    silent = false,
+  ): Promise<
+    Record<string, PaymentRecord>
+  > => {
     if (!patientId) {
       return {};
     }
 
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       const [appointmentsResult, paymentsResult] = await Promise.allSettled([
         getAppointmentsByPatient(patientId),
         getPatientPayments(patientId),
       ]);
 
       const patientData =
-        appointmentsResult.status === "fulfilled" ? appointmentsResult.value : [];
+        appointmentsResult.status === "fulfilled"
+          ? appointmentsResult.value
+          : [];
       setMyAppointments(patientData);
 
       const map: Record<string, PaymentRecord> = {};
@@ -344,7 +355,9 @@ export function PatientAppointments() {
             continue;
           }
 
-          const currentTs = new Date(payment.updatedAt ?? payment.createdAt).getTime();
+          const currentTs = new Date(
+            payment.updatedAt ?? payment.createdAt,
+          ).getTime();
           const existingTs = new Date(
             existing.updatedAt ?? existing.createdAt,
           ).getTime();
@@ -362,13 +375,17 @@ export function PatientAppointments() {
 
       return map;
     } catch {
-      toast(
-        "Could not fetch appointment data. Please ensure backend is running.",
-        "error",
-      );
+      if (!silent) {
+        toast(
+          "Could not fetch appointment data. Please ensure backend is running.",
+          "error",
+        );
+      }
       return {};
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [patientId, toast]);
 
@@ -443,14 +460,16 @@ export function PatientAppointments() {
 
     const selected = doctors.find((d) => d.id === selectedDoctorId);
     const idsToCheck = new Set(
-      [selectedDoctorId, selected?.profileId].filter(
-        (id): id is string => Boolean(id),
+      [selectedDoctorId, selected?.profileId].filter((id): id is string =>
+        Boolean(id),
       ),
     );
 
     // Patient pages cannot call doctor-only appointment endpoints (403).
     // Use the patient's own appointment list to infer booked slots for selected doctor.
-    const merged = myAppointments.filter((appt) => idsToCheck.has(appt.doctorId));
+    const merged = myAppointments.filter((appt) =>
+      idsToCheck.has(appt.doctorId),
+    );
 
     setDoctorAppointmentsById((prev) => ({
       ...prev,
@@ -575,7 +594,11 @@ export function PatientAppointments() {
     // Merge appointment records as booked markers so patients can always see booked slots.
     for (const appt of doctorAppointments) {
       const status = String(appt.status).toUpperCase();
-        if (status === "CANCELLED" || status === "CANCELED" || status === "COMPLETED") {
+      if (
+        status === "CANCELLED" ||
+        status === "CANCELED" ||
+        status === "COMPLETED"
+      ) {
         continue;
       }
 
@@ -666,7 +689,10 @@ export function PatientAppointments() {
         telemedicineSessions[appt.id],
         isPaymentCompleted(appt.id),
       ).toUpperCase();
-      if (bookingStatusFilter !== "ALL" && normalizedStatus !== bookingStatusFilter) {
+      if (
+        bookingStatusFilter !== "ALL" &&
+        normalizedStatus !== bookingStatusFilter
+      ) {
         return false;
       }
 
@@ -716,7 +742,12 @@ export function PatientAppointments() {
 
   useEffect(() => {
     setBookingTablePage(1);
-  }, [bookingDateFilter, bookingTableSearch, bookingTypeFilter, bookingStatusFilter]);
+  }, [
+    bookingDateFilter,
+    bookingTableSearch,
+    bookingTypeFilter,
+    bookingStatusFilter,
+  ]);
 
   useEffect(() => {
     if (bookingTablePage > bookingTableTotalPages) {
@@ -784,10 +815,26 @@ export function PatientAppointments() {
   }, [loadPatientAppointments]);
 
   useEffect(() => {
+    if (activeTab !== "bookings" || !patientId) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadPatientAppointments(true);
+    }, 8000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [activeTab, patientId, loadPatientAppointments]);
+
+  useEffect(() => {
     const params = new URLSearchParams(location.search);
     const paymentStatus = params.get("payment");
     const appointmentId = params.get("id") ?? "";
-    const handlingKey = paymentStatus ? `${paymentStatus}:${appointmentId}` : null;
+    const handlingKey = paymentStatus
+      ? `${paymentStatus}:${appointmentId}`
+      : null;
 
     if (!paymentStatus) {
       handledPaymentReturnRef.current = null;
@@ -1206,7 +1253,7 @@ export function PatientAppointments() {
                             <p className="mt-1 truncate text-[11px] text-text-secondary/85">
                               {doctor.consultationFee != null
                                 ? `Fee: $${doctor.consultationFee}`
-                                : doctor.email ?? "Profile available"}
+                                : (doctor.email ?? "Profile available")}
                             </p>
                           </div>
                         </button>
@@ -1433,7 +1480,6 @@ export function PatientAppointments() {
                         : "Book Selected Slot"}
                   </button>
                 </div>
-
               </div>
             </div>
 
@@ -1752,12 +1798,15 @@ export function PatientAppointments() {
                                   disabled={payingAppointmentId === appt.id}
                                   className="rounded-full bg-primary px-3 py-0.5 text-[10px] font-bold text-surface transition hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
-                                  {payingAppointmentId === appt.id ? "Processing..." : "PAY NOW"}
+                                  {payingAppointmentId === appt.id
+                                    ? "Processing..."
+                                    : "PAY NOW"}
                                 </button>
                               )}
                               {!shouldShowPayNow(appt) &&
                                 isPaymentCompleted(appt.id) &&
-                                String(appt.status).toUpperCase() === "PENDING" && (
+                                String(appt.status).toUpperCase() ===
+                                  "PENDING" && (
                                   <span className="rounded-full bg-accent-mint/20 px-3 py-0.5 text-[10px] font-bold text-primary">
                                     Paid - Confirming
                                   </span>
@@ -1914,7 +1963,9 @@ export function PatientAppointments() {
                             {shouldShowPayNow(appt) ? (
                               <button
                                 type="button"
-                                onClick={() => navigate(`/patient/checkout/${appt.id}`)}
+                                onClick={() =>
+                                  navigate(`/patient/checkout/${appt.id}`)
+                                }
                                 className="whitespace-nowrap rounded-md border border-primary/30 bg-primary px-2.5 py-1 text-[11px] font-semibold text-surface transition hover:bg-primary/90"
                               >
                                 Pay Now
@@ -1927,7 +1978,9 @@ export function PatientAppointments() {
                                 Paid
                               </span>
                             ) : (
-                              <span className="text-xs text-text-secondary">-</span>
+                              <span className="text-xs text-text-secondary">
+                                -
+                              </span>
                             )}
                           </td>
                           <td className="px-3 py-2">
@@ -1957,23 +2010,37 @@ export function PatientAppointments() {
 
               <div className="mt-3 flex items-center justify-between text-xs text-text-secondary">
                 <span>
-                  Showing {filteredBookingRows.length === 0 ? 0 : (bookingTablePage - 1) * BOOKING_TABLE_PAGE_SIZE + 1}-
-                  {Math.min(bookingTablePage * BOOKING_TABLE_PAGE_SIZE, filteredBookingRows.length)} of {filteredBookingRows.length}
+                  Showing{" "}
+                  {filteredBookingRows.length === 0
+                    ? 0
+                    : (bookingTablePage - 1) * BOOKING_TABLE_PAGE_SIZE + 1}
+                  -
+                  {Math.min(
+                    bookingTablePage * BOOKING_TABLE_PAGE_SIZE,
+                    filteredBookingRows.length,
+                  )}{" "}
+                  of {filteredBookingRows.length}
                 </span>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setBookingTablePage((p) => Math.max(1, p - 1))}
+                    onClick={() =>
+                      setBookingTablePage((p) => Math.max(1, p - 1))
+                    }
                     disabled={bookingTablePage === 1}
                     className="rounded-lg border border-text-secondary/20 px-2 py-1 disabled:opacity-40"
                   >
                     Prev
                   </button>
-                  <span>Page {bookingTablePage} / {bookingTableTotalPages}</span>
+                  <span>
+                    Page {bookingTablePage} / {bookingTableTotalPages}
+                  </span>
                   <button
                     type="button"
                     onClick={() =>
-                      setBookingTablePage((p) => Math.min(bookingTableTotalPages, p + 1))
+                      setBookingTablePage((p) =>
+                        Math.min(bookingTableTotalPages, p + 1),
+                      )
                     }
                     disabled={bookingTablePage === bookingTableTotalPages}
                     className="rounded-lg border border-text-secondary/20 px-2 py-1 disabled:opacity-40"
@@ -1988,7 +2055,7 @@ export function PatientAppointments() {
       )}
 
       {popupBooking && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-150 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
           <div
             className="w-full max-w-lg rounded-2xl bg-surface p-5"
             style={{ boxShadow: "var(--shadow-card)" }}

@@ -27,23 +27,17 @@ public class Doctor {
     @Column(name = "user_id", unique = true)
     private String userId;
 
-    @Column(name = "first_name", nullable = false)
-    private String firstName;
-
-    @Column(name = "last_name", nullable = false)
-    private String lastName;
-
-    @Column(nullable = false, unique = true)
-    private String email;
-
-    @Column(name = "phone")
-    private String phone;
-
     @Column(name = "specialization")
     private String specialization;
 
     @Column(name = "qualifications", columnDefinition = "TEXT")
     private String qualifications;
+
+    @Column(name = "medical_license_number", length = 100)
+    private String medicalLicenseNumber;
+
+    @Column(name = "proof_document_urls", columnDefinition = "TEXT")
+    private String proofDocumentUrls;
 
     @Column(name = "experience")
     private Integer experience;
@@ -73,7 +67,4 @@ public class Doctor {
     @Builder.Default
     private List<DoctorAvailability> availabilitySlots = new ArrayList<>();
 
-    public String getFullName() {
-        return firstName + " " + lastName;
-    }
 }

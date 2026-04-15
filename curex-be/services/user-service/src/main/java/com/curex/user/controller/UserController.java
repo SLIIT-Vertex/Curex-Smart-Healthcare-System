@@ -17,6 +17,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -70,9 +71,8 @@ public class UserController {
     /**
      * Update the authenticated user's profile.
      *
-     * All fields are optional — only non-null values in the request body are applied.
-     * Typically called immediately after registration to persist dob, gender, address,
-     * and role-specific details (doctor credentials / patient health info).
+        * All fields are optional — only non-null values in the request body are applied.
+        * Typically called immediately after registration to persist common profile details.
      *
      * PUT /api/users/me/profile
      */
@@ -107,6 +107,29 @@ public class UserController {
         return ResponseEntity.ok(Map.of("message", "Account deleted successfully"));
     }
 
+    @GetMapping("/api/users/me/doctor-profile")
+    public ResponseEntity<Map<String, Object>> getMyDoctorProfile() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        UserDetails userDetails = (UserDetails) auth.getPrincipal();
+        UserResponse me = userQueryService.getOwnProfile(userDetails.getUsername());
+        return ResponseEntity.ok(userProfileService.getDoctorProfileByUserId(me.getId()));
+    }
+
+    @GetMapping("/api/users/me/patient-profile")
+    public ResponseEntity<Map<String, Object>> getMyPatientProfile() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        UserDetails userDetails = (UserDetails) auth.getPrincipal();
+        UserResponse me = userQueryService.getOwnProfile(userDetails.getUsername());
+        return ResponseEntity.ok(userProfileService.getPatientProfileByUserId(me.getId()));
+    }
+
+    @PostMapping("/api/users/me/role-profile/bootstrap")
+    public ResponseEntity<Map<String, Object>> bootstrapMyRoleProfile() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        UserDetails userDetails = (UserDetails) auth.getPrincipal();
+        return ResponseEntity.ok(userProfileService.bootstrapOwnRoleProfile(userDetails.getUsername()));
+    }
+
     // ── Approved-user endpoints ──────────────────────────────────────────────
 
     /**
@@ -137,6 +160,24 @@ public class UserController {
     @GetMapping("/api/users/{id}")
     public ResponseEntity<UserResponse> getUserById(@PathVariable String id) {
         return ResponseEntity.ok(userQueryService.getApprovedUserById(id));
+    }
+
+    @GetMapping("/api/users/{id}/doctor-profile")
+    public ResponseEntity<Map<String, Object>> getApprovedDoctorProfileByUserId(@PathVariable String id) {
+        UserResponse user = userQueryService.getApprovedUserById(id);
+        if (user.getRole() != User.Role.DOCTOR) {
+            return ResponseEntity.badRequest().body(Map.of("message", "User is not a doctor"));
+        }
+        return ResponseEntity.ok(userProfileService.getDoctorProfileByUserId(id));
+    }
+
+    @GetMapping("/api/users/{id}/patient-profile")
+    public ResponseEntity<Map<String, Object>> getApprovedPatientProfileByUserId(@PathVariable String id) {
+        UserResponse user = userQueryService.getApprovedUserById(id);
+        if (user.getRole() != User.Role.PATIENT) {
+            return ResponseEntity.badRequest().body(Map.of("message", "User is not a patient"));
+        }
+        return ResponseEntity.ok(userProfileService.getPatientProfileByUserId(id));
     }
 
     /**

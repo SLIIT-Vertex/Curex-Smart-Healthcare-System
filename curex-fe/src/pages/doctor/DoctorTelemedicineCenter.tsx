@@ -44,11 +44,52 @@ function formatDateTime(value?: string | null): string {
     return '-'
   }
 
-  const date = new Date(value)
-  return `${date.toLocaleDateString('en-GB')} ${date.toLocaleTimeString('en-GB', {
+  const raw = String(value).trim()
+  const hasZone = /[zZ]$|[+-]\d{2}:\d{2}$/.test(raw)
+  const utcAware = hasZone ? raw : `${raw}Z`
+  const date = new Date(utcAware)
+  const parsed = Number.isNaN(date.getTime()) ? new Date(raw) : date
+  if (Number.isNaN(parsed.getTime())) {
+    return '-'
+  }
+
+  return `${parsed.toLocaleDateString('en-GB')} ${parsed.toLocaleTimeString('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
   })}`
+}
+
+function formatTime(value?: string | null): string {
+  if (!value) {
+    return '-'
+  }
+
+  const raw = String(value).trim()
+  const hasZone = /[zZ]$|[+-]\d{2}:\d{2}$/.test(raw)
+  const utcAware = hasZone ? raw : `${raw}Z`
+  const date = new Date(utcAware)
+  const parsed = Number.isNaN(date.getTime()) ? new Date(raw) : date
+  if (Number.isNaN(parsed.getTime())) {
+    return '-'
+  }
+
+  return parsed.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatBookedAppointmentTime(value?: string | null): string {
+  if (!value) {
+    return '-'
+  }
+
+  const match = String(value).match(/^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/)
+  if (match?.[1]) {
+    return match[1]
+  }
+
+  return formatTime(value)
 }
 
 function appointmentDateTime(appointment: AppointmentRecord): string {
@@ -237,7 +278,7 @@ export function DoctorTelemedicineCenter() {
         appt.patientName,
         appt.patientId,
         meetingTitle(appt),
-        formatDateTime(session?.startedAt),
+        appointmentDateTime(appt),
         formatDateTime(session?.endedAt),
       ]
         .filter(Boolean)
@@ -491,7 +532,7 @@ export function DoctorTelemedicineCenter() {
                     type="date"
                     value={queueDateFilter}
                     onChange={(e) => setQueueDateFilter(e.target.value)}
-                    className="patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                    className="calendar-filter-input patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
                   />
                 </label>
               </div>
@@ -618,7 +659,7 @@ export function DoctorTelemedicineCenter() {
                             type="date"
                             value={endedDateFilter}
                             onChange={(e) => setEndedDateFilter(e.target.value)}
-                            className="patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                            className="calendar-filter-input patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
                           />
                         </label>
                       </div>
@@ -648,8 +689,8 @@ export function DoctorTelemedicineCenter() {
                                   <tr key={`ended-${appt.id}`} className="border-b border-text-secondary/10">
                                     <td className="px-3 py-2 font-medium text-primary">{meetingTitle(appt)}</td>
                                     <td className="px-3 py-2">{new Date(appt.appointmentTime).toLocaleDateString('en-GB')}</td>
-                                    <td className="px-3 py-2">{formatDateTime(session?.startedAt)}</td>
-                                    <td className="px-3 py-2">{formatDateTime(session?.endedAt)}</td>
+                                    <td className="px-3 py-2">{formatBookedAppointmentTime(appt.appointmentTime)}</td>
+                                    <td className="px-3 py-2">{formatTime(session?.endedAt)}</td>
                                     <td className="px-3 py-2">{formatDateTime(session?.endedAt)}</td>
                                   </tr>
                                 )
@@ -788,7 +829,7 @@ export function DoctorTelemedicineCenter() {
 
 
       {confirmEndOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-150 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-surface p-5" style={{ boxShadow: 'var(--shadow-card)' }}>
             <h3 className="text-lg font-semibold text-primary">End Session?</h3>
             <p className="mt-2 text-sm text-text-secondary">

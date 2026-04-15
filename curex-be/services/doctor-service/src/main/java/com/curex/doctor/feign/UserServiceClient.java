@@ -12,4 +12,7 @@ public interface UserServiceClient {
 
     @GetMapping("/api/internal/users/approved/by-role/{role}")
     List<ApprovedUserFeignDto> getApprovedUsersByRole(@PathVariable("role") String role);
+
+    @GetMapping("/api/internal/users/{id}")
+    ApprovedUserFeignDto getUserById(@PathVariable("id") String id);
 }

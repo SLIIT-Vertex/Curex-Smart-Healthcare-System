@@ -31,6 +31,7 @@ public class AdminService {
 
     private final UserRepository userRepository;
     private final RabbitTemplate rabbitTemplate;
+    private final ProfileBridgeService profileBridgeService;
 
     @Transactional(readOnly = true)
     public Page<UserResponse> getAllUsers(int page, int size, User.Role role,
@@ -202,7 +203,7 @@ public class AdminService {
     private UserResponse toUserResponse(User user) {
         UserResponse response = new UserResponse(user);
         response.setApprovedBy(resolveApprovedByDisplayName(response.getApprovedBy()));
-        return response;
+        return profileBridgeService.enrich(response);
     }
 
     private String resolveApprovedByDisplayName(String approvedBy) {

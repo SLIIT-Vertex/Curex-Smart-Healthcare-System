@@ -133,14 +133,55 @@ function formatDateTime(value?: string | null): string {
     return "-";
   }
 
-  const date = new Date(value);
-  return `${date.toLocaleDateString("en-GB")} ${date.toLocaleTimeString(
+  const raw = String(value).trim();
+  const hasZone = /[zZ]$|[+-]\d{2}:\d{2}$/.test(raw);
+  const utcAware = hasZone ? raw : `${raw}Z`;
+  const date = new Date(utcAware);
+  const parsed = Number.isNaN(date.getTime()) ? new Date(raw) : date;
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+
+  return `${parsed.toLocaleDateString("en-GB")} ${parsed.toLocaleTimeString(
     "en-GB",
     {
       hour: "2-digit",
       minute: "2-digit",
     },
   )}`;
+}
+
+function formatTime(value?: string | null): string {
+  if (!value) {
+    return "-";
+  }
+
+  const raw = String(value).trim();
+  const hasZone = /[zZ]$|[+-]\d{2}:\d{2}$/.test(raw);
+  const utcAware = hasZone ? raw : `${raw}Z`;
+  const date = new Date(utcAware);
+  const parsed = Number.isNaN(date.getTime()) ? new Date(raw) : date;
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+
+  return parsed.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatBookedAppointmentTime(value?: string | null): string {
+  if (!value) {
+    return "-";
+  }
+
+  const match = String(value).match(/^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/);
+  if (match?.[1]) {
+    return match[1];
+  }
+
+  return formatTime(value);
 }
 
 function appointmentDateTime(appointment: AppointmentRecord): string {
@@ -349,7 +390,7 @@ export function PatientTelemedicineCenter() {
         appt.doctorName,
         appt.doctorId,
         meetingTitle(appt),
-        formatDateTime(session?.startedAt),
+        appointmentDateTime(appt),
         formatDateTime(session?.endedAt),
       ]
         .filter(Boolean)
@@ -855,7 +896,7 @@ export function PatientTelemedicineCenter() {
                   type="date"
                   value={queueDateFilter}
                   onChange={(e) => setQueueDateFilter(e.target.value)}
-                  className="patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                    className="calendar-filter-input patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
                 />
               </label>
             </div>
@@ -995,7 +1036,7 @@ export function PatientTelemedicineCenter() {
                           type="date"
                           value={endedDateFilter}
                           onChange={(e) => setEndedDateFilter(e.target.value)}
-                          className="patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
+                            className="calendar-filter-input patient-page-input w-full border-primary-light/30 bg-primary-light/5 pl-10 pr-3 font-medium text-primary shadow-sm outline-none transition-all hover:border-primary-light/60 hover:bg-primary-light/10 focus:ring-2 focus:ring-primary-light/20"
                         />
                       </label>
                     </div>
@@ -1035,10 +1076,10 @@ export function PatientTelemedicineCenter() {
                                     )}
                                   </td>
                                   <td className="px-3 py-2">
-                                    {formatDateTime(session?.startedAt)}
+                                    {formatBookedAppointmentTime(appt.appointmentTime)}
                                   </td>
                                   <td className="px-3 py-2">
-                                    {formatDateTime(session?.endedAt)}
+                                    {formatTime(session?.endedAt)}
                                   </td>
                                   <td className="px-3 py-2">
                                     {formatDateTime(session?.endedAt)}
@@ -1086,37 +1127,37 @@ export function PatientTelemedicineCenter() {
           (meetingAppointment ? (
             <div className="flex flex-col gap-6">
               {/* Meeting Header Dashboard */}
-              <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-primary/95 to-primary p-6 text-white shadow-xl backdrop-blur-sm">
+              <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-4 rounded-2xl border border-primary-light/25 bg-surface p-6 text-primary shadow-xl backdrop-blur-sm">
                 <div className="flex items-center gap-4">
-                  <div className="rounded-xl bg-white/10 p-3 ring-1 ring-white/20">
+                  <div className="rounded-xl bg-primary-light/10 p-3 ring-1 ring-primary-light/25">
                     <Video className="h-6 w-6 text-accent-mint" />
                   </div>
                   <div>
                     <h2 className="text-xl font-bold tracking-tight">
                       {meetingTitle(meetingAppointment)}
                     </h2>
-                    <p className="text-sm text-white/70">
-                      Doctor: <span className="font-semibold text-white">{meetingAppointment.doctorName ?? meetingAppointment.doctorId}</span> • {meetingAppointment.doctorSpecialty ?? "General"}
+                    <p className="text-sm text-text-secondary">
+                      Doctor: <span className="font-semibold text-primary">{meetingAppointment.doctorName ?? meetingAppointment.doctorId}</span> • {meetingAppointment.doctorSpecialty ?? "General"}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3">
                   <div className="hidden flex-col items-end sm:flex">
-                    <span className="text-[10px] uppercase tracking-widest text-white/50">Session Status</span>
+                    <span className="text-[10px] uppercase tracking-widest text-text-secondary/70">Session Status</span>
                     <span className="flex items-center gap-1.5 font-semibold text-accent-mint">
                       <span className="h-2 w-2 rounded-full bg-accent-mint animate-pulse" />
                       {queueStatus(meetingAppointment, meetingSession)}
                     </span>
                   </div>
-                  <div className="h-8 w-[1px] bg-white/10 mx-2 hidden sm:block" />
+                  <div className="mx-2 hidden h-8 w-[1px] bg-text-secondary/20 sm:block" />
                   <button
                     type="button"
                     onClick={() => {
                       setActiveTab("queue");
                       setSelectedAppointmentId(null);
                     }}
-                    className="group flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold transition hover:bg-white/20"
+                    className="group flex items-center gap-2 rounded-xl border border-primary-light/30 bg-primary-light/10 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary-light/20"
                   >
                     <X className="h-4 w-4 transition group-hover:rotate-90" />
                     Leave Room
@@ -1199,8 +1240,8 @@ export function PatientTelemedicineCenter() {
                   </section>
 
                   {/* New Dedicated Transcript Card */}
-                  <div className="overflow-hidden rounded-3xl border border-primary/10 bg-white p-6 shadow-lg shadow-primary/5 transition hover:shadow-xl">
-                    <div className="mb-4 flex items-center justify-between border-b border-gray-100 pb-4">
+                  <div className="overflow-hidden rounded-3xl border border-text-secondary/15 bg-surface p-6 shadow-lg shadow-primary/5 transition hover:shadow-xl">
+                    <div className="mb-4 flex items-center justify-between border-b border-text-secondary/10 pb-4">
                       <div className="flex items-center gap-3">
                         <div className="rounded-lg bg-accent-mint/10 p-2 text-accent-mint">
                           <Mic className="h-5 w-5" />
@@ -1226,15 +1267,15 @@ export function PatientTelemedicineCenter() {
                         </button>
                         <button 
                           onClick={copyTranscript}
-                          className="rounded-full bg-gray-50 p-2 text-gray-500 hover:bg-gray-100 transition"
+                          className="rounded-full bg-background p-2 text-text-secondary transition hover:bg-primary-light/10 hover:text-primary"
                         >
                           <Copy className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
 
-                    <div className="min-h-[100px] rounded-2xl bg-gray-50/50 p-5 ring-1 ring-black/[0.02]">
-                      <div className="text-sm leading-relaxed text-slate-700">
+                    <div className="min-h-[100px] rounded-2xl bg-background/70 p-5 ring-1 ring-text-secondary/10">
+                      <div className="text-sm leading-relaxed text-text-primary">
                         {interimTranscript ? (
                           <span className="inline-flex items-center gap-2 italic text-primary/60">
                             {interimTranscript}
@@ -1258,7 +1299,7 @@ export function PatientTelemedicineCenter() {
 
                 {/* Right Side: Meeting Info Sidebar */}
                 <aside className="space-y-6">
-                  <div className="rounded-3xl border border-primary/10 bg-white p-6 shadow-lg shadow-primary/5">
+                  <div className="rounded-3xl border border-text-secondary/15 bg-surface p-6 shadow-lg shadow-primary/5">
                     <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-text-secondary/60">Schedule Detail</h3>
                     <div className="space-y-4 text-sm">
                       <div className="flex flex-col gap-0.5">
@@ -1271,7 +1312,7 @@ export function PatientTelemedicineCenter() {
                           {roomJoinable ? "Active session" : joinAvailability(meetingAppointment)}
                         </span>
                       </div>
-                      <div className="flex flex-col gap-0.5 pt-2 border-t border-gray-50">
+                      <div className="flex flex-col gap-0.5 border-t border-text-secondary/10 pt-2">
                         <span className="text-[10px] uppercase text-text-secondary/50 font-bold">Word Count</span>
                         <span className="font-mono text-xs">{transcriptWordCount} words recorded</span>
                       </div>
@@ -1281,14 +1322,14 @@ export function PatientTelemedicineCenter() {
                          <button
                             type="button"
                             onClick={exportTranscript}
-                            className="flex w-full items-center justify-center gap-3 rounded-2xl bg-primary py-3.5 text-sm font-bold text-white shadow-lg transition hover:scale-[1.02] active:scale-95"
+                            className="flex w-full items-center justify-center gap-3 rounded-2xl bg-primary-light py-3.5 text-sm font-bold text-background shadow-lg transition hover:scale-[1.02] active:scale-95"
                           >
                             Download Full Record
                           </button>
                           <button
                             type="button"
                             onClick={clearTranscript}
-                            className="flex w-full items-center justify-center gap-3 rounded-2xl bg-gray-50 border border-gray-100 py-3.5 text-sm font-bold text-text-secondary transition hover:bg-gray-100"
+                            className="flex w-full items-center justify-center gap-3 rounded-2xl border border-text-secondary/15 bg-background py-3.5 text-sm font-bold text-text-secondary transition hover:bg-primary-light/10"
                           >
                             Clear History
                           </button>

@@ -29,6 +29,7 @@ import java.util.stream.Collectors;
 public class UserQueryService {
 
     private final UserRepository userRepository;
+    private final ProfileBridgeService profileBridgeService;
 
     // ── Own profile ──────────────────────────────────────────────────────────
 
@@ -36,6 +37,7 @@ public class UserQueryService {
     public UserResponse getOwnProfile(String email) {
         return userRepository.findByEmail(email)
                 .map(UserResponse::new)
+                .map(profileBridgeService::enrich)
                 .orElseThrow(() -> new UserNotFoundException(email));
     }
 
@@ -48,21 +50,23 @@ public class UserQueryService {
         if (user.getAccountStatus() != User.AccountStatus.APPROVED) {
             throw new UserNotFoundException(userId);
         }
-        return new UserResponse(user);
+        return profileBridgeService.enrich(new UserResponse(user));
     }
 
     /** Paginated search across APPROVED users. Filters by name (first/last/email) and/or role. */
     public Page<UserResponse> searchApprovedUsers(String name, User.Role role, int page, int size) {
         String normalizedName = name == null ? "" : name.trim();
         return userRepository.searchUsers(role, User.AccountStatus.APPROVED, normalizedName, PageRequest.of(page, size))
-                .map(UserResponse::new);
+            .map(UserResponse::new)
+            .map(profileBridgeService::enrich);
     }
 
     /** All approved users of a given role. */
     public List<UserResponse> getApprovedUsersByRole(User.Role role) {
         return userRepository.findByRoleAndAccountStatus(role, User.AccountStatus.APPROVED)
                 .stream()
-                .map(UserResponse::new)
+            .map(UserResponse::new)
+            .map(profileBridgeService::enrich)
                 .collect(Collectors.toList());
     }
 
@@ -83,6 +87,7 @@ public class UserQueryService {
     public UserResponse getAnyUserById(String userId) {
         return userRepository.findById(userId)
                 .map(UserResponse::new)
+                .map(profileBridgeService::enrich)
                 .orElseThrow(() -> new UserNotFoundException(userId));
     }
 
@@ -90,13 +95,15 @@ public class UserQueryService {
     public UserResponse getAnyUserByEmail(String email) {
         return userRepository.findByEmail(email)
                 .map(UserResponse::new)
+                .map(profileBridgeService::enrich)
                 .orElseThrow(() -> new UserNotFoundException(email));
     }
 
     /** Get all users of a role regardless of status (for service-to-service calls). */
     public List<UserResponse> getAllUsersByRole(User.Role role) {
         return userRepository.findByRole(role).stream()
-                .map(UserResponse::new)
+            .map(UserResponse::new)
+            .map(profileBridgeService::enrich)
                 .collect(Collectors.toList());
     }
 }

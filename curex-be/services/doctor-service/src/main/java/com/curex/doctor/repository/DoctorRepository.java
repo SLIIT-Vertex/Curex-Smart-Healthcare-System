@@ -13,11 +13,7 @@ public interface DoctorRepository extends JpaRepository<Doctor, String> {
 
     List<Doctor> findByUserIdIn(Collection<String> userIds);
 
-    Optional<Doctor> findByEmail(String email);
-
     List<Doctor> findBySpecializationContainingIgnoreCase(String specialization);
-
-    boolean existsByEmail(String email);
 
     boolean existsByUserId(String userId);
 

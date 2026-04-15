@@ -69,7 +69,7 @@ public class RegisterRequest {
     @Size(max = 500)
     private String address;
 
-    // ── Doctor-specific (ignored for other roles) ────────────────────────────
+    // Compatibility fields retained for FE contract; persisted in doctor/patient services.
 
     @Size(max = 100)
     private String specialty;
@@ -86,8 +86,6 @@ public class RegisterRequest {
     @Size(max = 2000)
     private String proofDocumentUrls;
 
-    // ── Patient-specific (ignored for other roles) ───────────────────────────
-
     @Size(max = 10)
     private String bloodGroup;
 
@@ -102,4 +100,5 @@ public class RegisterRequest {
 
     @Size(max = 30)
     private String emergencyContactPhone;
+
 }

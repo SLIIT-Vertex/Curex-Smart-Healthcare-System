@@ -49,7 +49,7 @@ function hydrateGridFromSlots(
 
 function generateTimeSlots(): string[] {
   const slots: string[] = []
-  for (let h = 8; h <= 17; h++) {
+  for (let h = 8; h <= 21; h++) {
     for (let m = 0; m < 60; m += 30) {
       slots.push(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`)
     }
@@ -205,6 +205,37 @@ function withDayPattern(
   return next
 }
 
+function applyWeekdayTimeState(
+  prev: Record<string, SlotState>,
+  dateKeys: string[],
+  targetDateKey: string,
+  targetTime: string,
+  bookedKeys: Set<string>,
+  nextState: SlotState
+): Record<string, SlotState> {
+  const next = { ...prev }
+  const targetWeekday = weekdayKey(targetDateKey)
+
+  for (const dateKey of dateKeys) {
+    if (weekdayKey(dateKey) !== targetWeekday) {
+      continue
+    }
+
+    const key = dateSlotKey(dateKey, targetTime)
+    if (bookedKeys.has(key)) {
+      continue
+    }
+
+    if (nextState === 'available') {
+      next[key] = 'available'
+    } else {
+      delete next[key]
+    }
+  }
+
+  return next
+}
+
 export function DoctorAvailability() {
   const { user } = useAuth()
   const { toast } = useToast()
@@ -233,6 +264,10 @@ export function DoctorAvailability() {
     'ALL' | 'PENDING' | 'CONFIRMED' | 'IN_SESSION' | 'COMPLETED' | 'CANCELLED' | 'ENDED'
   >('ALL')
   const [bookingsDateFilter, setBookingsDateFilter] = useState('')
+  const [showAddSlotsForm, setShowAddSlotsForm] = useState(false)
+  const [manualDateKey, setManualDateKey] = useState(dateKeys[0])
+  const [manualStartTime, setManualStartTime] = useState('08:00')
+  const [manualEndTime, setManualEndTime] = useState('09:30')
   const [bookingsTablePage, setBookingsTablePage] = useState(1)
   const dragRef = useRef<{
     paintState: SlotState
@@ -502,10 +537,17 @@ export function DoctorAvailability() {
   const clearSelectedDay = () => {
     setGrid((prev) => {
       const next = { ...prev }
+      const selectedWeekday = weekdayKey(selectedDateKey)
       for (const time of TIME_SLOTS) {
-        const key = dateSlotKey(selectedDateKey, time)
-        if (!bookedSlotKeys.has(key)) {
-          delete next[key]
+        for (const dateKey of dateKeys) {
+          if (weekdayKey(dateKey) !== selectedWeekday) {
+            continue
+          }
+
+          const key = dateSlotKey(dateKey, time)
+          if (!bookedSlotKeys.has(key)) {
+            delete next[key]
+          }
         }
       }
       return next
@@ -554,6 +596,51 @@ export function DoctorAvailability() {
     setHasChanges(true)
   }
 
+  const addManualSlotsForSelectedDate = () => {
+    if (!dateKeys.includes(manualDateKey)) {
+      toast('Please select a date within the availability range.', 'error')
+      return
+    }
+
+    const startIndex = TIME_SLOTS.indexOf(manualStartTime)
+    const endIndex = TIME_SLOTS.indexOf(manualEndTime)
+
+    if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
+      toast('Please select a valid start and end time.', 'error')
+      return
+    }
+
+    const keysToAdd: string[] = []
+    for (let i = startIndex; i <= endIndex; i++) {
+      const time = TIME_SLOTS[i]
+      const key = dateSlotKey(manualDateKey, time)
+      if (bookedSlotKeys.has(key)) {
+        continue
+      }
+      if (grid[key] !== 'available') {
+        keysToAdd.push(key)
+      }
+    }
+
+    if (keysToAdd.length === 0) {
+      toast('No new slots were added for that range.', 'info')
+      return
+    }
+
+    setGrid((prev) => {
+      const next = { ...prev }
+      for (const key of keysToAdd) {
+        next[key] = 'available'
+      }
+      return next
+    })
+
+    setSelectedDateKey(manualDateKey)
+    setHasChanges(true)
+    toast(`Added ${keysToAdd.length} slot${keysToAdd.length > 1 ? 's' : ''} on ${dateLabel(manualDateKey)}.`, 'success')
+    setShowAddSlotsForm(false)
+  }
+
   const handleSlotPointerDown = (dateKey: string, time: string) => {
     const key = dateSlotKey(dateKey, time)
     if (bookedSlotKeys.has(key)) {
@@ -568,15 +655,9 @@ export function DoctorAvailability() {
       touched: new Set([key]),
     }
 
-    setGrid((prev) => {
-      const next = { ...prev }
-      if (nextState === 'available') {
-        next[key] = 'available'
-      } else {
-        delete next[key]
-      }
-      return next
-    })
+    setGrid((prev) =>
+      applyWeekdayTimeState(prev, dateKeys, dateKey, time, bookedSlotKeys, nextState)
+    )
     setHasChanges(true)
   }
 
@@ -593,15 +674,9 @@ export function DoctorAvailability() {
     dragRef.current.touched.add(key)
     const nextState = dragRef.current.paintState
 
-    setGrid((prev) => {
-      const next = { ...prev }
-      if (nextState === 'available') {
-        next[key] = 'available'
-      } else {
-        delete next[key]
-      }
-      return next
-    })
+    setGrid((prev) =>
+      applyWeekdayTimeState(prev, dateKeys, dateKey, time, bookedSlotKeys, nextState)
+    )
     setHasChanges(true)
   }
 
@@ -675,6 +750,13 @@ export function DoctorAvailability() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => setShowAddSlotsForm(true)}
+                  className="rounded-lg border border-primary-light/35 bg-primary-light/10 px-3 py-2 text-sm font-semibold text-primary transition hover:bg-primary-light/20"
+                >
+                  Add New Slots
+                </button>
+                <button
+                  type="button"
                   onClick={() => setWeekStartIndex((v) => Math.max(0, v - 7))}
                   disabled={!canGoPrevWeek}
                   className="flex h-9 w-9 items-center justify-center rounded-lg border border-text-secondary/20 text-text-secondary transition hover:text-primary disabled:opacity-40"
@@ -701,7 +783,7 @@ export function DoctorAvailability() {
                   Mark selected date fully
                 </button>
                 <button type="button" onClick={clearSelectedDay} className="day-pill text-left">
-                  Clear selected date
+                  Clear selected weekday
                 </button>
                 <button type="button" onClick={copyToSameWeekday} className="day-pill text-left">
                   Copy to same weekday dates
@@ -1175,8 +1257,95 @@ export function DoctorAvailability() {
         </div>
       )}
 
+      {showAddSlotsForm && (
+        <div className="fixed inset-0 z-150 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-surface p-5" style={{ boxShadow: 'var(--shadow-card)' }}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-primary">Add New Slots</h3>
+                <p className="text-sm text-text-secondary">Select date and time range within the next 30 days.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddSlotsForm(false)}
+                className="rounded-lg border border-text-secondary/20 p-2 text-text-secondary transition hover:text-primary"
+                aria-label="Close add slots form"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                Date
+                <select
+                  value={manualDateKey}
+                  onChange={(e) => setManualDateKey(e.target.value)}
+                  className="patient-page-input !px-3 !py-2"
+                >
+                  {dateKeys.map((dateKey) => (
+                    <option key={dateKey} value={dateKey}>
+                      {dateLabel(dateKey)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                  Start Time
+                  <select
+                    value={manualStartTime}
+                    onChange={(e) => setManualStartTime(e.target.value)}
+                    className="patient-page-input !px-3 !py-2"
+                  >
+                    {TIME_SLOTS.map((time) => (
+                      <option key={`start-${time}`} value={time}>
+                        {time}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                  End Time
+                  <select
+                    value={manualEndTime}
+                    onChange={(e) => setManualEndTime(e.target.value)}
+                    className="patient-page-input !px-3 !py-2"
+                  >
+                    {TIME_SLOTS.map((time) => (
+                      <option key={`end-${time}`} value={time}>
+                        {time}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddSlotsForm(false)}
+                className="rounded-lg border border-text-secondary/20 px-3 py-2 text-sm text-text-secondary transition hover:text-primary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={addManualSlotsForSelectedDate}
+                className="btn-primary"
+              >
+                Add Slots
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {popupBooked && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-150 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-2xl bg-surface p-5" style={{ boxShadow: 'var(--shadow-card)' }}>
             <div className="flex items-start justify-between gap-3">
               <div>

@@ -204,7 +204,7 @@ async function getDoctorProfileForBookable(
 ): Promise<DoctorProfileResponse | null> {
   try {
     const byUser = await api.get<MaybeWrapped<DoctorProfileResponse>>(
-      `/api/doctors/by-user/${doctor.userId}`,
+      `/api/users/${doctor.userId}/doctor-profile`,
     );
     const profile = normalizeDoctorProfile(unwrapApi(byUser.data));
     if (profile) {
@@ -448,7 +448,7 @@ async function resolveDoctorProfileId(
 
   try {
     const { data } = await api.get<DoctorProfileResponse>(
-      `/api/doctors/by-user/${doctorUserId}`,
+      `/api/users/${doctorUserId}/doctor-profile`,
     );
     if (data?.id) {
       doctorProfileIdByUserId.set(doctorUserId, data.id);
@@ -496,13 +496,17 @@ export async function saveDoctorSlots(
 ): Promise<AvailabilitySlotResponse[]> {
   const doctorProfileId = await resolveDoctorProfileId(doctorUserId);
   if (!doctorProfileId) {
-    throw new Error("Could not resolve doctor profile id for availability save");
+    throw new Error(
+      "Could not resolve doctor profile id for availability save",
+    );
   }
 
   const unique = new Set<string>();
   const slots = slotKeys
     .map((key) => parseDateSlotKey(key))
-    .filter((parsed): parsed is { dateKey: string; time: string } => Boolean(parsed))
+    .filter((parsed): parsed is { dateKey: string; time: string } =>
+      Boolean(parsed),
+    )
     .map(({ dateKey, time }) => ({
       day: dayForDateKey(dateKey),
       startTime: normalizeStartTime(time),

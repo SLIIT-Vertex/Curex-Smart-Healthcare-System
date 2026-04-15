@@ -50,6 +50,7 @@ public class AuthService {
     private final UserDetailsService userDetailsService;
     private final RabbitTemplate rabbitTemplate;
     private final OtpService otpService;
+    private final ProfileBridgeService profileBridgeService;
 
     public AuthResponse register(RegisterRequest request) {
         // ADMIN accounts must be seeded via database or created by an existing admin.
@@ -88,6 +89,8 @@ public class AuthService {
 
         User savedUser = userRepository.save(user);
         log.info("User registered: {} role={}", savedUser.getEmail(), savedUser.getRole());
+
+        profileBridgeService.syncAfterRegistration(savedUser, request);
 
         // Invalidate the verification tokens so they cannot be reused.
         otpService.consumePhoneVerificationToken(request.getPhoneVerificationToken());
@@ -249,9 +252,7 @@ public class AuthService {
     }
 
     /**
-     * Copies optional profile fields from the registration payload onto the new user entity.
-     * Role-specific fields are naturally skipped because the frontend sends them as null
-     * for the wrong role — no explicit role guard needed.
+     * Copies optional common profile fields from the registration payload onto the new user entity.
      */
     private void applyProfileFields(User user, RegisterRequest r) {
         // Common
@@ -259,18 +260,6 @@ public class AuthService {
         set(r.getDob(),             user::setDob);
         set(r.getGender(),          user::setGender);
         set(r.getAddress(),         user::setAddress);
-        // Doctor-specific
-        set(r.getSpecialty(),            user::setSpecialty);
-        set(r.getMedicalLicenseNumber(), user::setMedicalLicenseNumber);
-        set(r.getYearsOfExperience(),    user::setYearsOfExperience);
-        set(r.getCertifications(),       user::setCertifications);
-        set(r.getProofDocumentUrls(),    user::setProofDocumentUrls);
-        // Patient-specific
-        set(r.getBloodGroup(),            user::setBloodGroup);
-        set(r.getAllergies(),              user::setAllergies);
-        set(r.getChronicConditions(),     user::setChronicConditions);
-        set(r.getEmergencyContactName(),  user::setEmergencyContactName);
-        set(r.getEmergencyContactPhone(), user::setEmergencyContactPhone);
     }
 
     private static <T> void set(T value, Consumer<T> setter) {

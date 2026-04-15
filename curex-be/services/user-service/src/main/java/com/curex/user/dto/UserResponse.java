@@ -35,14 +35,12 @@ public class UserResponse {
     private String address;
     private String bio;
 
-    // Doctor-specific
+    // Compatibility fields retained for FE contract; values are enriched from doctor/patient services.
     private String specialty;
     private String medicalLicenseNumber;
     private Integer yearsOfExperience;
     private String certifications;
     private String proofDocumentUrls;
-
-    // Patient-specific
     private String bloodGroup;
     private String allergies;
     private String chronicConditions;
@@ -68,15 +66,5 @@ public class UserResponse {
         this.gender               = user.getGender();
         this.address              = user.getAddress();
         this.bio                  = user.getBio();
-        this.specialty            = user.getSpecialty();
-        this.medicalLicenseNumber = user.getMedicalLicenseNumber();
-        this.yearsOfExperience    = user.getYearsOfExperience();
-        this.certifications       = user.getCertifications();
-        this.proofDocumentUrls    = user.getProofDocumentUrls();
-        this.bloodGroup           = user.getBloodGroup();
-        this.allergies            = user.getAllergies();
-        this.chronicConditions    = user.getChronicConditions();
-        this.emergencyContactName  = user.getEmergencyContactName();
-        this.emergencyContactPhone = user.getEmergencyContactPhone();
     }
 }

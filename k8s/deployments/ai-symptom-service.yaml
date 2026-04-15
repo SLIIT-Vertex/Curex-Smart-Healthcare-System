@@ -1,9 +1,6 @@
 ---
-# ─────────────────────────────────────────────────────────────────────────────
 # AI Symptom Service — Deployment + ClusterIP Service (stateless, no DB)
-# Image: docker build -t your-registry/curex-ai-symptom-service:latest ./curex-be/services/ai-symptom-service
-# Uses Groq Cloud when GROQ_API_KEY is set; falls back to rule-based analysis when empty.
-# ─────────────────────────────────────────────────────────────────────────────
+# Image: docker build -t curex-ai-symptom-service:latest ./curex-be/services/ai-symptom-service
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,20 +14,16 @@ spec:
   selector:
     matchLabels:
       app: ai-symptom-service
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
   template:
     metadata:
       labels:
         app: ai-symptom-service
     spec:
+      enableServiceLinks: false
       containers:
         - name: ai-symptom-service
-          image: your-registry/curex-ai-symptom-service:latest
-          imagePullPolicy: Always
+          image: curex-ai-symptom-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8085
           env:
@@ -48,27 +41,31 @@ spec:
               value: docker
           resources:
             requests:
-              cpu: "200m"
-              memory: "256Mi"
+              cpu: "50m"
+              memory: "192Mi"
             limits:
-              cpu: "500m"
-              memory: "512Mi"
+              cpu: "300m"
+              memory: "384Mi"
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8085
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 20
           readinessProbe:
             httpGet:
               path: /actuator/health
               port: 8085
-            initialDelaySeconds: 30
             periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+            timeoutSeconds: 3
           livenessProbe:
             httpGet:
               path: /actuator/health
               port: 8085
-            initialDelaySeconds: 60
             periodSeconds: 30
-            timeoutSeconds: 10
-            failureThreshold: 3
+            timeoutSeconds: 5
+            failureThreshold: 5
 
 ---
 apiVersion: v1
