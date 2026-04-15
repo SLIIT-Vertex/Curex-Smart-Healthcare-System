@@ -1258,7 +1258,7 @@ export function DoctorAvailability() {
       )}
 
       {showAddSlotsForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-150 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-surface p-5" style={{ boxShadow: 'var(--shadow-card)' }}>
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1345,7 +1345,7 @@ export function DoctorAvailability() {
       )}
 
       {popupBooked && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-150 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-2xl bg-surface p-5" style={{ boxShadow: 'var(--shadow-card)' }}>
             <div className="flex items-start justify-between gap-3">
               <div>
