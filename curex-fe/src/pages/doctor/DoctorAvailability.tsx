@@ -205,6 +205,37 @@ function withDayPattern(
   return next
 }
 
+function applyWeekdayTimeState(
+  prev: Record<string, SlotState>,
+  dateKeys: string[],
+  targetDateKey: string,
+  targetTime: string,
+  bookedKeys: Set<string>,
+  nextState: SlotState
+): Record<string, SlotState> {
+  const next = { ...prev }
+  const targetWeekday = weekdayKey(targetDateKey)
+
+  for (const dateKey of dateKeys) {
+    if (weekdayKey(dateKey) !== targetWeekday) {
+      continue
+    }
+
+    const key = dateSlotKey(dateKey, targetTime)
+    if (bookedKeys.has(key)) {
+      continue
+    }
+
+    if (nextState === 'available') {
+      next[key] = 'available'
+    } else {
+      delete next[key]
+    }
+  }
+
+  return next
+}
+
 export function DoctorAvailability() {
   const { user } = useAuth()
   const { toast } = useToast()
@@ -506,10 +537,17 @@ export function DoctorAvailability() {
   const clearSelectedDay = () => {
     setGrid((prev) => {
       const next = { ...prev }
+      const selectedWeekday = weekdayKey(selectedDateKey)
       for (const time of TIME_SLOTS) {
-        const key = dateSlotKey(selectedDateKey, time)
-        if (!bookedSlotKeys.has(key)) {
-          delete next[key]
+        for (const dateKey of dateKeys) {
+          if (weekdayKey(dateKey) !== selectedWeekday) {
+            continue
+          }
+
+          const key = dateSlotKey(dateKey, time)
+          if (!bookedSlotKeys.has(key)) {
+            delete next[key]
+          }
         }
       }
       return next
@@ -617,15 +655,9 @@ export function DoctorAvailability() {
       touched: new Set([key]),
     }
 
-    setGrid((prev) => {
-      const next = { ...prev }
-      if (nextState === 'available') {
-        next[key] = 'available'
-      } else {
-        delete next[key]
-      }
-      return next
-    })
+    setGrid((prev) =>
+      applyWeekdayTimeState(prev, dateKeys, dateKey, time, bookedSlotKeys, nextState)
+    )
     setHasChanges(true)
   }
 
@@ -642,15 +674,9 @@ export function DoctorAvailability() {
     dragRef.current.touched.add(key)
     const nextState = dragRef.current.paintState
 
-    setGrid((prev) => {
-      const next = { ...prev }
-      if (nextState === 'available') {
-        next[key] = 'available'
-      } else {
-        delete next[key]
-      }
-      return next
-    })
+    setGrid((prev) =>
+      applyWeekdayTimeState(prev, dateKeys, dateKey, time, bookedSlotKeys, nextState)
+    )
     setHasChanges(true)
   }
 
@@ -757,7 +783,7 @@ export function DoctorAvailability() {
                   Mark selected date fully
                 </button>
                 <button type="button" onClick={clearSelectedDay} className="day-pill text-left">
-                  Clear selected date
+                  Clear selected weekday
                 </button>
                 <button type="button" onClick={copyToSameWeekday} className="day-pill text-left">
                   Copy to same weekday dates
@@ -1232,7 +1258,7 @@ export function DoctorAvailability() {
       )}
 
       {showAddSlotsForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-150 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-surface p-5" style={{ boxShadow: 'var(--shadow-card)' }}>
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1319,7 +1345,7 @@ export function DoctorAvailability() {
       )}
 
       {popupBooked && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-150 flex items-center justify-center bg-primary/30 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-2xl bg-surface p-5" style={{ boxShadow: 'var(--shadow-card)' }}>
             <div className="flex items-start justify-between gap-3">
               <div>

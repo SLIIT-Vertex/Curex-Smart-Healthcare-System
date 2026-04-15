@@ -133,14 +133,55 @@ function formatDateTime(value?: string | null): string {
     return "-";
   }
 
-  const date = new Date(value);
-  return `${date.toLocaleDateString("en-GB")} ${date.toLocaleTimeString(
+  const raw = String(value).trim();
+  const hasZone = /[zZ]$|[+-]\d{2}:\d{2}$/.test(raw);
+  const utcAware = hasZone ? raw : `${raw}Z`;
+  const date = new Date(utcAware);
+  const parsed = Number.isNaN(date.getTime()) ? new Date(raw) : date;
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+
+  return `${parsed.toLocaleDateString("en-GB")} ${parsed.toLocaleTimeString(
     "en-GB",
     {
       hour: "2-digit",
       minute: "2-digit",
     },
   )}`;
+}
+
+function formatTime(value?: string | null): string {
+  if (!value) {
+    return "-";
+  }
+
+  const raw = String(value).trim();
+  const hasZone = /[zZ]$|[+-]\d{2}:\d{2}$/.test(raw);
+  const utcAware = hasZone ? raw : `${raw}Z`;
+  const date = new Date(utcAware);
+  const parsed = Number.isNaN(date.getTime()) ? new Date(raw) : date;
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+
+  return parsed.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatBookedAppointmentTime(value?: string | null): string {
+  if (!value) {
+    return "-";
+  }
+
+  const match = String(value).match(/^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/);
+  if (match?.[1]) {
+    return match[1];
+  }
+
+  return formatTime(value);
 }
 
 function appointmentDateTime(appointment: AppointmentRecord): string {
@@ -349,7 +390,7 @@ export function PatientTelemedicineCenter() {
         appt.doctorName,
         appt.doctorId,
         meetingTitle(appt),
-        formatDateTime(session?.startedAt),
+        appointmentDateTime(appt),
         formatDateTime(session?.endedAt),
       ]
         .filter(Boolean)
@@ -1035,10 +1076,10 @@ export function PatientTelemedicineCenter() {
                                     )}
                                   </td>
                                   <td className="px-3 py-2">
-                                    {formatDateTime(session?.startedAt)}
+                                    {formatBookedAppointmentTime(appt.appointmentTime)}
                                   </td>
                                   <td className="px-3 py-2">
-                                    {formatDateTime(session?.endedAt)}
+                                    {formatTime(session?.endedAt)}
                                   </td>
                                   <td className="px-3 py-2">
                                     {formatDateTime(session?.endedAt)}
