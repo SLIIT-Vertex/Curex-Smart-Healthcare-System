@@ -14,7 +14,9 @@ BE_DIR := curex-be
         be-build-telemed be-run-telemed \
         be-build-appointment be-run-appointment \
         be-build-gateway be-run-gateway \
-        docker-up docker-down docker-logs
+        docker-up docker-down docker-logs \
+        k8s-build k8s-tag k8s-deploy k8s-status k8s-logs k8s-down \
+        k8s-restart k8s-forward
 
 help:
 	@echo "╔════════════════════════════════════════════════════════════╗"
@@ -56,9 +58,18 @@ help:
 	@echo "  make docker-up          Start all services (docker-compose up)"
 	@echo "  make docker-down        Stop all services (docker-compose down)"
 	@echo "  make docker-logs        View logs (docker-compose logs -f)"
-	@echo "  make docker-clean-run   Clean and rebuild all services (docker-compose down -v && docker-compose up --build)"
+	@echo "  make docker-clean-run   Clean and rebuild all services"
 	@echo ""
-	@echo "See docs/DEVERLOPER_GUIDE.md for full documentation"
+	@echo "KUBERNETES"
+	@echo "  make k8s-build          Build all Docker images"
+	@echo "  make k8s-tag            Tag images for Kubernetes"
+	@echo "  make k8s-deploy         Deploy full stack to K8s (build + tag + apply)"
+	@echo "  make k8s-status         Show pod status"
+	@echo "  make k8s-logs SVC=name  View logs for a service (e.g. make k8s-logs SVC=user-service)"
+	@echo "  make k8s-restart SVC=n  Restart a deployment (e.g. make k8s-restart SVC=user-service)"
+	@echo "  make k8s-forward        Port-forward API Gateway to localhost:8080"
+	@echo "  make k8s-down           Delete all K8s resources"
+	@echo ""
 
 fe: fe-dev
 
@@ -159,3 +170,42 @@ docker-logs:
 
 docker-clean-run:
 	docker-compose down -v && docker-compose up --build
+
+# ── Kubernetes Targets ──
+
+SERVICES := user-service notification-service patient-service doctor-service \
+            ai-symptom-service report-service payment-service api-gateway
+NESTED_SERVICES := appointment-service telemedicine-service
+
+k8s-build:
+	docker compose build
+
+k8s-tag:
+	docker tag curex-smart-healthcare-system-user-service:latest curex-user-service:latest
+	docker tag curex-smart-healthcare-system-notification-service:latest curex-notification-service:latest
+	docker tag curex-smart-healthcare-system-patient-service:latest curex-patient-service:latest
+	docker tag curex-smart-healthcare-system-doctor-service:latest curex-doctor-service:latest
+	docker tag curex-smart-healthcare-system-ai-symptom-service:latest curex-ai-symptom-service:latest
+	docker tag curex-smart-healthcare-system-report-service:latest curex-report-service:latest
+	docker tag curex-smart-healthcare-system-payment-service:latest curex-payment-service:latest
+	docker tag curex-smart-healthcare-system-appointment-service:latest curex-appointment-service:latest
+	docker tag curex-smart-healthcare-system-telemedicine-service:latest curex-telemedicine-service:latest
+	docker tag curex-smart-healthcare-system-api-gateway:latest curex-api-gateway:latest
+
+k8s-deploy: k8s-build k8s-tag
+	kubectl apply -k k8s/
+
+k8s-status:
+	kubectl get pods -n curex
+
+k8s-logs:
+	kubectl logs -f deployment/$(SVC) -n curex
+
+k8s-restart:
+	kubectl rollout restart deployment/$(SVC) -n curex
+
+k8s-forward:
+	kubectl port-forward service/api-gateway 8080:8080 -n curex
+
+k8s-down:
+	kubectl delete -k k8s/
