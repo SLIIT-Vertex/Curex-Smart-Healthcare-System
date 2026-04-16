@@ -536,7 +536,7 @@ export function PatientTelemedicineCenter() {
     );
 
     if (!popup) {
-      window.location.assign(meetingSession.sessionUrl);
+      toast("Popup blocked. Please allow pop-ups for this site.", "warning");
       return;
     }
 
@@ -1321,10 +1321,19 @@ export function PatientTelemedicineCenter() {
                     <div className="mt-8 space-y-3">
                          <button
                             type="button"
+                            onClick={openMeetingInNewTab}
+                            disabled={!meetingSession?.sessionUrl}
+                            className="flex w-full items-center justify-center gap-3 rounded-2xl border border-primary-light/35 bg-primary-light/10 py-3.5 text-sm font-bold text-primary transition hover:bg-primary-light/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            Open in New Tab
+                          </button>
+                         <button
+                            type="button"
                             onClick={exportTranscript}
                             className="flex w-full items-center justify-center gap-3 rounded-2xl bg-primary-light py-3.5 text-sm font-bold text-background shadow-lg transition hover:scale-[1.02] active:scale-95"
                           >
-                            Download Full Record
+                            Download Transcription
                           </button>
                           <button
                             type="button"

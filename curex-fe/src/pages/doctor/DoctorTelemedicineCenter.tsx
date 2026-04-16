@@ -4,6 +4,7 @@ import {
   CalendarDays,
   ChevronDown,
   Eye,
+  ExternalLink,
   ListFilter,
   Maximize2,
   Minimize2,
@@ -429,6 +430,22 @@ export function DoctorTelemedicineCenter() {
   const meetingSession = meetingAppointment ? sessions[meetingAppointment.id] ?? null : null
   const roomJoinable = canJoin(meetingAppointment, meetingSession)
 
+  function openMeetingInNewTab() {
+    if (!meetingSession?.sessionUrl) {
+      toast('Meeting URL is not available yet.', 'warning')
+      return
+    }
+
+    const popup = window.open(meetingSession.sessionUrl, '_blank', 'noopener,noreferrer')
+    if (!popup) {
+      toast('Popup blocked. Please allow pop-ups for this site.', 'warning')
+      return
+    }
+
+    popup.focus()
+    toast('Meeting opened in a new tab.', 'info')
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -762,6 +779,16 @@ export function DoctorTelemedicineCenter() {
                 <div className="mt-4 grid gap-2">
                   <button
                     type="button"
+                    onClick={openMeetingInNewTab}
+                    disabled={!meetingSession?.sessionUrl}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary-light/40 bg-primary-light/10 px-3 py-2 text-sm font-medium text-primary transition hover:bg-primary-light/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open in New Tab
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={toggleFullScreen}
                     className="inline-flex items-center justify-center gap-2 rounded-lg border border-text-secondary/20 px-3 py-2 text-sm font-medium text-text-secondary transition hover:text-primary"
                   >
@@ -784,6 +811,16 @@ export function DoctorTelemedicineCenter() {
               <section ref={meetingPanelRef} className="appointment-panel relative overflow-hidden p-0">
                 {roomJoinable && meetingSession?.sessionUrl ? (
                   <>
+                    <div className="absolute right-3 top-3 z-20">
+                      <button
+                        type="button"
+                        onClick={openMeetingInNewTab}
+                        className="rounded-lg bg-black/40 p-2 text-white backdrop-blur-md transition hover:bg-primary"
+                        title="Open in new tab"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </button>
+                    </div>
                     <iframe
                       title={meetingTitle(meetingAppointment)}
                       src={meetingSession.sessionUrl}
