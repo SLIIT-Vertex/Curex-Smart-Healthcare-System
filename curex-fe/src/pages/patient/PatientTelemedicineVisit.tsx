@@ -226,6 +226,27 @@ export function PatientTelemedicineVisit() {
     toast("Transcript exported.", "success");
   }, [appointment?.id, interimTranscript, toast, transcriptText]);
 
+  const openMeetingInNewTab = useCallback(() => {
+    if (!session?.sessionUrl) {
+      toast("Meeting URL is not available yet.", "warning");
+      return;
+    }
+
+    const popup = window.open(
+      session.sessionUrl,
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    if (!popup) {
+      window.location.assign(session.sessionUrl);
+      return;
+    }
+
+    popup.focus();
+    toast("Meeting opened in a new tab.", "info");
+  }, [session?.sessionUrl, toast]);
+
   useEffect(() => {
     if (isJoinable && transcriptSupported && !isTranscribing) {
       startTranscript();
@@ -267,14 +288,26 @@ export function PatientTelemedicineVisit() {
         </div>
       ) : (
         <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
-          <div className="appointment-panel overflow-hidden p-0">
+          <div className="appointment-panel relative overflow-hidden p-0">
             {isJoinable && session?.sessionUrl ? (
-              <iframe
-                title="Telemedicine Session"
-                src={session.sessionUrl}
-                className="h-[68vh] min-h-[480px] w-full"
-                allow="camera; microphone; fullscreen; display-capture"
-              />
+              <>
+                <div className="absolute right-3 top-3 z-20">
+                  <button
+                    type="button"
+                    onClick={openMeetingInNewTab}
+                    className="rounded-lg bg-black/40 p-2 text-white backdrop-blur-md transition hover:bg-primary"
+                    title="Open in new tab"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </button>
+                </div>
+                <iframe
+                  title="Telemedicine Session"
+                  src={session.sessionUrl}
+                  className="h-[68vh] min-h-[480px] w-full"
+                  allow="camera; microphone; fullscreen; display-capture"
+                />
+              </>
             ) : (
               <div className="flex h-[68vh] min-h-[480px] flex-col items-center justify-center gap-3 bg-background/60 px-6 text-center">
                 <Video className="h-12 w-12 text-primary-light" />
@@ -324,15 +357,14 @@ export function PatientTelemedicineVisit() {
 
             <div className="mt-5 space-y-2">
               {session?.sessionUrl ? (
-                <a
-                  href={session.sessionUrl}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  onClick={openMeetingInNewTab}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-primary-light/40 bg-primary-light/10 px-3 py-2 text-sm font-semibold text-primary transition hover:bg-primary-light/20"
                 >
                   Open in New Tab
                   <ExternalLink className="h-4 w-4" />
-                </a>
+                </button>
               ) : (
                 <p className="rounded-lg border border-text-secondary/15 bg-background/50 px-3 py-2 text-xs text-text-secondary">
                   Session URL not generated yet.
